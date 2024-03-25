@@ -41,6 +41,7 @@ class pRT_spectrum:
         self.species=species
         self.spectral_resolution=spectral_resolution
         self.free_chem=free_chem
+        self.lbl_opacity_sampling=lbl_opacity_sampling
 
         self.n_atm_layers=50
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
