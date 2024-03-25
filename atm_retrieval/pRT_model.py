@@ -101,7 +101,7 @@ class pRT_spectrum:
                                     continuum_opacities = ['H2-H2', 'H2-He'],
                                     wlen_bords_micron=wlen_range, 
                                     mode='lbl',
-                                    cloud_species=self.loud_species,
+                                    cloud_species=self.cloud_species,
                                     do_scat_emis=self.do_scat_emis,
                                     lbl_opacity_sampling=self.lbl_opacity_sampling) # take every nth point (=3 in deRegt+2024)
                 
