@@ -1,3 +1,9 @@
+import os
+os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
+from mpi4py import MPI 
+comm = MPI.COMM_WORLD # important for MPI
+rank = comm.Get_rank() # important for MPI
+
 import numpy as np
 import pymultinest
 from pRT_model import *
