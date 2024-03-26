@@ -14,7 +14,7 @@ from target import *
 from pRT_model import *
 from likelihood import *
 from parameters import *
-print('starting retrieval')
+print('\nStarting retrieval\n')
 
 M0355 = Target('2M0355')
 ra=M0355.ra

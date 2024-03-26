@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-#os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
 from scipy.interpolate import CubicSpline
 from petitRADTRANS import Radtrans
 from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
