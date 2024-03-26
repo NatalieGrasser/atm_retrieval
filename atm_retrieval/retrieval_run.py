@@ -1,8 +1,14 @@
+import getpass
 import os
-os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
-from mpi4py import MPI 
-comm = MPI.COMM_WORLD # important for MPI
-rank = comm.Get_rank() # important for MPI
+
+if getpass.getuser() == "grasser": # when runnig from LEM
+    import os
+    os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
+    from mpi4py import MPI 
+    comm = MPI.COMM_WORLD # important for MPI
+    rank = comm.Get_rank() # important for MPI
+elif getpass.getuser() == "natalie": # when testing from my laptop
+    os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
 
 from target import *
 from pRT_model import *
