@@ -2,7 +2,7 @@ import getpass
 import os
 
 if getpass.getuser() == "grasser": # when runnig from LEM
-    import os
+    os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     from mpi4py import MPI 
     comm = MPI.COMM_WORLD # important for MPI
@@ -10,10 +10,11 @@ if getpass.getuser() == "grasser": # when runnig from LEM
 elif getpass.getuser() == "natalie": # when testing from my laptop
     os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
 
-from target import *
-from pRT_model import *
-from likelihood import *
-from parameters import *
+from target import Target
+from pRT_model import pRT_spectrum
+from likelihood import Retrieval
+from parameters import Parameters
+import numpy as np
 print('\nStarting retrieval\n')
 
 M0355 = Target('2M0355')

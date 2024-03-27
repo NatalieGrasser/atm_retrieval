@@ -5,15 +5,17 @@ from scipy.interpolate import CubicSpline
 from petitRADTRANS import Radtrans
 from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
 from PyAstronomy.pyasl import fastRotBroad, helcorr
+from astropy import constants as const
+from astropy import units as u
 from astropy.coordinates import SkyCoord
 import pandas as pd
 import pathlib
 import pickle
 
 # import own files
-from cloud_cond import *
 import cloud_cond
-from spectrum import *
+from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+from spectrum import Spectrum, convolve_to_resolution
 
 class pRT_spectrum:
 

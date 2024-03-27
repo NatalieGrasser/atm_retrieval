@@ -8,10 +8,13 @@ if getpass.getuser() == "grasser": # when runnig from LEM
 
 import numpy as np
 import pymultinest
-from pRT_model import *
-from target import *
-from spectrum import *
+from pRT_model import pRT_spectrum
+from target import Target
+from spectrum import Spectrum
+import cloud_cond
 import corner
+import pathlib
+import matplotlib.pyplot as plt
 
 class Retrieval:
 
