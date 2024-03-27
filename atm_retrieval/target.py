@@ -1,5 +1,5 @@
 import numpy as np
-from spectrum import Spectrum
+from atm_retrieval.spectrum import Spectrum
 
 class Target:
 

@@ -13,9 +13,9 @@ import pathlib
 import pickle
 
 # import own files
-import cloud_cond
-from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-from spectrum import Spectrum, convolve_to_resolution
+import atm_retrieval.cloud_cond as cloud_cond
+from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
 
 class pRT_spectrum:
 
