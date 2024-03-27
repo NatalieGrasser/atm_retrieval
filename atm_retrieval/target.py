@@ -1,5 +1,5 @@
 import numpy as np
-from spectrum import *
+from spectrum import Spectrum
 
 class Target:
 
