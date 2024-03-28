@@ -133,7 +133,7 @@ class Retrieval:
         final_params['f_ij']=self.f
         final_params['beta_ij']=self.beta
         self.final_params=final_params
-        np.savetxt(f'{self.output_dir}/bestfit_params.txt')
+        np.save(f'{self.output_dir}/bestfit_params.npy',final_params)
         return final_params
 
     def get_bestfit_model(self,plot_spectrum=False,plot_pt=False):
