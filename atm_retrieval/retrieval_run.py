@@ -15,7 +15,6 @@ from atm_retrieval.pRT_model import pRT_spectrum
 from atm_retrieval.likelihood import Retrieval
 from atm_retrieval.parameters import Parameters
 import numpy as np
-print('\nStarting retrieval\n')
 
 M0355 = Target('2M0355')
 ra=M0355.ra
@@ -31,6 +30,14 @@ constant_params = {#'log_g': 4.65,
                     #'T5': 900,
                     #'T6': 800,
                     #'T7': 700,
+                    #'log_H2O':-3,
+                    #'log_12CO':-3,
+                    #'log_13CO':-np.inf,
+                    'log_C18O':-np.inf,
+                    'log_C17O':-np.inf,
+                    #'log_CH4':-np.inf,
+                    #'log_NH3':-np.inf,
+                    #'log_HCN':-np.inf,
                     #'vsini': 2, # rotational velocity
                     #'rv': 11.92,
                     'log_Kzz': 7.5, # eddy diffusion parameter (atmospheric mixing)
@@ -49,8 +56,8 @@ free_params = {'vsini':([1.0,20.0],r'$v \sin(i)$ [km/s]'),
                'log_H2O':([-12,-1],r'H$_2$O'),
                'log_12CO':([-12,-1],r'$^{12}$CO'),
                'log_13CO':([-12,-1],r'$^{13}$CO'),
-               'log_C18O':([-12,-1],r'C$^{18}$O'),
-               'log_C17O':([-12,-1],r'C$^{17}$O'),
+               #'log_C18O':([-12,-1],r'C$^{18}$O'),
+               #'log_C17O':([-12,-1],r'C$^{17}$O'),
                'log_CH4':([-12,-1],r'CH$_4$'),
                'log_NH3':([-12,-1],r'NH$_3$'),
                'log_HCN':([-12,-1],r'HCN'),
@@ -77,7 +84,7 @@ params=parameters.params
 output='2M0355_test1'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
 #retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
-retrieval.PMN_run(N_live_points=50,evidence_tolerance=5)
+retrieval.PMN_run(N_live_points=20,evidence_tolerance=50)
 retrieval.PMN_analyse()
 retrieval.cornerplot()
 final_params=retrieval.get_final_parameters()
