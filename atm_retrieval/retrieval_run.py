@@ -76,7 +76,8 @@ params=parameters.params
 
 output='2M0355_test1'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
-retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
+#retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
+retrieval.PMN_run(N_live_points=50,evidence_tolerance=5)
 retrieval.PMN_analyse()
 retrieval.cornerplot()
 final_params=retrieval.get_final_parameters()

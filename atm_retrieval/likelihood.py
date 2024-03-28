@@ -74,8 +74,11 @@ class Retrieval:
         return self.ln_L
     
     def get_flux_scaling(self,d_flux_ij,m_flux_ij,inv_cov_ij): # deRegt+2024 eq.(5)
+        #print('m_flux_ij',m_flux_ij)
+        #print('inv_cov_ij',inv_cov_ij)
         lhs = m_flux_ij @ inv_cov_ij @ m_flux_ij # left-hand side
         rhs = m_flux_ij @ inv_cov_ij @ d_flux_ij # right-hand side
+        #print('lhs',lhs)
         f_ij = rhs / lhs
         return f_ij
 
