@@ -23,7 +23,7 @@ dec=M0355.dec
 JD=M0355.JD
 data_wave,data_flux,data_err=M0355.load_spectrum()
 
-constant_params = {'log_g': 4.65,
+constant_params = {#'log_g': 4.65,
                     #'T1': 2500,
                     #'T2': 1800,
                     #'T3': 1400,
@@ -31,16 +31,16 @@ constant_params = {'log_g': 4.65,
                     #'T5': 900,
                     #'T6': 800,
                     #'T7': 700,
-                    'log_H2O':-3,
-                    'log_12CO':-3,
-                    'log_13CO':-np.inf,
-                    'log_C18O':-np.inf,
-                    'log_C17O':-np.inf,
-                    'log_CH4':-np.inf,
-                    'log_NH3':-np.inf,
-                    'log_HCN':-np.inf,
-                    'vsini': 2, # rotational velocity
-                    'rv': 11.92,
+                    #'log_H2O':-3,
+                    #'log_12CO':-3,
+                    #'log_13CO':-np.inf,
+                    #'log_C18O':-np.inf,
+                    #'log_C17O':-np.inf,
+                    #'log_CH4':-np.inf,
+                    #'log_NH3':-np.inf,
+                    #'log_HCN':-np.inf,
+                    #'vsini': 2, # rotational velocity
+                    #'rv': 11.92,
                     'log_Kzz': 7.5, # eddy diffusion parameter (atmospheric mixing)
                     'fsed': 2, # sedimentation parameter for particles
                     'P_base_gray': 1, # pressure of gray cloud deck
@@ -52,16 +52,16 @@ constant_params = {'log_g': 4.65,
 
 # if free chemistry, define VMRs
 # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
-free_params = {#'vsini':([1.0,20.0],r'$v \sin(i)$ [km/s]'),
-               #'rv':([-30.0,30.0],r'RV [km/s]'),
+free_params = {'vsini':([1.0,20.0],r'$v \sin(i)$ [km/s]'),
+               'rv':([-30.0,30.0],r'RV [km/s]'),
                'log_H2O':([-12,-1],r'H$_2$O'),
                'log_12CO':([-12,-1],r'$^{12}$CO'),
                'log_13CO':([-12,-1],r'$^{13}$CO'),
-               #'log_C18O':([-12,-1],r'C$^{18}$O'),
-               #'log_C17O':([-12,-1],r'C$^{17}$O'),
-               #'log_CH4':([-12,-1],r'CH$_4$'),
-               #'log_NH3':([-12,-1],r'NH$_3$'),
-               #'log_HCN':([-12,-1],r'HCN'),
+               'log_C18O':([-12,-1],r'C$^{18}$O'),
+               'log_C17O':([-12,-1],r'C$^{17}$O'),
+               'log_CH4':([-12,-1],r'CH$_4$'),
+               'log_NH3':([-12,-1],r'NH$_3$'),
+               'log_HCN':([-12,-1],r'HCN'),
                #'C_O':([0,1],r'C/O'),
                #'FEH':([-2,2],r'Fe/H'),
                #'C13_12_ratio':([0,1],r'13C/12C'),
@@ -74,7 +74,7 @@ free_params = {#'vsini':([1.0,20.0],r'$v \sin(i)$ [km/s]'),
                 'T5' : ([400,  1500], r'$T_3$ [K]'),
                 'T6' : ([300,  1300],  r'$T_4$ [K]'),
                 'T7' : ([200,  1000],  r'$T_4$ [K]'), # top of atmosphere (cooler)
-               #'log_g':([3,7],r'log$g$'),
+               'log_g':([3,7],r'log$g$'),
               }
 
 parameters = Parameters(free_params, constant_params)
@@ -82,7 +82,7 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test1'
+output='2M0355_test2'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
 #retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
 #retrieval.PMN_run(N_live_points=10,evidence_tolerance=50)
