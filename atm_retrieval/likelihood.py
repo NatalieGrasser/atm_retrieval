@@ -5,13 +5,16 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     from mpi4py import MPI 
     comm = MPI.COMM_WORLD # important for MPI
     rank = comm.Get_rank() # important for MPI
+    from atm_retrieval.pRT_model import pRT_spectrum
+    from atm_retrieval.spectrum import Spectrum
+    import atm_retrieval.cloud_cond as cloud_cond
+elif getpass.getuser() == "natalie": # when testing from my laptop
+    from pRT_model import pRT_spectrum
+    from spectrum import Spectrum
+    import cloud_cond as cloud_cond
 
 import numpy as np
 import pymultinest
-from atm_retrieval.pRT_model import pRT_spectrum
-from atm_retrieval.target import Target
-from atm_retrieval.spectrum import Spectrum
-import atm_retrieval.cloud_cond as cloud_cond
 import corner
 import pathlib
 import matplotlib.pyplot as plt
@@ -79,6 +82,9 @@ class Retrieval:
         lhs = m_flux_ij @ inv_cov_ij @ m_flux_ij # left-hand side
         rhs = m_flux_ij @ inv_cov_ij @ d_flux_ij # right-hand side
         #print('lhs',lhs)
+        if lhs==0.0:
+            print('\n ERROR \n')
+            print(self.parameters.params)
         f_ij = rhs / lhs
         return f_ij
 

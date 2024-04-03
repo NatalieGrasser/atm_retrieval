@@ -1,5 +1,9 @@
 import numpy as np
-from atm_retrieval.spectrum import Spectrum
+import getpass
+if getpass.getuser() == "grasser": # when runnig from LEM
+    from atm_retrieval.spectrum import Spectrum
+elif getpass.getuser() == "natalie": # when testing from my laptop
+    from spectrum import Spectrum
 
 class Target:
 

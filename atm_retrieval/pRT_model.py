@@ -12,10 +12,15 @@ import pandas as pd
 import pathlib
 import pickle
 
-# import own files
-import atm_retrieval.cloud_cond as cloud_cond
-from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
+import getpass
+if getpass.getuser() == "grasser": # when runnig from LEM
+    import atm_retrieval.cloud_cond as cloud_cond
+    from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+    from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
+elif getpass.getuser() == "natalie": # when testing from my laptop
+    import cloud_cond as cloud_cond
+    from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+    from spectrum import Spectrum, convolve_to_resolution
 
 class pRT_spectrum:
 
@@ -287,7 +292,7 @@ class pRT_spectrum:
                             give_absorption_opacity=self.give_absorption_opacity)
 
             wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
-            flux = atmosphere.flux/np.mean(atmosphere.flux)
+            flux = atmosphere.flux/np.nanmean(atmosphere.flux)
 
             # Do RV+bary shifting and rotational broadening
             v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
@@ -351,6 +356,7 @@ class pRT_spectrum:
             ylim=(np.nanmax(self.pressure),np.nanmin(self.pressure)),
             xlim=(400,np.nanmax(self.temperature)+200))
         ax.legend()
+        plt.show()
 
     def plot_model(self):
         self.data_wave,self.data_flux,self.data_err=self.target.load_spectrum()
@@ -363,12 +369,12 @@ class pRT_spectrum:
                 sigma=1
                 lower=self.data_flux[order,det]-self.data_err[order,det]*sigma
                 upper=self.data_flux[order,det]+self.data_err[order,det]*sigma
-                ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
+                #ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
                 if order==0 and det==0:
                     ax[order].legend(fontsize=8) # to only have it once
             ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
         ax[6].set_xlabel('Wavelength [nm]')
         fig.tight_layout(h_pad=-0.1)
-        return
+        plt.show()
     
 
