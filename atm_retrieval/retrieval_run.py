@@ -84,7 +84,7 @@ params=parameters.params
 
 output='2M0355_test4'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
-retrieval.PMN_run(N_live_points=100,evidence_tolerance=1)
+retrieval.PMN_run(N_live_points=50,evidence_tolerance=2)
 #retrieval.PMN_run(N_live_points=10,evidence_tolerance=50)
 #retrieval.PMN_run(N_live_points=20,evidence_tolerance=100)
 retrieval.PMN_analyse()
