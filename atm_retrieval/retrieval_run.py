@@ -50,10 +50,10 @@ if testing:
                 'log_CH4':([-12,-1],r'CH$_4$'),
                 'log_NH3':([-12,-1],r'NH$_3$'),
                 'log_HCN':([-12,-1],r'HCN'),
-                'T1' : ([0,5000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
-                'T2' : ([0,5000], r'$T_2$ [K]'),
-                'T3' : ([0,5000], r'$T_3$ [K]'),
-                'T4' : ([0,5000], r'$T_4$ [K]'), # top of atmosphere (cooler)
+                'T1' : ([1000,5000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
+                'T2' : ([700,3000], r'$T_2$ [K]'),
+                'T3' : ([300,2000], r'$T_3$ [K]'),
+                'T4' : ([200,1000], r'$T_4$ [K]'), # top of atmosphere (cooler)
                 }
     
 else:
