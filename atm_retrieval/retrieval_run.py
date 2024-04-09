@@ -12,6 +12,8 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     from atm_retrieval.target import Target
     from atm_retrieval.likelihood import Retrieval
     from atm_retrieval.parameters import Parameters
+    import matplotlib
+    matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
     os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
     from target import Target

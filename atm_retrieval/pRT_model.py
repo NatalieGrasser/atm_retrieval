@@ -306,7 +306,6 @@ class pRT_spectrum:
             ylim=(np.nanmax(self.pressure),np.nanmin(self.pressure)),
             xlim=(400,np.nanmax(self.temperature)+200))
         ax.legend()
-        plt.show()
 
     def plot_model(self):
         self.data_wave,self.data_flux,self.data_err=self.target.load_spectrum()
@@ -325,6 +324,5 @@ class pRT_spectrum:
             ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
         ax[6].set_xlabel('Wavelength [nm]')
         fig.tight_layout(h_pad=-0.1)
-        plt.show()
     
 
