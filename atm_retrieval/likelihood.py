@@ -1,6 +1,6 @@
 import getpass
+import os
 if getpass.getuser() == "grasser": # when runnig from LEM
-    import os
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     from mpi4py import MPI 
     comm = MPI.COMM_WORLD # important for MPI
@@ -17,16 +17,28 @@ import numpy as np
 import pymultinest
 import corner
 import pathlib
+import pickle
 import matplotlib.pyplot as plt
+from petitRADTRANS import Radtrans
+import pandas as pd
 
 class Retrieval:
 
-    def __init__(self,target,parameters,output_name,scale_flux=True,free_chem=True):
+    def __init__(self,target,parameters,output_name,scale_flux=True,free_chem=True,cloud_mode=None,lbl_opacity_sampling=3):
+
+        self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
+                [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
+                [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
+                [[2143.087,2157.855], [2158.914,2173.020], [2173.983,2187.386]],
+                [[2228.786,2244.133], [2245.229,2259.888], [2260.904,2274.835]],
+                [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
+                [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
 
         self.data_wave,self.data_flux,self.data_err=target.load_spectrum()
         self.target=target
-
         self.parameters=parameters
+        self.species=self.get_species(param_dict=self.parameters.params)
+
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
         self.n_params = len(parameters.free_params)
         self.scale_flux= scale_flux
@@ -35,6 +47,61 @@ class Retrieval:
         self.output_name=output_name
         self.output_dir = pathlib.Path(self.output_name)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # load atmosphere objects here and not in likelihood/pRT_model to make it faster
+        self.do_scat_emis=False
+        self.cloud_species=None
+        if cloud_mode=='MgSiO3':
+            self.cloud_species=['MgSiO3(c)_cd']
+            self.do_scat_emis = True # enable scattering on cloud particles
+        self.cloud_species=self.cloud_species
+        
+        self.lbl_opacity_sampling=lbl_opacity_sampling
+        self.atmosphere_objects=self.get_atmosphere_objects()
+
+    def get_species(self,param_dict): # get pRT species name from parameters dict
+        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+        chem_species=[]
+        for par in param_dict:
+            if 'log_' in par: # get all species in params dict
+                if par in ['log_g','log_Kzz','log_MgSiO3']: # skip those
+                    pass
+                else:
+                    chem_species.append(par[4:])
+        species=[]
+        for chemspec in chem_species:
+            species.append(species_info.loc[chemspec,'pRT_name'])
+        return species
+
+    def get_atmosphere_objects(self):
+
+        atmosphere_objects=[]
+        file=pathlib.Path(f'atmosphere_objects_{self.target.name}.pickle')
+        if file.exists():
+            with open(file,'rb') as file:
+                atmosphere_objects=pickle.load(file)
+                return atmosphere_objects
+        else:
+            for order in range(7):
+                wl_pad=7 # wavelength padding because spectrum is not wavelength shifted yet
+                wlmin=np.min(self.K2166[order])-wl_pad
+                wlmax=np.max(self.K2166[order])+wl_pad
+                wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
+
+                atmosphere = Radtrans(line_species=self.species,
+                                    rayleigh_species = ['H2', 'He'],
+                                    continuum_opacities = ['H2-H2', 'H2-He'],
+                                    wlen_bords_micron=wlen_range, 
+                                    mode='lbl',
+                                    cloud_species=self.cloud_species,
+                                    do_scat_emis=self.do_scat_emis,
+                                    lbl_opacity_sampling=self.lbl_opacity_sampling) # take every nth point (=3 in deRegt+2024)
+                
+                atmosphere.setup_opa_structure(self.pressure)
+                atmosphere_objects.append(atmosphere)
+            with open(file,'wb') as file:
+                pickle.dump(atmosphere_objects,file)
+            return atmosphere_objects
 
     def calculate_likelihood(self,data,err,model): # deRegt+2024 eq.(3)
 
@@ -77,20 +144,16 @@ class Retrieval:
         return self.ln_L
     
     def get_flux_scaling(self,d_flux_ij,m_flux_ij,inv_cov_ij): # deRegt+2024 eq.(5)
-        #print('m_flux_ij',m_flux_ij)
-        #print('inv_cov_ij',inv_cov_ij)
         lhs = m_flux_ij @ inv_cov_ij @ m_flux_ij # left-hand side
         rhs = m_flux_ij @ inv_cov_ij @ d_flux_ij # right-hand side
-        #print('lhs',lhs)
-        if lhs==0.0:
-            print('\n ERROR \n')
-            print(self.parameters.params)
         f_ij = rhs / lhs
         return f_ij
 
     def likelihood(self,cube=None, ndim=None,nparams=None,plot=False):
 
-        self.model_flux=pRT_spectrum(parameters=self.parameters.params,data_wave=self.data_wave,target=self.target,free_chem=self.free_chem).make_spectrum()
+        self.model_flux=pRT_spectrum(parameters=self.parameters.params,data_wave=self.data_wave,target=self.target,
+                                     atmosphere_objects=self.atmosphere_objects,species=self.species,
+                                     free_chem=self.free_chem).make_spectrum()
         #if plot: # just to check
             #fig = plt.figure(figsize=(10, 1),dpi=200)
             #plt.plot(self.data_wave.flatten(),self.data_flux.flatten())
@@ -103,16 +166,26 @@ class Retrieval:
         result = pymultinest.run(LogLikelihood=self.likelihood, Prior=self.parameters,
                     n_dims=self.parameters.n_params, outputfiles_basename=f'{self.output_dir}/pmn_', verbose=True,
                     const_efficiency_mode=False, sampling_efficiency = 0.8,
-                    n_iter_before_update=30,n_live_points=N_live_points,resume=resume,
-                    evidence_tolerance=evidence_tolerance) # default is 0.5, high number -> stops earlier
+                    n_live_points=N_live_points,resume=resume,
+                    evidence_tolerance=evidence_tolerance, # default is 0.5, high number -> stops earlier
+                    dump_callback=self.PMN_callback,n_iter_before_update=1) 
 
     def PMN_analyse(self):
+        self.callback_label='final_'
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
                                         outputfiles_basename=f'{self.output_dir}/pmn_')  # Set-up analyzer object
         stats = analyzer.get_stats()
         self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
         self.posterior = self.posterior[:,:-1] # shape      
         self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # Read the parameters of the best-fitting model
+
+    def PMN_callback(self,n_samples,n_live,n_params,live_points,posterior, 
+                    stats,max_ln_L,ln_Z,ln_Z_err,nullcontext):
+        self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
+        self.posterior = posterior[:,:-2] # Remove the last 2 columns
+        self.callback_label='live_' # label for plots
+        self.cornerplot()
+        self.get_bestfit_model(plot_spectrum=True,plot_pt=True)
 
     def cornerplot(self):
         labels=list(self.parameters.free_params.keys())
@@ -126,20 +199,21 @@ class Retrieval:
                             show_titles=True)
         if self.bestfit_params is not None:
             corner.overplot_lines(fig, self.bestfit_params,color='r',lw=1,linestyle='dashed')
-        fig.savefig(f'{self.output_dir}/retrieval_summary.pdf')
+        fig.savefig(f'{self.output_dir}/{self.callback_label}retrieval_summary.pdf')
 
     def get_final_parameters(self,contribution=False,get_spectrum=True): # make dict of constant params + determined bestfit params
         final_params=self.parameters.constant_params.copy()
         for i,key in enumerate(self.parameters.param_keys):
             final_params[key]=self.bestfit_params[i]
         if get_spectrum==True:
-            self.final_object=pRT_spectrum(parameters=final_params,data_wave=self.data_wave,target=self.target,free_chem=self.free_chem,contribution=contribution)
+            self.final_object=pRT_spectrum(parameters=final_params,data_wave=self.data_wave,target=self.target,species=self.species,
+                                           atmosphere_objects=self.atmosphere_objects,free_chem=self.free_chem,contribution=contribution)
             self.final_model=self.final_object.make_spectrum()
             self.log_likelihood = self.calculate_likelihood(self.data_flux,self.data_err,self.final_model) # to get f_ij and beta_ij of bestfit model
         final_params['f_ij']=self.f
         final_params['beta_ij']=self.beta
         self.final_params=final_params
-        np.save(f'{self.output_dir}/bestfit_params.npy',final_params)
+        np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',final_params)
         return final_params
 
     def get_bestfit_model(self,plot_spectrum=False,plot_pt=False):
@@ -161,13 +235,14 @@ class Retrieval:
                     sigma=1
                     lower=self.data_flux[order,det]-self.data_err[order,det]*sigma
                     upper=self.data_flux[order,det]+self.data_err[order,det]*sigma
-                    ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
+                    #ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
                     if order==0 and det==0:
                         ax[order].legend(fontsize=8) # to only have it once
                 ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
             ax[6].set_xlabel('Wavelength [nm]')
             fig.tight_layout(h_pad=-0.1)
-            fig.savefig(f'{self.output_dir}/bestfit_spectrum.pdf')
+            fig.savefig(f'{self.output_dir}/{self.callback_label}bestfit_spectrum.pdf')
+            plt.close()
 
         if plot_pt==True:
             summed_contr=np.mean(self.final_object.contr_em_orders,axis=0) # average over all orders
@@ -192,7 +267,8 @@ class Retrieval:
                 ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
                 xlim=(400,np.nanmax(self.final_object.temperature)+200))
             ax.legend()
-            fig.savefig(f'{self.output_dir}/PT_profile.pdf')
+            fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
+            plt.close()
 
         return Spectrum(self.data_wave,self.bestfit_flux)
     
@@ -206,4 +282,10 @@ class Retrieval:
             VMR_13CO=10**(self.final_params['log_13CO'])
             return VMR_12CO/VMR_13CO
 
+    def evaluate(self,plot_spectrum=True,plot_pt=True):
+        self.PMN_analyse()
+        self.cornerplot()
+        final_params=self.get_final_parameters()
+        bestfit_model=self.get_bestfit_model(plot_spectrum=plot_spectrum,plot_pt=plot_pt)
+        return bestfit_model,final_params
 

@@ -28,17 +28,10 @@ class pRT_spectrum:
                  parameters,
                  data_wave, # shape (orders,detectors,pixels)
                  target,
+                 species,
+                 atmosphere_objects,
                  spectral_resolution=100_000,  
-                 species=['H2O_pokazatel_main_iso','CO_main_iso','CH4_hargreaves_main_iso','CO_36','CO_28','CO_27','NH3_coles_main_iso','HCN_main_iso'],
-                 cloud_mode=None,contribution=False,free_chem=True,lbl_opacity_sampling=3): # contribution only for plotting atmosphere.contr_em
-
-        self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
-                [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
-                [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
-                [[2143.087,2157.855], [2158.914,2173.020], [2173.983,2187.386]],
-                [[2228.786,2244.133], [2245.229,2259.888], [2260.904,2274.835]],
-                [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
-                [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
+                 cloud_mode=None,contribution=False,free_chem=True): # contribution only for plotting atmosphere.contr_em
         
         self.params=parameters
         self.data_wave=data_wave
@@ -47,7 +40,7 @@ class pRT_spectrum:
         self.species=species
         self.spectral_resolution=spectral_resolution
         self.free_chem=free_chem
-        self.lbl_opacity_sampling=lbl_opacity_sampling
+        self.atmosphere_objects=atmosphere_objects
 
         self.n_atm_layers=50
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
@@ -63,60 +56,19 @@ class pRT_spectrum:
         self.sigma_lnorm=None
         self.Kzz=None 
         self.fsed=None
-        self.cloud_species=None
-        self.do_scat_emis = False # if no cloud
 
         if self.free_chem==True: # use free chemistry with defined VMRs
-            self.mass_fractions, self.CO, self.FeH = self.free_chemistry(species,self.params)
+            self.mass_fractions, self.CO, self.FeH = self.free_chemistry(self.species,self.params)
             self.MMW = self.mass_fractions['MMW']
 
         if self.free_chem==False: # use equilibium chemistry
             abunds = self.abundances(self.pressure,self.temperature,self.params['FEH'],self.params['C_O'])
             self.mass_fractions = self.get_abundance_dict(self.species,abunds)
             self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) # update mass_fractions with isotopologue ratios
-            self.MMW = abunds['MMW'] 
-        
-        if self.cloud_mode=='MgSiO3':
-            self.cloud_species=['MgSiO3(c)_cd']
-            self.do_scat_emis = True # enable scattering on cloud particles
+            self.MMW = abunds['MMW']
 
         self.spectrum_orders=[]
-        self.orders=range(self.K2166.shape[0])
-
-    def make_spectrum(self):
-        self.atmosphere_objects=self.get_atmosphere_objects()
-        self.spectrum_orders=self.calc_atmospheres()
-        return self.spectrum_orders
-
-    def get_atmosphere_objects(self):
-
-        atmosphere_objects=[]
-        file=pathlib.Path(f'atmosphere_objects_{self.target.name}.pickle')
-        if file.exists():
-            with open(file,'rb') as file:
-                atmosphere_objects=pickle.load(file)
-                return atmosphere_objects
-        else:
-            for i,order in enumerate(self.orders):
-                wl_pad=7 # wavelength padding because spectrum is not wavelength shifted yet
-                wlmin=np.min(self.K2166[order])-wl_pad
-                wlmax=np.max(self.K2166[order])+wl_pad
-                wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
-
-                atmosphere = Radtrans(line_species=self.species,
-                                    rayleigh_species = ['H2', 'He'],
-                                    continuum_opacities = ['H2-H2', 'H2-He'],
-                                    wlen_bords_micron=wlen_range, 
-                                    mode='lbl',
-                                    cloud_species=self.cloud_species,
-                                    do_scat_emis=self.do_scat_emis,
-                                    lbl_opacity_sampling=self.lbl_opacity_sampling) # take every nth point (=3 in deRegt+2024)
-                
-                atmosphere.setup_opa_structure(self.pressure)
-                atmosphere_objects.append(atmosphere)
-            with open(file,'wb') as file:
-                pickle.dump(atmosphere_objects,file)
-            return atmosphere_objects
+        self.orders=7
 
     def abundances(self,press, temp, feh, C_O):
         COs = np.ones_like(press)*C_O
@@ -249,11 +201,11 @@ class pRT_spectrum:
             return opa_gray_cloud
         return give_opacity
     
-    def calc_atmospheres(self):
+    def make_spectrum(self):
 
         spectrum_orders=[]
         self.contr_em_orders=[]
-        for order in self.orders:
+        for order in range(self.orders):
             atmosphere=self.atmosphere_objects[order]
 
             if self.cloud_mode == 'MgSiO3':
@@ -331,8 +283,6 @@ class pRT_spectrum:
         return temperature
 
     def plot_pt(self):
-        print(np.array(self.contr_em_orders).shape)
-        
         summed_contr=np.mean(self.contr_em_orders,axis=0) # average over all orders
 
         if self.free_chem==False:
@@ -361,7 +311,7 @@ class pRT_spectrum:
     def plot_model(self):
         self.data_wave,self.data_flux,self.data_err=self.target.load_spectrum()
         fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
-        for order in range(7):
+        for order in range(self.orders):
             for det in range(3):
                 ax[order].plot(self.data_wave[order,det],self.data_flux[order,det],lw=0.8,alpha=0.8,c='k',label='data')
                 ax[order].plot(self.data_wave[order,det],self.spectrum_orders[order,det],lw=0.8,alpha=0.8,c='c',label='model')
