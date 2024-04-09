@@ -29,13 +29,6 @@ testing=True
 if testing:
 
     constant_params = {'log_g': 4.65,
-                    'T1': 2500,
-                    'T2': 1800,
-                    'T3': 1400,
-                    'T4': 1100,
-                    'T5': 900,
-                    'T6': 800,
-                    'T7': 700,
                     'vsini': 2, # rotational velocity
                     'rv': 11.92,
                     'log_Kzz': 7.5, # eddy diffusion parameter (atmospheric mixing)
@@ -49,14 +42,18 @@ if testing:
 
     # if free chemistry, define VMRs
     # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
-    free_params = {'log_H2O':([-5,-2],r'H$_2$O'),
-                'log_12CO':([-5,-2],r'$^{12}$CO'),
+    free_params = {'log_H2O':([-12,-1],r'H$_2$O'),
+                'log_12CO':([-12,-1],r'$^{12}$CO'),
                 'log_13CO':([-12,-1],r'$^{13}$CO'),
                 'log_C18O':([-12,-1],r'C$^{18}$O'),
                 'log_C17O':([-12,-1],r'C$^{17}$O'),
                 'log_CH4':([-12,-1],r'CH$_4$'),
                 'log_NH3':([-12,-1],r'NH$_3$'),
-                'log_HCN':([-12,-1],r'HCN')
+                'log_HCN':([-12,-1],r'HCN'),
+                'T1' : ([0,5000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
+                'T2' : ([0,5000], r'$T_2$ [K]'),
+                'T3' : ([0,5000], r'$T_3$ [K]'),
+                'T4' : ([0,5000], r'$T_4$ [K]'), # top of atmosphere (cooler)
                 }
     
 else:
@@ -119,7 +116,7 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test2'
+output='2M0355_test3'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
 retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
 bestfit_model,final_params=retrieval.evaluate(plot_spectrum=True,plot_pt=True)

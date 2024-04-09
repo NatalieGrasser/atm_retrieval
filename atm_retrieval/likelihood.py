@@ -168,7 +168,7 @@ class Retrieval:
                     const_efficiency_mode=False, sampling_efficiency = 0.8,
                     n_live_points=N_live_points,resume=resume,
                     evidence_tolerance=evidence_tolerance, # default is 0.5, high number -> stops earlier
-                    dump_callback=self.PMN_callback,n_iter_before_update=1) 
+                    dump_callback=self.PMN_callback,n_iter_before_update=10) 
 
     def PMN_analyse(self):
         self.callback_label='final_'

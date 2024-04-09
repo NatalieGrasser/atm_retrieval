@@ -17,6 +17,8 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     import atm_retrieval.cloud_cond as cloud_cond
     from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
     from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
+    import matplotlib
+    matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
     import cloud_cond as cloud_cond
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
@@ -276,7 +278,8 @@ class pRT_spectrum:
 
     def make_pt(self,params,pressure,plot=False):
         # if pt profile and condensation curve don't intersect, clouds have no effect
-        self.t_samp = np.array([params['T7'],params['T6'],params['T5'],params['T4'],params['T3'],params['T2'],params['T1']])
+        #self.t_samp = np.array([params['T7'],params['T6'],params['T5'],params['T4'],params['T3'],params['T2'],params['T1']])
+        self.t_samp = np.array([params['T4'],params['T3'],params['T2'],params['T1']])
         self.p_samp= np.linspace(np.log10(np.nanmin(pressure)),np.log10(np.nanmax(pressure)),len(self.t_samp))
         sort = np.argsort(self.p_samp)
         temperature = CubicSpline(self.p_samp[sort],self.t_samp[sort])(np.log10(pressure))
