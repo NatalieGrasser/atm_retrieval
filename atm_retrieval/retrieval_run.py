@@ -28,8 +28,7 @@ testing=True
 
 if testing:
 
-    constant_params = {'log_g': 4.65,
-                    'vsini': 2, # rotational velocity
+    constant_params = {'vsini': 2, # rotational velocity
                     'rv': 11.92,
                     'log_Kzz': 7.5, # eddy diffusion parameter (atmospheric mixing)
                     'fsed': 2, # sedimentation parameter for particles
@@ -54,6 +53,7 @@ if testing:
                 'T2' : ([700,3000], r'$T_2$ [K]'),
                 'T3' : ([300,2000], r'$T_3$ [K]'),
                 'T4' : ([200,1000], r'$T_4$ [K]'), # top of atmosphere (cooler)
+                'log_g':([2,5],r'log$g$'),
                 }
     
 else:
@@ -116,7 +116,7 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test3'
+output='2M0355_test4'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
 retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
 bestfit_model,final_params=retrieval.evaluate(plot_spectrum=True,plot_pt=True)
