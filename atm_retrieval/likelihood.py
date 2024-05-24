@@ -21,6 +21,8 @@ import pickle
 import matplotlib.pyplot as plt
 from petitRADTRANS import Radtrans
 import pandas as pd
+from labellines import labelLines
+
 
 class Retrieval:
 
@@ -254,20 +256,26 @@ class Retrieval:
                 Fe_H = self.final_object.FeH   
             fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
             cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
-            ax.plot(self.final_object.temperature, self.final_object.pressure)
+            cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
+            ax.plot(self.final_object.temperature, self.final_object.pressure,label="$P-T$ profile")
             ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp)
-            ax.plot(summed_contr/np.max(summed_contr)*np.max(self.final_object.temperature),self.final_object.pressure,linestyle='dashed',lw=2)
-            for cs in cloud_species:
+            xmin=np.min(self.final_object.t_samp)-100
+            xmax=np.max(self.final_object.t_samp)+100
+            contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
+            ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=2,label="Contribution")
+            for i,cs in enumerate(cloud_species):
                 cs_key = cs[:-3]
                 if cs_key == 'KCl':
                     cs_key = cs_key.upper()
                 P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
-                ax.plot(T_cloud, P_cloud, lw=2, label=cs, ls=':', alpha=0.8)
+                pi=np.where((P_cloud>min(self.final_object.pressure))&(P_cloud<max(self.final_object.pressure)))[0]
+                ax.plot(T_cloud[pi], P_cloud[pi], lw=2, label=cloud_labels[i], ls=':', alpha=0.8)
             ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
                 ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
-                #xlim=(np.min(self.final_object.t_samp),np.max(self.final_object.t_samp)))
-                xlim=(0,np.max(self.final_object.t_samp)*1.1))
-            ax.legend()
+                xlim=(xmin,xmax))
+            # https://github.com/cphyc/matplotlib-label-lines
+            labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
+            ax.legend(fontsize=9)
             fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
             plt.close()
 
