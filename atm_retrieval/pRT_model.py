@@ -278,15 +278,7 @@ class pRT_spectrum:
 
     def make_pt(self):
         # if pt profile and condensation curve don't intersect, clouds have no effect
-        # no temperature inversion for isolated objects, so force temperature to increase to avoid weird fluctuations
         self.t_samp = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1']])
-        idx=np.array(np.argsort(self.t_samp))
-        if np.alltrue(idx==np.array([0,1,2,3]))==True: # if temperature increasing, all good
-            pass
-        else: # if not, change params
-            self.t_samp=self.t_samp[idx]
-            for i,key in enumerate(['T4','T3','T2','T1']):
-                self.params[key]=self.t_samp[i]
         self.p_samp= np.linspace(np.log10(np.nanmin(self.pressure)),np.log10(np.nanmax(self.pressure)),len(self.t_samp))
         sort = np.argsort(self.p_samp)
         temperature = CubicSpline(self.p_samp[sort],self.t_samp[sort])(np.log10(self.pressure))

@@ -265,7 +265,8 @@ class Retrieval:
                 ax.plot(T_cloud, P_cloud, lw=2, label=cs, ls=':', alpha=0.8)
             ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
                 ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
-                xlim=(np.min(self.final_object.t_samp),np.max(self.final_object.t_samp)))
+                #xlim=(np.min(self.final_object.t_samp),np.max(self.final_object.t_samp)))
+                xlim=(0,np.max(self.final_object.t_samp)*1.1))
             ax.legend()
             fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
             plt.close()
