@@ -46,7 +46,7 @@ class pRT_spectrum:
 
         self.n_atm_layers=50
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
-        self.temperature = self.make_pt(self.params,self.pressure) #P-T profile
+        self.temperature = self.make_pt() #P-T profile
 
         self.give_absorption_opacity=None
         self.int_opa_cloud = np.zeros_like(self.pressure)
@@ -276,13 +276,20 @@ class pRT_spectrum:
         return np.array(spectrum_orders)
 
 
-    def make_pt(self,params,pressure,plot=False):
+    def make_pt(self):
         # if pt profile and condensation curve don't intersect, clouds have no effect
-        #self.t_samp = np.array([params['T7'],params['T6'],params['T5'],params['T4'],params['T3'],params['T2'],params['T1']])
-        self.t_samp = np.array([params['T4'],params['T3'],params['T2'],params['T1']])
-        self.p_samp= np.linspace(np.log10(np.nanmin(pressure)),np.log10(np.nanmax(pressure)),len(self.t_samp))
+        # no temperature inversion for isolated objects, so force temperature to increase to avoid weird fluctuations
+        self.t_samp = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1']])
+        idx=np.array(np.argsort(self.t_samp))
+        if np.alltrue(idx==np.array([0,1,2,3]))==True: # if temperature increasing, all good
+            pass
+        else: # if not, change params
+            self.t_samp=self.t_samp[idx]
+            for i,key in enumerate(['T4','T3','T2','T1']):
+                self.params[key]=self.t_samp[i]
+        self.p_samp= np.linspace(np.log10(np.nanmin(self.pressure)),np.log10(np.nanmax(self.pressure)),len(self.t_samp))
         sort = np.argsort(self.p_samp)
-        temperature = CubicSpline(self.p_samp[sort],self.t_samp[sort])(np.log10(pressure))
+        temperature = CubicSpline(self.p_samp[sort],self.t_samp[sort])(np.log10(self.pressure))
         return temperature
 
     def plot_pt(self):

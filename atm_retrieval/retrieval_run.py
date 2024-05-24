@@ -49,10 +49,10 @@ if testing:
                 'log_CH4':([-12,-1],r'CH$_4$'),
                 'log_NH3':([-12,-1],r'NH$_3$'),
                 'log_HCN':([-12,-1],r'HCN'),
-                'T1' : ([1000,5000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
-                'T2' : ([700,3000], r'$T_2$ [K]'),
-                'T3' : ([300,2000], r'$T_3$ [K]'),
-                'T4' : ([200,1000], r'$T_4$ [K]'), # top of atmosphere (cooler)
+                'T1' : ([0,10000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
+                'T2' : ([0,10000], r'$T_2$ [K]'),
+                'T3' : ([0,10000], r'$T_3$ [K]'),
+                'T4' : ([0,10000], r'$T_4$ [K]'), # top of atmosphere (cooler)
                 'log_g':([2,5],r'log$g$'),
                 }
     
@@ -62,9 +62,6 @@ else:
                         #'T2': 1800,
                         #'T3': 1400,
                         #'T4': 1100,
-                        #'T5': 900,
-                        #'T6': 800,
-                        #'T7': 700,
                         #'log_H2O':-3,
                         #'log_12CO':-3,
                         #'log_13CO':-np.inf,
@@ -101,13 +98,10 @@ else:
                 #'C13_12_ratio':([0,1],r'13C/12C'),
                 #'O18_16_ratio':([0,1],r'18O/16O'),
                 #'O17_16_ratio':([0,1],r'17O/16O'),
-                'T1' : ([1500, 7000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
-                'T2' : ([1000, 5000], r'$T_2$ [K]'),
-                'T3' : ([700, 3000], r'$T_3$ [K]'),
-                'T4' : ([500,  2000], r'$T_4$ [K]'),
-                'T5' : ([400,  1500], r'$T_5$ [K]'),
-                'T6' : ([300,  1300],  r'$T_6$ [K]'),
-                'T7' : ([200,  1000],  r'$T_7$ [K]'), # top of atmosphere (cooler)
+                'T1' : ([0,10000], r'$T_1$ [K]'), # bottom of the atmosphere (hotter)
+                'T2' : ([0,10000], r'$T_2$ [K]'),
+                'T3' : ([0,10000], r'$T_3$ [K]'),
+                'T4' : ([0,10000], r'$T_4$ [K]'), # top of atmosphere (cooler)
                 'log_g':([2,5],r'log$g$'),
                 }
 
