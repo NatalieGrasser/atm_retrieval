@@ -67,7 +67,7 @@ class Retrieval:
         chem_species=[]
         for par in param_dict:
             if 'log_' in par: # get all species in params dict
-                if par in ['log_g','log_Kzz','log_MgSiO3']: # skip those
+                if par in ['log_g','log_Kzz','log_MgSiO3','log_P_base_gray']: # skip those
                     pass
                 else:
                     chem_species.append(par[4:])
