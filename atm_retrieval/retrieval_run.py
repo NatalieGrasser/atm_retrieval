@@ -74,6 +74,6 @@ parameters(cube)
 params=parameters.params
 
 output='2M0355_test6'
-retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
+retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output,cloud_mode='gray')
 retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
 bestfit_model,final_params=retrieval.evaluate(plot_spectrum=True,plot_pt=True)
