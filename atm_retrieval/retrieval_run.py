@@ -36,9 +36,9 @@ free_params = {'rv': ([5,20],r'RV'),
                'vsini': ([0,30],r'RV'),
 
             # Cloud properties
-            'opa_base_gray': [(0,1), r'$\log\ \kappa_{\mathrm{cl},0}$'], 
-            'log_P_base_gray': [(-6,3), r'$\log\ P_{\mathrm{cl},0}$'], # pressure of gray cloud deck
-            'fsed_gray': [(0,20), r'$f_\mathrm{sed}$'], # sedimentation parameter for particles
+            'opa_base_gray': ([0,1], r'$\log\ \kappa_{\mathrm{cl},0}$'), 
+            'log_P_base_gray': ([-6,3], r'$\log\ P_{\mathrm{cl},0}$'), # pressure of gray cloud deck
+            'fsed_gray': ([0,20], r'$f_\mathrm{sed}$'), # sedimentation parameter for particles
 
             # Chemistry
             'log_H2O':([-12,-1],r'H$_2$O'),
