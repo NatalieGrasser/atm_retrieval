@@ -24,19 +24,23 @@ M0355 = Target('2M0355')
 data_wave,data_flux,data_err=M0355.load_spectrum()
 # replace atmosphere_objects file when adding new species!
 
-constant_params = {'log_Kzz': 7.5, # eddy diffusion parameter (atmospheric mixing)
-                'fsed': 2, # sedimentation parameter for particles
-                'P_base_gray': 1, # pressure of gray cloud deck
-                'fsed_gray': 2,
-                'opa_base_gray': 0.8, # opacity of gray cloud deck
-                'sigma_lnorm': 1.05, # width of the log-normal particle distribution of MgSiO3
-                'log_MgSiO3' : 0, # scaling wrt chem equilibrium, 0 = equilibrium abundance 
+constant_params = {
+                #'fsed': 2, # sedimentation parameter for particles
+                #'sigma_lnorm': 1.05, # width of the log-normal particle distribution of MgSiO3
+                #'log_MgSiO3' : 0, # scaling wrt chem equilibrium, 0 = equilibrium abundance 
                 } 
 
 # if free chemistry, define VMRs
 # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
 free_params = {'rv': ([5,20],r'RV'),
-               'vsini': ([0,40],r'RV'),
+               'vsini': ([0,30],r'RV'),
+
+            # Cloud properties
+            'opa_base_gray': [(0,1), r'$\log\ \kappa_{\mathrm{cl},0}$'], 
+            'log_P_base_gray': [(-6,3), r'$\log\ P_{\mathrm{cl},0}$'], # pressure of gray cloud deck
+            'fsed_gray': [(0,20), r'$f_\mathrm{sed}$'], # sedimentation parameter for particles
+
+            # Chemistry
             'log_H2O':([-12,-1],r'H$_2$O'),
             'log_12CO':([-12,-1],r'$^{12}$CO'),
             'log_13CO':([-12,-1],r'$^{13}$CO'),
@@ -49,14 +53,27 @@ free_params = {'rv': ([5,20],r'RV'),
             'T2' : ([0,10000], r'$T_2$ [K]'),
             'T3' : ([0,10000], r'$T_3$ [K]'),
             'T4' : ([0,10000], r'$T_4$ [K]'), # top of atmosphere (cooler)
-            'log_g':([2,5],r'log$g$')}
+
+            'log_g':([3,5],r'log$g$'),
+            'log_Kzz':([5,15],r'log$K_{zz}$'), # eddy diffusion parameter (atmospheric mixing)
+
+            # Uncertainty scaling
+            #'a_1': [(0.1,0.8), r'$a_1$'], 
+            #'a_2': [(0.1,0.8), r'$a_2$'], 
+            #'a_3': [(0.1,0.8), r'$a_3$'], 
+            #'a_4': [(0.1,0.8), r'$a_4$'], 
+            #'a_5': [(0.1,0.8), r'$a_5$'], 
+            #'a_6': [(0.1,0.8), r'$a_6$'], 
+            #'a_7': [(0.1,0.8), r'$a_7$'],  
+            #'l': [(10,40), r'$l$']
+            }
 
 parameters = Parameters(free_params, constant_params)
 cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test5'
+output='2M0355_test6'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output)
 retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
 bestfit_model,final_params=retrieval.evaluate(plot_spectrum=True,plot_pt=True)

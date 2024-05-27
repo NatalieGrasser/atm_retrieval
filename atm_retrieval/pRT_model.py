@@ -194,10 +194,10 @@ class pRT_spectrum:
     def gray_cloud_opacity(self): # like in deRegt+2024
         def give_opacity(wave_micron=self.wave_micron,pressure=self.pressure):
             opa_gray_cloud = np.zeros((len(self.wave_micron),len(self.pressure))) # gray cloud = independent of wavelength
-            opa_gray_cloud[:,self.pressure>self.params['P_base_gray']] = 0 # [bar] constant below cloud base
+            opa_gray_cloud[:,self.pressure>10**(self.params['log_P_base_gray'])] = 0 # [bar] constant below cloud base
             # Opacity decreases with power-law above the base
-            above_clouds = (self.pressure<=self.params['P_base_gray'])
-            opa_gray_cloud[:,above_clouds]=self.params['opa_base_gray']*(self.pressure[above_clouds]/self.params['P_base_gray'])**self.params['fsed_gray']
+            above_clouds = (self.pressure<=10**(self.params['log_P_base_gray']))
+            opa_gray_cloud[:,above_clouds]=self.params['opa_base_gray']*(self.pressure[above_clouds]/10**(self.params['log_P_base_gray']))**self.params['fsed_gray']
             if self.params.get('cloud_slope') is not None:
                 opa_gray_cloud *= (self.wave_micron[:,None]/1)**self.params['cloud_slope']
             return opa_gray_cloud

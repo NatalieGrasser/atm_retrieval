@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 from petitRADTRANS import Radtrans
 import pandas as pd
 from labellines import labelLines
+from matplotlib.lines import Line2D
 
 
 class Retrieval:
@@ -242,7 +243,7 @@ class Retrieval:
                         ax[order].legend(fontsize=8) # to only have it once
                 ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
             ax[6].set_xlabel('Wavelength [nm]')
-            fig.tight_layout(h_pad=-0.1)
+            fig.tight_layout()
             fig.savefig(f'{self.output_dir}/{self.callback_label}bestfit_spectrum.pdf')
             plt.close()
 
@@ -257,25 +258,37 @@ class Retrieval:
             fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
             cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
             cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
-            ax.plot(self.final_object.temperature, self.final_object.pressure,label="$P-T$ profile")
-            ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp)
+            ax.plot(self.final_object.temperature, self.final_object.pressure,color='blueviolet',lw=2)
+            ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp,color='blueviolet')
             xmin=np.min(self.final_object.t_samp)-100
             xmax=np.max(self.final_object.t_samp)+100
             contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-            ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=2,label="Contribution")
+            ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=1.5,color='hotpink')
+
             for i,cs in enumerate(cloud_species):
                 cs_key = cs[:-3]
                 if cs_key == 'KCl':
                     cs_key = cs_key.upper()
                 P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
                 pi=np.where((P_cloud>min(self.final_object.pressure))&(P_cloud<max(self.final_object.pressure)))[0]
-                ax.plot(T_cloud[pi], P_cloud[pi], lw=2, label=cloud_labels[i], ls=':', alpha=0.8)
+                ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':', alpha=0.8)
             ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
                 ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
                 xlim=(xmin,xmax))
+            
+            # T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
+            file=np.loadtxt('t1400g562nc_m0.0.dat')
+            pres=file[:,1] # bar
+            temp=file[:,2] # K
+            ax.plot(temp,pres,linestyle='dashdot',c='teal',linewidth=2)
+
             # https://github.com/cphyc/matplotlib-label-lines
             labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
-            ax.legend(fontsize=9)
+            lines = [Line2D([0], [0], marker='o', color='blueviolet', markerfacecolor='blueviolet' ,linewidth=2, linestyle='-'),
+                    Line2D([0], [0], color='teal', linewidth=2, linestyle='dashdot'),
+                    Line2D([0], [0], color='hotpink', linewidth=1.5, linestyle='--')]
+            labels = ['This retrieval', 'Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
+            ax.legend(lines,labels,fontsize=9)
             fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
             plt.close()
 
