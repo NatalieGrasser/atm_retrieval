@@ -58,8 +58,10 @@ class Retrieval:
             self.cloud_species=['MgSiO3(c)_cd']
             self.do_scat_emis = True # enable scattering on cloud particles
         self.cloud_species=self.cloud_species
-        
         self.lbl_opacity_sampling=lbl_opacity_sampling
+        self.n_atm_layers=50
+        self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
+
         self.atmosphere_objects=self.get_atmosphere_objects()
 
     def get_species(self,param_dict): # get pRT species name from parameters dict
