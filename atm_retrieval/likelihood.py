@@ -181,7 +181,7 @@ class Retrieval:
                                         outputfiles_basename=f'{self.output_dir}/pmn_')  # Set-up analyzer object
         stats = analyzer.get_stats()
         self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
-        self.posterior = self.posterior[:,:-1] # shape      
+        self.posterior = self.posterior[:,:-1] # shape    
         self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # Read the parameters of the best-fitting model
 
     def PMN_callback(self,n_samples,n_live,n_params,live_points,posterior, 
@@ -189,11 +189,12 @@ class Retrieval:
         self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
         self.posterior = posterior[:,:-2] # Remove the last 2 columns
         self.callback_label='live_' # label for plots
+        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.cornerplot()
         self.get_bestfit_model(plot_spectrum=True,plot_pt=True)
 
     def cornerplot(self):
-        labels=list(self.parameters.free_params.keys())
+        labels=list(self.parameters.param_mathtext.values())
         fig = corner.corner(self.posterior, 
                             labels=labels, 
                             title_kwargs={'fontsize': 12},
@@ -260,12 +261,13 @@ class Retrieval:
             fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
             cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
             cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
-            ax.plot(self.final_object.temperature, self.final_object.pressure,color='blueviolet',lw=2)
-            ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp,color='blueviolet')
+            cs_colors=['hotpink','fuchsia','crimson','plum']
+            ax.plot(self.final_object.temperature, self.final_object.pressure,color='deepskyblue',lw=2)
+            ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp,color='deepskyblue')
             xmin=np.min(self.final_object.t_samp)-100
             xmax=np.max(self.final_object.t_samp)+100
             contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-            ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=1.5,color='hotpink')
+            ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
 
             for i,cs in enumerate(cloud_species):
                 cs_key = cs[:-3]
@@ -273,7 +275,7 @@ class Retrieval:
                     cs_key = cs_key.upper()
                 P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
                 pi=np.where((P_cloud>min(self.final_object.pressure))&(P_cloud<max(self.final_object.pressure)))[0]
-                ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':', alpha=0.8)
+                ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
             ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
                 ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
                 xlim=(xmin,xmax))
@@ -282,13 +284,13 @@ class Retrieval:
             file=np.loadtxt('t1400g562nc_m0.0.dat')
             pres=file[:,1] # bar
             temp=file[:,2] # K
-            ax.plot(temp,pres,linestyle='dashdot',c='teal',linewidth=2)
+            ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
 
             # https://github.com/cphyc/matplotlib-label-lines
             labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
-            lines = [Line2D([0], [0], marker='o', color='blueviolet', markerfacecolor='blueviolet' ,linewidth=2, linestyle='-'),
-                    Line2D([0], [0], color='teal', linewidth=2, linestyle='dashdot'),
-                    Line2D([0], [0], color='hotpink', linewidth=1.5, linestyle='--')]
+            lines = [Line2D([0], [0], marker='o', color='deepskyblue', markerfacecolor='deepskyblue' ,linewidth=2, linestyle='-'),
+                    Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'),
+                    Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--')]
             labels = ['This retrieval', 'Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
             ax.legend(lines,labels,fontsize=9)
             fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
