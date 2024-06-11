@@ -54,8 +54,8 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
             'T3' : ([0,10000], r'$T_3$'),
             'T4' : ([0,1000], r'$T_4$'), # top of atmosphere (cooler)
 
-            'log_g':([3,5],r'log$g$'),
-            'log_Kzz':([5,15],r'log$K_{zz}$'), # eddy diffusion parameter (atmospheric mixing)
+            'log_g':([3,5],r'log $g$'),
+            'log_Kzz':([5,15],r'log $K_{zz}$'), # eddy diffusion parameter (atmospheric mixing)
 
             # Uncertainty scaling
             #'a_1': [(0.1,0.8), r'$a_1$'], 
@@ -73,8 +73,8 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test7'
+output='2M0355_test8'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output,cloud_mode='gray')
-#retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
-retrieval.PMN_run(N_live_points=200,evidence_tolerance=1)
-bestfit_model,final_params=retrieval.evaluate(plot_spectrum=True,plot_pt=True)
+retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
+#retrieval.PMN_run(N_live_points=200,evidence_tolerance=1)
+bestfit_model,final_params,params_pm=retrieval.evaluate(plot_spectrum=True,plot_pt=True)
