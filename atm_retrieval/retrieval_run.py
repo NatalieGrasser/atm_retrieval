@@ -73,8 +73,8 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test8'
+output='2M0355_test9'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output,cloud_mode='gray')
-retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
-#retrieval.PMN_run(N_live_points=200,evidence_tolerance=1)
+#retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
+retrieval.PMN_run(N_live_points=200,evidence_tolerance=1)
 bestfit_model,final_params,params_pm=retrieval.evaluate(plot_spectrum=True,plot_pt=True)

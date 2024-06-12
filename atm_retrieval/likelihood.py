@@ -181,44 +181,40 @@ class Retrieval:
 
     def PMN_analyse(self):
         self.callback_label='final_'
-        # WHY DOES THIS POSTERIOR HAVE SHAPE (1,N_PARAMS) INSTEAD OF (900,N_PARAMS) LIKE LIVE_POSTERIORS FROM CALLBACK??
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
                                         outputfiles_basename=f'{self.output_dir}/pmn_')  # Set-up analyzer object
         stats = analyzer.get_stats()
-
-        #DONT UPDATE POSTERIOR FOR NOW BC IT CANT BE USED IN CORNERPLOT W WRONG DIMENSIONS
-        #self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
-        #self.posterior = self.posterior[:,:-1] # shape 
-
-        posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
-        posterior = posterior[:,:-1] # shape  
-        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',posterior)
+        self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
+        self.posterior = self.posterior[:,:-1] # shape 
+        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # Read the parameters of the best-fitting model
 
     def PMN_callback(self,n_samples,n_live,n_params,live_points,posterior, 
                     stats,max_ln_L,ln_Z,ln_Z_err,nullcontext):
-        self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
-        self.posterior = posterior[:,:-2] # Remove the last 2 columns
         self.callback_label='live_' # label for plots
+        self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
+        np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
+        self.posterior = posterior[:,:-2] # Remove the last 2 columns
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.cornerplot(self.posterior)
         self.get_bestfit_model(plot_spectrum=True,plot_pt=True)
 
     def get_quantiles(self,posterior,save=False):
         quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
-        means=quantiles[:,1] # mean of all params
+        medians=quantiles[:,1] # mean of all params
         uppers=quantiles[:,2] # mean+error
         lowers=quantiles[:,0] # mean-error
-        params_pm=np.array([means,lowers,uppers]) # parameters and plus minus errors
+        params_pm=np.array([medians,lowers,uppers]) # parameters and plus minus errors
         if save:
             np.save(f'{self.output_dir}/{self.callback_label}params_pm.npy',params_pm)
-        return means,lowers,uppers
+        return medians,lowers,uppers
 
     def cornerplot(self,posterior,only_abundances=False,only_params=None):
         plot_posterior=posterior # posterior that we plot here, might get clipped
-        means,_,_=self.get_quantiles(posterior,save=True)
+        medians,_,_=self.get_quantiles(posterior,save=True)
         labels=list(self.parameters.param_mathtext.values())
-        if only_abundances==True:
+
+        if only_abundances==True: # plot only abundances
             self.indices=[]
             for key in self.chem_species:
                 idx=list(self.parameters.params).index(key)
@@ -242,8 +238,12 @@ class Retrieval:
                             fill_contours=True,
                             quantiles=[0.16,0.84],
                             show_titles=True)
-        means,lowers,uppers=self.get_quantiles(plot_posterior)
-        corner.overplot_lines(fig,means,color='r',lw=1.3,linestyle='solid') # plot mean, second column
+        medians,lowers,uppers=self.get_quantiles(plot_posterior)
+        corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median, second column
+
+        if self.bestfit_params is not None:
+            corner.overplot_lines(fig,np.array([self.bestfit_params[i] for i in self.indices]),color='r',lw=1.3,linestyle='solid')
+
         if only_abundances==True or only_params is not None:
             fig.savefig(f'{self.output_dir}/{self.callback_label}retrieval_summary_short.pdf')
         else:
@@ -288,12 +288,12 @@ class Retrieval:
                         ax[order].legend(fontsize=8) # to only have it once
                 ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
             ax[6].set_xlabel('Wavelength [nm]')
-            fig.tight_layout()
+            fig.tight_layout(h_pad=0.1)
             fig.savefig(f'{self.output_dir}/{self.callback_label}bestfit_spectrum.pdf')
             plt.close()
 
         if plot_pt==True:
-            summed_contr=np.mean(self.final_object.contr_em_orders,axis=0) # average over all orders
+            
             if self.free_chem==False:
                 C_O = self.final_object.params['C_O']
                 Fe_H = self.final_object.params['FEH']
@@ -304,6 +304,8 @@ class Retrieval:
             cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
             cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
             cs_colors=['hotpink','fuchsia','crimson','plum']
+
+            # TEMPERATURE FROM BESTFIT_PARAMS
             #ax.plot(self.final_object.temperature, self.final_object.pressure,color='deepskyblue',lw=2)
             #ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp,color='deepskyblue')
             #xmin=np.min(self.final_object.t_samp)-100
@@ -330,22 +332,24 @@ class Retrieval:
                 idx=list(self.parameters.params).index(key)
                 indices.append(idx)
             T_pm=np.array([params_pm[:,i] for i in indices]).T # mean, lower, upper
-            means=T_pm[0][::-1]
+            medians=T_pm[0][::-1]
             lowers=T_pm[1][::-1] # reverse order so that T4,T3,T2,T1, like p_samp
             uppers=T_pm[2][::-1]
             lower = CubicSpline(self.final_object.p_samp,lowers)(np.log10(self.pressure))
             upper = CubicSpline(self.final_object.p_samp,uppers)(np.log10(self.pressure))
             ax.fill_betweenx(self.pressure,lower,upper,color='deepskyblue',alpha=0.2)
-            temperature = CubicSpline(self.final_object.p_samp,means)(np.log10(self.pressure))
-            ax.plot(temperature, self.final_object.pressure,color='deepskyblue',lw=2)
-            ax.scatter(means,10**self.final_object.p_samp,color='deepskyblue')
+
+            # TEMPERATURE FROM MEDIANS FROM POSTERIOR
+            temperature = CubicSpline(self.final_object.p_samp,medians)(np.log10(self.pressure))
+            #ax.plot(temperature, self.final_object.pressure,color='deepskyblue',lw=2)
+            ax.scatter(medians,10**self.final_object.p_samp,color='deepskyblue')
             xmin=np.min(np.min(lowers))-100
             xmax=np.max(np.max(uppers))+100
             ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
                 ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
                 xlim=(xmin,xmax))
             
-            # CONTRIBUTION FROM BESTFIT PARAMS, NOT FROM WORKING POSTERIOR, MUST BE FIXED
+            summed_contr=np.mean(self.final_object.contr_em_orders,axis=0) # average over all orders
             contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
             ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
 
@@ -357,6 +361,7 @@ class Retrieval:
                     Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--')]
             labels = ['This retrieval', '68%','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
             ax.legend(lines,labels,fontsize=9)
+            fig.tight_layout()
             fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
             plt.close()
 
@@ -373,14 +378,12 @@ class Retrieval:
             return VMR_12CO/VMR_13CO
 
     def evaluate(self,plot_spectrum=True,plot_pt=True,only_abundances=False,only_params=None):
-        if self.posterior == None: # for testing, not necessary while running bc posterior created in callback
-            self.posterior=np.load(f'{self.output_dir}/{self.callback_label}posterior.npy')
         self.callback_label='final_'
         self.PMN_analyse()
         self.cornerplot(self.posterior,only_abundances=only_abundances,only_params=only_params)
         final_params=self.get_final_parameters()
         bestfit_model=self.get_bestfit_model(plot_spectrum=plot_spectrum,plot_pt=plot_pt)
-        means,lowers,uppers=self.get_quantiles(self.posterior,save=True)
-        params_pm=np.array([means,lowers,uppers]) # parameters and plus minus errors
+        medians,lowers,uppers=self.get_quantiles(self.posterior,save=True)
+        params_pm=np.array([medians,lowers,uppers]) # parameters and plus minus errors
         return bestfit_model,final_params,params_pm
 
