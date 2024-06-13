@@ -2,15 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from scipy.interpolate import CubicSpline
-from petitRADTRANS import Radtrans
 from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
 from PyAstronomy.pyasl import fastRotBroad, helcorr
 from astropy import constants as const
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 import pandas as pd
-import pathlib
-import pickle
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM

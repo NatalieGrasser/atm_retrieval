@@ -73,8 +73,9 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test9'
+output='2M0355_test10'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output,cloud_mode='gray')
 #retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
-retrieval.PMN_run(N_live_points=200,evidence_tolerance=1)
-bestfit_model,final_params,params_pm=retrieval.evaluate(plot_spectrum=True,plot_pt=True)
+retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
+#only_params=['vsini','log_H2O','log_12CO','log_13CO','T1','T2','T3','T4']
+retrieval.evaluate()

@@ -6,25 +6,17 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     comm = MPI.COMM_WORLD # important for MPI
     rank = comm.Get_rank() # important for MPI
     from atm_retrieval.pRT_model import pRT_spectrum
-    from atm_retrieval.spectrum import Spectrum
-    import atm_retrieval.cloud_cond as cloud_cond
+    import atm_retrieval.figures as figs
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from pRT_model import pRT_spectrum
-    from spectrum import Spectrum
-    import cloud_cond as cloud_cond
+    import figures as figs
 
 import numpy as np
 import pymultinest
-import corner
 import pathlib
 import pickle
-import matplotlib.pyplot as plt
 from petitRADTRANS import Radtrans
 import pandas as pd
-from labellines import labelLines
-from matplotlib.lines import Line2D
-from scipy.interpolate import CubicSpline
-import matplotlib.patches as mpatches
 
 class Retrieval:
 
@@ -64,9 +56,12 @@ class Retrieval:
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
 
         self.atmosphere_objects=self.get_atmosphere_objects()
-        self.bestfit_params=None # will be updated
         self.callback_label='live_' # label for plots
-        self.posterior = None # will be updated
+
+        # will be updated
+        self.bestfit_params=None 
+        self.posterior = None
+        self.final_params=None
 
     def get_species(self,param_dict): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -158,7 +153,7 @@ class Retrieval:
         f_ij = rhs / lhs
         return f_ij
 
-    def likelihood(self,cube=None, ndim=None,nparams=None,plot=False):
+    def likelihood(self,cube=None,ndim=None,nparams=None,plot=False):
 
         self.model_flux=pRT_spectrum(parameters=self.parameters.params,data_wave=self.data_wave,target=self.target,
                                      atmosphere_objects=self.atmosphere_objects,species=self.species,
@@ -177,213 +172,81 @@ class Retrieval:
                     const_efficiency_mode=False, sampling_efficiency = 0.8,
                     n_live_points=N_live_points,resume=resume,
                     evidence_tolerance=evidence_tolerance, # default is 0.5, high number -> stops earlier
-                    dump_callback=self.PMN_callback,n_iter_before_update=10) 
-
-    def PMN_analyse(self):
-        self.callback_label='final_'
-        analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
-                                        outputfiles_basename=f'{self.output_dir}/pmn_')  # Set-up analyzer object
-        stats = analyzer.get_stats()
-        self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
-        self.posterior = self.posterior[:,:-1] # shape 
-        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
-        self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # Read the parameters of the best-fitting model
+                    dump_callback=self.PMN_callback,n_iter_before_update=100)
 
     def PMN_callback(self,n_samples,n_live,n_params,live_points,posterior, 
                     stats,max_ln_L,ln_Z,ln_Z_err,nullcontext):
         self.callback_label='live_' # label for plots
         self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
         np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
-        self.posterior = posterior[:,:-2] # Remove the last 2 columns
+        self.posterior = posterior[:,:-2] # remove last 2 columns
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
-        self.cornerplot(self.posterior)
-        self.get_bestfit_model(plot_spectrum=True,plot_pt=True)
+        self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
+        figs.make_all_plots(self)
+     
+    def PMN_analyse(self):
+        self.callback_label='final_'
+        analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
+                                        outputfiles_basename=f'{self.output_dir}/pmn_')  # set up analyzer object
+        stats = analyzer.get_stats()
+        self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
+        self.posterior = self.posterior[:,:-1] # shape 
+        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
+        self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
+        np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
 
     def get_quantiles(self,posterior,save=False):
         quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
-        medians=quantiles[:,1] # mean of all params
-        uppers=quantiles[:,2] # mean+error
-        lowers=quantiles[:,0] # mean-error
-        params_pm=np.array([medians,lowers,uppers]) # parameters and plus minus errors
+        medians=quantiles[:,1] # median of all params
+        uppers=quantiles[:,2] # median+error
+        lowers=quantiles[:,0] # median-error
+        self.params_pm_dict={} # save in dictionary for easier access of all params
+        for i,key in enumerate(self.parameters.param_keys):
+            self.params_pm_dict[key]=[lowers[i],medians[i],uppers[i]]
         if save:
-            np.save(f'{self.output_dir}/{self.callback_label}params_pm.npy',params_pm)
+            np.save(f'{self.output_dir}/{self.callback_label}params_pm.npy',self.params_pm_dict)
         return medians,lowers,uppers
 
-    def cornerplot(self,posterior,only_abundances=False,only_params=None):
-        plot_posterior=posterior # posterior that we plot here, might get clipped
-        medians,_,_=self.get_quantiles(posterior,save=True)
-        labels=list(self.parameters.param_mathtext.values())
-
-        if only_abundances==True: # plot only abundances
-            self.indices=[]
-            for key in self.chem_species:
-                idx=list(self.parameters.params).index(key)
-                self.indices.append(idx)
-            plot_posterior=np.array([posterior[:,i] for i in self.indices]).T
-            labels=np.array([labels[i] for i in self.indices])
-
-        if only_params is not None: # keys of specified parameters to plot
-            self.indices=[]
-            for key in only_params:
-                idx=list(self.parameters.params).index(key)
-                self.indices.append(idx)
-            plot_posterior=np.array([posterior[:,i] for i in self.indices]).T
-            labels=np.array([labels[i] for i in self.indices])
-
-        fig = corner.corner(plot_posterior, 
-                            labels=labels, 
-                            title_kwargs={'fontsize': 12},
-                            color='slateblue',
-                            linewidths=0.5,
-                            fill_contours=True,
-                            quantiles=[0.16,0.84],
-                            show_titles=True)
-        medians,lowers,uppers=self.get_quantiles(plot_posterior)
-        corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median, second column
-
-        if self.bestfit_params is not None:
-            corner.overplot_lines(fig,np.array([self.bestfit_params[i] for i in self.indices]),color='r',lw=1.3,linestyle='solid')
-
-        if only_abundances==True or only_params is not None:
-            fig.savefig(f'{self.output_dir}/{self.callback_label}retrieval_summary_short.pdf')
-        else:
-            fig.savefig(f'{self.output_dir}/{self.callback_label}retrieval_summary.pdf')
-
-    def get_final_parameters(self,contribution=False,get_spectrum=True): # make dict of constant params + determined bestfit params
-        final_params=self.parameters.constant_params.copy()
+    def get_final_params_and_spectrum(self,contribution=True,use_median=True): 
+        
+        # make dict of constant params + evaluated params
+        self.final_params=self.parameters.constant_params.copy() # initialize dict with constant params
+        free_params_values=self.bestfit_params # use bestfit params with highest lnL (can differ from median, not as robust)
+        if use_median==True:
+            medians,_,_=self.get_quantiles(self.posterior,save=True)
+            free_params_values=medians # use median of posterior as resulting final values, more robust
         for i,key in enumerate(self.parameters.param_keys):
-            final_params[key]=self.bestfit_params[i]
-        if get_spectrum==True:
-            self.final_object=pRT_spectrum(parameters=final_params,data_wave=self.data_wave,target=self.target,species=self.species,
-                                           atmosphere_objects=self.atmosphere_objects,free_chem=self.free_chem,contribution=contribution)
-            self.final_model=self.final_object.make_spectrum()
-            self.log_likelihood = self.calculate_likelihood(self.data_flux,self.data_err,self.final_model) # to get f_ij and beta_ij of bestfit model
-        final_params['f_ij']=self.f
-        final_params['beta_ij']=self.beta
-        self.final_params=final_params
-        np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',final_params)
-        return final_params
+            self.final_params[key]=free_params_values[i] # add evaluated params to constant params
 
-    def get_bestfit_model(self,plot_spectrum=False,plot_pt=False):
-        contribution=False
-        if plot_pt==True:
-            contribution=True
-        f_ij=self.get_final_parameters(contribution=contribution)['f_ij']
-        self.bestfit_flux=np.zeros_like(self.final_model)
+        # create final spectrum to get f_ij and beta_ij of bestfit model through likelihood
+        self.final_object=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,target=self.target,species=self.species,
+                                        atmosphere_objects=self.atmosphere_objects,free_chem=self.free_chem,contribution=contribution)
+        self.final_model=self.final_object.make_spectrum()
+        self.log_likelihood = self.calculate_likelihood(self.data_flux, self.data_err,self.final_model) 
+        self.final_params['f_ij']=self.f
+        self.final_params['beta_ij']=self.beta
+        np.save(f'{self.output_dir}/{self.callback_label}params_dict.npy',self.final_params)
+
+        self.final_spectrum=np.zeros_like(self.final_model)
+        f_ij=self.final_params['f_ij']
         for order in range(7):
-                for det in range(3):
-                    self.bestfit_flux[order,det]=f_ij[order,det]*self.final_model[order,det] # scale model accordingly to get bestfit spectrum
-        if plot_spectrum==True:
-            fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
-            for order in range(7):
-                for det in range(3):
-                    ax[order].plot(self.data_wave[order,det],self.data_flux[order,det],lw=0.8,alpha=0.8,c='k',label='data')
-                    ax[order].plot(self.data_wave[order,det],self.bestfit_flux[order,det],lw=0.8,alpha=0.8,c='c',label='model')
-                    #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
-                    sigma=1
-                    lower=self.data_flux[order,det]-self.data_err[order,det]*sigma
-                    upper=self.data_flux[order,det]+self.data_err[order,det]*sigma
-                    #ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
-                    if order==0 and det==0:
-                        ax[order].legend(fontsize=8) # to only have it once
-                ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
-            ax[6].set_xlabel('Wavelength [nm]')
-            fig.tight_layout(h_pad=0.1)
-            fig.savefig(f'{self.output_dir}/{self.callback_label}bestfit_spectrum.pdf')
-            plt.close()
+            for det in range(3):
+                self.final_spectrum[order,det]=f_ij[order,det]*self.final_model[order,det] # scale model accordingly
+        return self.final_params,self.final_spectrum
 
-        if plot_pt==True:
-            
-            if self.free_chem==False:
-                C_O = self.final_object.params['C_O']
-                Fe_H = self.final_object.params['FEH']
-            if self.free_chem==True:
-                C_O = self.final_object.CO
-                Fe_H = self.final_object.FeH   
-            fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
-            cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
-            cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
-            cs_colors=['hotpink','fuchsia','crimson','plum']
-
-            # TEMPERATURE FROM BESTFIT_PARAMS
-            #ax.plot(self.final_object.temperature, self.final_object.pressure,color='deepskyblue',lw=2)
-            #ax.scatter(self.final_object.t_samp,10**self.final_object.p_samp,color='deepskyblue')
-            #xmin=np.min(self.final_object.t_samp)-100
-            #xmax=np.max(self.final_object.t_samp)+100
-
-            for i,cs in enumerate(cloud_species):
-                cs_key = cs[:-3]
-                if cs_key == 'KCl':
-                    cs_key = cs_key.upper()
-                P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
-                pi=np.where((P_cloud>min(self.final_object.pressure))&(P_cloud<max(self.final_object.pressure)))[0]
-                ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
-            
-            # T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
-            file=np.loadtxt('t1400g562nc_m0.0.dat')
-            pres=file[:,1] # bar
-            temp=file[:,2] # K
-            ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
-
-            # plot errors on retrieved temperatures
-            params_pm=np.load(f'{self.output_dir}/{self.callback_label}params_pm.npy')
-            indices=[]
-            for key in ['T1','T2','T3','T4']:
-                idx=list(self.parameters.params).index(key)
-                indices.append(idx)
-            T_pm=np.array([params_pm[:,i] for i in indices]).T # mean, lower, upper
-            medians=T_pm[0][::-1]
-            lowers=T_pm[1][::-1] # reverse order so that T4,T3,T2,T1, like p_samp
-            uppers=T_pm[2][::-1]
-            lower = CubicSpline(self.final_object.p_samp,lowers)(np.log10(self.pressure))
-            upper = CubicSpline(self.final_object.p_samp,uppers)(np.log10(self.pressure))
-            ax.fill_betweenx(self.pressure,lower,upper,color='deepskyblue',alpha=0.2)
-
-            # TEMPERATURE FROM MEDIANS FROM POSTERIOR
-            temperature = CubicSpline(self.final_object.p_samp,medians)(np.log10(self.pressure))
-            #ax.plot(temperature, self.final_object.pressure,color='deepskyblue',lw=2)
-            ax.scatter(medians,10**self.final_object.p_samp,color='deepskyblue')
-            xmin=np.min(np.min(lowers))-100
-            xmax=np.max(np.max(uppers))+100
-            ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
-                ylim=(np.nanmax(self.final_object.pressure),np.nanmin(self.final_object.pressure)),
-                xlim=(xmin,xmax))
-            
-            summed_contr=np.mean(self.final_object.contr_em_orders,axis=0) # average over all orders
-            contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-            ax.plot(contribution_plot,self.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
-
-            # https://github.com/cphyc/matplotlib-label-lines
-            labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
-            lines = [Line2D([0], [0], marker='o', color='deepskyblue', markerfacecolor='deepskyblue' ,linewidth=2, linestyle='-'),
-                    mpatches.Patch(color='deepskyblue',alpha=0.2),
-                    Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'),
-                    Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--')]
-            labels = ['This retrieval', '68%','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
-            ax.legend(lines,labels,fontsize=9)
-            fig.tight_layout()
-            fig.savefig(f'{self.output_dir}/{self.callback_label}PT_profile.pdf')
-            plt.close()
-
-        return Spectrum(self.data_wave,self.bestfit_flux)
-    
     def get_12CO_13CO_ratio(self):
-        self.final_params=self.get_final_parameters(get_spectrum=False)
+        if self.final_params==None:
+            self.final_params,_=self.get_final_params_and_spectrum()
         if self.free_chem==False:
             return 1/self.final_params['C13_12_ratio']
-
         if self.free_chem==True:
             VMR_12CO=10**(self.final_params['log_12CO'])
             VMR_13CO=10**(self.final_params['log_13CO'])
             return VMR_12CO/VMR_13CO
 
-    def evaluate(self,plot_spectrum=True,plot_pt=True,only_abundances=False,only_params=None):
+    def evaluate(self,only_abundances=False,only_params=None):
         self.callback_label='final_'
-        self.PMN_analyse()
-        self.cornerplot(self.posterior,only_abundances=only_abundances,only_params=only_params)
-        final_params=self.get_final_parameters()
-        bestfit_model=self.get_bestfit_model(plot_spectrum=plot_spectrum,plot_pt=plot_pt)
-        medians,lowers,uppers=self.get_quantiles(self.posterior,save=True)
-        params_pm=np.array([medians,lowers,uppers]) # parameters and plus minus errors
-        return bestfit_model,final_params,params_pm
+        self.PMN_analyse() # get/save bestfit params and final posterior
+        self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling f_ij and beta_ij
+        figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params)
 
