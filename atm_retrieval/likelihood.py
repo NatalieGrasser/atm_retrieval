@@ -244,9 +244,9 @@ class Retrieval:
             VMR_13CO=10**(self.final_params['log_13CO'])
             return VMR_12CO/VMR_13CO
 
-    def evaluate(self,only_abundances=False,only_params=None):
+    def evaluate(self,only_abundances=False,only_params=None,split_corner=True):
         self.callback_label='final_'
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling f_ij and beta_ij
-        figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params)
+        figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
 

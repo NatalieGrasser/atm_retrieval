@@ -102,11 +102,12 @@ def plot_pt(retrieval_object):
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
     plt.close()
 
-def cornerplot(retrieval_object,only_abundances=False,only_params=None):
+def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abundances=False):
     plot_posterior=retrieval_object.posterior # posterior that we plot here, might get clipped
     medians,_,_=retrieval_object.get_quantiles(retrieval_object.posterior,save=True)
     labels=list(retrieval_object.parameters.param_mathtext.values())
     indices=np.linspace(0,len(retrieval_object.parameters.params)-1,len(retrieval_object.parameters.params),dtype=int)
+    plot_label='all'
 
     if only_abundances==True: # plot only abundances
         indices=[]
@@ -126,6 +127,17 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None):
         labels=np.array([labels[i] for i in indices])
         medians=np.array([medians[i] for i in indices])
 
+    if not_abundances==True: # plot all except abundances
+        abund_indices=[]
+        for key in retrieval_object.chem_species:
+            idx=list(retrieval_object.parameters.params).index(key)
+            abund_indices.append(idx)
+        set_diff = np.setdiff1d(indices,abund_indices)
+        plot_posterior=np.array([retrieval_object.posterior[:,i] for i in set_diff]).T
+        labels=np.array([labels[i] for i in set_diff])
+        medians=np.array([medians[i] for i in set_diff])
+        indices=set_diff
+
     fig = corner.corner(plot_posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize': 12},
@@ -139,13 +151,21 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None):
     if retrieval_object.bestfit_params is not None:
         corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='r',lw=1.3,linestyle='solid')
 
-    if only_abundances==True or only_params is not None:
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}retrieval_summary_short.pdf')
-    else:
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}retrieval_summary.pdf')
+    if only_abundances==True:
+        plot_label='abundances'
+    elif only_params is not None:
+        plot_label='short'
+    elif not_abundances==True:
+        plot_label='rest'
+
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf')
     plt.close()
 
-def make_all_plots(retrieval_object,only_abundances=False,only_params=None):
+def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
     plot_spectrum(retrieval_object)
     plot_pt(retrieval_object)
-    cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
+    if split_corner: # split corner plot to avoid massive files
+        cornerplot(retrieval_object,only_abundances=True)
+        cornerplot(retrieval_object,not_abundances=True)
+    else:
+        cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
