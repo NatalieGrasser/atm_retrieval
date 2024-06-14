@@ -67,8 +67,8 @@ class Retrieval:
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         self.chem_species=[]
         for par in param_dict:
-            if 'log_' in par: # get all species in params dict
-                if par in ['log_g','log_Kzz','log_MgSiO3','log_P_base_gray']: # skip those
+            if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
+                if par in ['log_g','log_Kzz','log_MgSiO3','log_P_base_gray','log_opa_base_gray']: # skip those
                     pass
                 else:
                     self.chem_species.append(par)
@@ -234,15 +234,21 @@ class Retrieval:
                 self.final_spectrum[order,det]=f_ij[order,det]*self.final_model[order,det] # scale model accordingly
         return self.final_params,self.final_spectrum
 
-    def get_12CO_13CO_ratio(self):
+    def get_1213CO_FeH_CO(self): # can be run after self.evaluate()
         if self.final_params==None:
             self.final_params,_=self.get_final_params_and_spectrum()
+
         if self.free_chem==False:
-            return 1/self.final_params['C13_12_ratio']
+            CO1213=1/self.final_params['C13_12_ratio']
+            FeH=self.final_params['FEH']
+            CO=self.params['C_O']
         if self.free_chem==True:
             VMR_12CO=10**(self.final_params['log_12CO'])
             VMR_13CO=10**(self.final_params['log_13CO'])
-            return VMR_12CO/VMR_13CO
+            CO1213=VMR_12CO/VMR_13CO
+            FeH=self.final_object.FeH
+            CO=self.final_object.CO
+        return CO1213,FeH,CO # output 12CO/13CO, Fe/H, C/O
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True):
         self.callback_label='final_'

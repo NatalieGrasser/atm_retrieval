@@ -75,11 +75,13 @@ class pRT_spectrum:
         mass_fractions = interpol_abundances(COs,fehs,temp,press)
         return mass_fractions
 
-    def get_abundance_dict(self,species,abunds):
+    def get_abundance_dict(self,species,abunds): # does not inlcude isotopes
         mass_fractions = {}
         for specie in species:
             if specie in ['H2O_main_iso','H2O_pokazatel_main_iso']:
                 mass_fractions[specie] = abunds['H2O']
+            #elif specie=='CO_36':
+                #mass_fractions[specie] = abunds['13CO']
             elif specie=='CO_main_iso':
                 mass_fractions[specie] = abunds['CO']
             elif specie in ['CH4_main_iso','CH4_hargreaves_main_iso']:
@@ -94,6 +96,14 @@ class pRT_spectrum:
                 mass_fractions[specie] = abunds['Na']
             elif specie=='NH3_coles_main_iso':
                 mass_fractions[specie] = abunds['NH3']
+            elif specie=='HF_main_iso':
+                mass_fractions[specie] = abunds['HF']
+            elif specie=='H2S_ExoMol_main_iso':
+                mass_fractions[specie] = abunds['H2S']
+            elif specie=='OH_main_iso':
+                mass_fractions[specie] = abunds['OH']
+            elif specie=='CO2_main_iso':
+                mass_fractions[specie] = abunds['CO2']
             
         mass_fractions['H2'] = abunds['H2']
         mass_fractions['He'] = abunds['He']
@@ -194,7 +204,7 @@ class pRT_spectrum:
             opa_gray_cloud[:,self.pressure>10**(self.params['log_P_base_gray'])] = 0 # [bar] constant below cloud base
             # Opacity decreases with power-law above the base
             above_clouds = (self.pressure<=10**(self.params['log_P_base_gray']))
-            opa_gray_cloud[:,above_clouds]=self.params['opa_base_gray']*(self.pressure[above_clouds]/10**(self.params['log_P_base_gray']))**self.params['fsed_gray']
+            opa_gray_cloud[:,above_clouds]=(10**(self.params['log_opa_base_gray']))*(self.pressure[above_clouds]/10**(self.params['log_P_base_gray']))**self.params['fsed_gray']
             if self.params.get('cloud_slope') is not None:
                 opa_gray_cloud *= (self.wave_micron[:,None]/1)**self.params['cloud_slope']
             return opa_gray_cloud

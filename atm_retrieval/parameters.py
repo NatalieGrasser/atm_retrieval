@@ -31,9 +31,12 @@ class Parameters:
         
         for i, key_i in enumerate(self.param_keys):
             cube[i] = self.uniform_prior(self.param_priors[key_i])(cube[i]) # cube is vector of length nparams, values [0,1]
-             # no temperature inversion for isolated objects, so force temperature to increase to avoid weird fluctuations
-            if key_i in ["T2","T3","T4"]: # take value equal to or smaller than previous
-                cube[i]=min(cube[i],cube[i-1])#*0.9 # as long as order in dict T1,T2,T3,T4
+            if key_i in ["T2","T3","T4"]: # as long as order in dict T1,T2,T3,T4
+                cube[i]=self.uniform_prior([cube[i-1]*0.5,cube[i-1]])(cube[i]) # like in Zhang+2021 on 2M0355
+                
+            # no temperature inversion for isolated objects, so force temperature to increase to avoid weird fluctuations
+            #if key_i in ["T2","T3","T4"]: # take value equal to or smaller than previous
+                #cube[i]=min(cube[i],cube[i-1]) # as long as order in dict T1,T2,T3,T4
             self.params[key_i] = cube[i] # add free parameter values to parameter dictionary
 
         return self.cube_copy

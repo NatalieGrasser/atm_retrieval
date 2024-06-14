@@ -36,7 +36,7 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
                'vsini': ([0,30],r'$v$ sin$i$'),
 
             # Cloud properties
-            'opa_base_gray': ([0,1], r'log $\kappa_{\mathrm{cl},0}$'), 
+            'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'), 
             'log_P_base_gray': ([-6,3], r'log $P_{\mathrm{cl},0}$'), # pressure of gray cloud deck
             'fsed_gray': ([0,20], r'$f_\mathrm{sed}$'), # sedimentation parameter for particles
 
@@ -49,11 +49,19 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
             'log_CH4':([-12,-1],r'log CH$_4$'),
             'log_NH3':([-12,-1],r'log NH$_3$'),
             'log_HCN':([-12,-1],r'log HCN'),
-            'T1' : ([2000,10000], r'$T_1$'), # bottom of the atmosphere (hotter)
-            'T2' : ([0,10000], r'$T_2$'),
-            'T3' : ([0,10000], r'$T_3$'),
-            'T4' : ([0,1000], r'$T_4$'), # top of atmosphere (cooler)
+            'log_HF':([-12,-1],r'log HF'),
+            'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
+            'log_H2S':([-12,-1],r'log H$_2$S'),
+            'log_OH':([-12,-1],r'log OH'),
+            'log_CO2':([-12,-1],r'log CO$_2$'),
 
+            # P-T profile
+            'T1' : ([1500,4000], r'$T_1$'), # bottom of the atmosphere (hotter)
+            'T2' : ([0,4000], r'$T_2$'),
+            'T3' : ([0,4000], r'$T_3$'),
+            'T4' : ([0,4000], r'$T_4$'), # top of atmosphere (cooler)
+
+            # others
             'log_g':([3,5],r'log $g$'),
             'log_Kzz':([5,15],r'log $K_{zz}$'), # eddy diffusion parameter (atmospheric mixing)
 
@@ -73,7 +81,7 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test10'
+output='2M0355_test11'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output,cloud_mode='gray')
 #retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
 retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)

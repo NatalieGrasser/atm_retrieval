@@ -21,19 +21,33 @@ def plot_spectrum(retrieval_object):
     fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
     for order in range(7):
         for det in range(3):
-            ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.data_flux[order,det],lw=0.8,alpha=0.8,c='k',label='data')
+            ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
             ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.final_spectrum[order,det],lw=0.8,alpha=0.8,c='c',label='model')
             #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
-            #sigma=1
-            #lower=self.data_flux[order,det]-self.data_err[order,det]*sigma
-            #upper=self.data_flux[order,det]+self.data_err[order,det]*sigma
-            #ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
+            lower=retrieval_object.data_flux[order,det]-retrieval_object.data_err[order,det]*retrieval_object.final_params['beta_ij'][order,det]
+            upper=retrieval_object.data_flux[order,det]+retrieval_object.data_err[order,det]*retrieval_object.final_params['beta_ij'][order,det]
+            ax[order].fill_between(retrieval_object.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+            if order==0 and det==0:
+                ax[order].legend(fontsize=8,ncol=3) # to only have it once
+        ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
+    ax[6].set_xlabel('Wavelength [nm]')
+    fig.tight_layout(h_pad=0.1)
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
+    plt.close()
+
+def plot_residuals(retrieval_object):
+    fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
+    residuals=(retrieval_object.data_flux-retrieval_object.final_spectrum)
+    for order in range(7):
+        for det in range(3):
+            ax[order].plot(retrieval_object.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c='k',label='residuals')
+            ax[order].plot(retrieval_object.data_wave[order,det],np.zeros_like(retrieval_object.data_wave[order,det]),lw=0.8,alpha=0.8,c='c')
             if order==0 and det==0:
                 ax[order].legend(fontsize=8) # to only have it once
         ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
     ax[6].set_xlabel('Wavelength [nm]')
     fig.tight_layout(h_pad=0.1)
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_residuals.pdf')
     plt.close()
 
 def plot_pt(retrieval_object):
@@ -144,7 +158,8 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
                         color='slateblue',
                         linewidths=0.5,
                         fill_contours=True,
-                        quantiles=[0.16,0.84],
+                        quantiles=[0.16,0.5,0.84],
+                        title_quantiles=[0.16,0.5,0.84],
                         show_titles=True)
     corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median values of posterior
 
@@ -163,9 +178,10 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
 
 def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
     plot_spectrum(retrieval_object)
+    plot_residuals(retrieval_object)
     plot_pt(retrieval_object)
     if split_corner: # split corner plot to avoid massive files
         cornerplot(retrieval_object,only_abundances=True)
         cornerplot(retrieval_object,not_abundances=True)
-    else:
+    else: # make cornerplot with all parameters
         cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
