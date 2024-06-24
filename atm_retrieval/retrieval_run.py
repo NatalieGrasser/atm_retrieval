@@ -50,7 +50,7 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
             'log_NH3':([-12,-1],r'log NH$_3$'),
             'log_HCN':([-12,-1],r'log HCN'),
             'log_HF':([-12,-1],r'log HF'),
-            #'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
+            'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
             'log_H2S':([-12,-1],r'log H$_2$S'),
             'log_OH':([-12,-1],r'log OH'),
             'log_CO2':([-12,-1],r'log CO$_2$'),
@@ -64,7 +64,7 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
             # others
             'log_g':([3,5],r'log $g$'),
             'log_Kzz':([5,15],r'log $K_{zz}$'), # eddy diffusion parameter (atmospheric mixing)
-            'epsilon_limb': [(0.2,1), r'$\epsilon_\mathrm{limb}$'], 
+            'epsilon_limb': [(0.2,1), r'$\epsilon_\mathrm{limb}$'], # limb-darkening coefficient (0-1) 
 
             # Uncertainty scaling
             #'a_1': [(0.1,0.8), r'$a_1$'], 

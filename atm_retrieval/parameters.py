@@ -30,7 +30,10 @@ class Parameters:
             self.cube_copy = np.array(cube[:ndim])
         
         for i, key_i in enumerate(self.param_keys):
-            cube[i] = self.uniform_prior(self.param_priors[key_i])(cube[i]) # cube is vector of length nparams, values [0,1]
+            
+            if key_i not in ["T2","T3","T4"]:  # to not set cube[i] for T2-T4 beforehand, must stay [0,1]
+                cube[i] = self.uniform_prior(self.param_priors[key_i])(cube[i]) # cube is vector of length nparams, values [0,1]
+            
             if key_i in ["T2","T3","T4"]: # as long as order in dict T1,T2,T3,T4
                 cube[i]=self.uniform_prior([cube[i-1]*0.5,cube[i-1]])(cube[i]) # like in Zhang+2021 on 2M0355
                 
