@@ -155,11 +155,12 @@ class Retrieval:
         self.model_flux=pRT_spectrum(parameters=self.parameters.params,data_wave=self.data_wave,target=self.target,
                                      atmosphere_objects=self.atmosphere_objects,species=self.species,
                                      free_chem=self.free_chem).make_spectrum()
-        if plot: # just to check, for debugging
-            fig = plt.figure(figsize=(10,1),dpi=200)
-            plt.plot(self.data_wave.flatten(),self.data_flux.flatten())
-            plt.plot(self.data_wave.flatten(),self.model_flux.flatten())
-            plt.xlim(2422,2437)
+        #if plot: # just to check, for debugging
+            #fig = plt.figure(figsize=(10,1),dpi=200)
+            #plt.plot(self.data_wave.flatten(),self.data_flux.flatten())
+            #plt.plot(self.data_wave.flatten(),self.model_flux.flatten())
+            #plt.xlim(2422,2437)
+            #plt.close()
         log_likelihood = self.calculate_likelihood(self.data_flux,self.data_err,self.model_flux)
         return log_likelihood 
 

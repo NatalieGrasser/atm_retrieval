@@ -261,7 +261,7 @@ class pRT_spectrum:
             wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
             spec = Spectrum(flux, wl_shifted)
             waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
-            spec = fastRotBroad(waves_even, spec.at(waves_even), 0.5, self.params['vsini']) # limb-darkening coefficient (0-1)
+            spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
             spec = Spectrum(spec, waves_even)
             spec = convolve_to_resolution(spec,self.spectral_resolution)
             
