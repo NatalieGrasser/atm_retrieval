@@ -2,9 +2,6 @@ import getpass
 import os
 if getpass.getuser() == "grasser": # when runnig from LEM
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
-    from mpi4py import MPI 
-    comm = MPI.COMM_WORLD # important for MPI
-    rank = comm.Get_rank() # important for MPI
     import atm_retrieval.cloud_cond as cloud_cond
 elif getpass.getuser() == "natalie": # when testing from my laptop
     import cloud_cond as cloud_cond
@@ -22,13 +19,13 @@ def plot_spectrum(retrieval_object):
     for order in range(7):
         for det in range(3):
             ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.final_spectrum[order,det],lw=0.8,alpha=0.8,c='c',label='model')
-            #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
             lower=retrieval_object.data_flux[order,det]-retrieval_object.data_err[order,det]*retrieval_object.final_params['beta_ij'][order,det]
             upper=retrieval_object.data_flux[order,det]+retrieval_object.data_err[order,det]*retrieval_object.final_params['beta_ij'][order,det]
             ax[order].fill_between(retrieval_object.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+            ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.final_spectrum[order,det],lw=0.8,alpha=0.8,c='c',label='model')
+            #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
             if order==0 and det==0:
-                ax[order].legend(fontsize=8,ncol=3) # to only have it once
+                ax[order].legend(ncol=3) # to only have it once
         ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
     ax[6].set_xlabel('Wavelength [nm]')
     fig.tight_layout(h_pad=0.1)
@@ -43,7 +40,7 @@ def plot_residuals(retrieval_object):
             ax[order].plot(retrieval_object.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c='k',label='residuals')
             ax[order].plot(retrieval_object.data_wave[order,det],np.zeros_like(retrieval_object.data_wave[order,det]),lw=0.8,alpha=0.8,c='c')
             if order==0 and det==0:
-                ax[order].legend(fontsize=8) # to only have it once
+                ax[order].legend() # to only have it once
         ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
     ax[6].set_xlabel('Wavelength [nm]')
     fig.tight_layout(h_pad=0.1)
@@ -71,11 +68,17 @@ def plot_pt(retrieval_object):
         pi=np.where((P_cloud>min(retrieval_object.final_object.pressure))&(P_cloud<max(retrieval_object.final_object.pressure)))[0]
         ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
     
-    # T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
+    # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     file=np.loadtxt('t1400g562nc_m0.0.dat')
     pres=file[:,1] # bar
     temp=file[:,2] # K
     ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
+
+    # compare with Zhang2022 science verification
+    PT_Zhang=np.loadtxt('/home/natalie/Desktop/atm_retrieval/2M0355_PT_Zhang2021.dat')
+    p_zhang=PT_Zhang[:,0]
+    t_zhang=PT_Zhang[:,1]
+    ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
 
     # plot errors on retrieved temperatures
     temps=['T1','T2','T3','T4']
@@ -109,8 +112,9 @@ def plot_pt(retrieval_object):
     lines = [Line2D([0], [0], marker='o', color='deepskyblue', markerfacecolor='deepskyblue' ,linewidth=2, linestyle='-'),
             mpatches.Patch(color='deepskyblue',alpha=0.2),
             Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'),
+            Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot'),
             Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--')]
-    labels = ['This retrieval', '68%','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
+    labels = ['This retrieval', '68%','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Zhang+2022','Contribution']
     ax.legend(lines,labels,fontsize=9)
     fig.tight_layout()
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')

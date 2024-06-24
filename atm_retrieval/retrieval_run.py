@@ -56,7 +56,7 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
             'log_CO2':([-12,-1],r'log CO$_2$'),
 
             # P-T profile
-            'T1' : ([1500,4000], r'$T_1$'), # bottom of the atmosphere (hotter)
+            'T1' : ([1000,4000], r'$T_1$'), # bottom of the atmosphere (hotter)
             'T2' : ([0,4000], r'$T_2$'),
             'T3' : ([0,4000], r'$T_3$'),
             'T4' : ([0,4000], r'$T_4$'), # top of atmosphere (cooler)

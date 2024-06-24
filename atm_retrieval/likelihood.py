@@ -1,10 +1,6 @@
 import getpass
 import os
 if getpass.getuser() == "grasser": # when runnig from LEM
-    os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
-    from mpi4py import MPI 
-    comm = MPI.COMM_WORLD # important for MPI
-    rank = comm.Get_rank() # important for MPI
     from atm_retrieval.pRT_model import pRT_spectrum
     import atm_retrieval.figures as figs
 elif getpass.getuser() == "natalie": # when testing from my laptop
