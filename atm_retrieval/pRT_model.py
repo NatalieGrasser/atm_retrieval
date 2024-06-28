@@ -282,7 +282,6 @@ class pRT_spectrum:
 
         return np.array(spectrum_orders)
 
-
     def make_pt(self):
         # if pt profile and condensation curve don't intersect, clouds have no effect
         self.t_samp = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1']])
@@ -290,48 +289,5 @@ class pRT_spectrum:
         sort = np.argsort(self.p_samp)
         temperature = CubicSpline(self.p_samp[sort],self.t_samp[sort])(np.log10(self.pressure))
         return temperature
-
-    def plot_pt(self):
-        summed_contr=np.mean(self.contr_em_orders,axis=0) # average over all orders
-
-        if self.free_chem==False:
-            C_O = self.params['C_O']
-            Fe_H = self.params['FEH']
-        if self.free_chem==True:
-            C_O = self.CO
-            Fe_H = self.FeH   
-        fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
-        cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
-        ax.plot(self.temperature, self.pressure)
-        ax.scatter(self.t_samp,10**self.p_samp)
-        ax.plot(summed_contr/np.max(summed_contr)*np.max(self.temperature),self.pressure,linestyle='dashed',lw=2)
-        for cs in cloud_species:
-            cs_key = cs[:-3]
-            if cs_key == 'KCl':
-                cs_key = cs_key.upper()
-            P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
-            ax.plot(T_cloud, P_cloud, lw=2, label=cs, ls=':', alpha=0.8)
-        ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
-            ylim=(np.nanmax(self.pressure),np.nanmin(self.pressure)),
-            xlim=(400,np.nanmax(self.temperature)+200))
-        ax.legend()
-
-    def plot_model(self):
-        self.data_wave,self.data_flux,self.data_err=self.target.load_spectrum()
-        fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
-        for order in range(self.orders):
-            for det in range(3):
-                ax[order].plot(self.data_wave[order,det],self.data_flux[order,det],lw=0.8,alpha=0.8,c='k',label='data')
-                ax[order].plot(self.data_wave[order,det],self.spectrum_orders[order,det],lw=0.8,alpha=0.8,c='c',label='model')
-                #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
-                sigma=1
-                lower=self.data_flux[order,det]-self.data_err[order,det]*sigma
-                upper=self.data_flux[order,det]+self.data_err[order,det]*sigma
-                #ax[order].fill_between(self.data_wave[order,det],lower,upper,color='k',alpha=0.2,label=f'{sigma}$\sigma$')
-                if order==0 and det==0:
-                    ax[order].legend(fontsize=8) # to only have it once
-            ax[order].set_xlim(np.nanmin(self.data_wave[order]),np.nanmax(self.data_wave[order]))
-        ax[6].set_xlabel('Wavelength [nm]')
-        fig.tight_layout(h_pad=-0.1)
     
 

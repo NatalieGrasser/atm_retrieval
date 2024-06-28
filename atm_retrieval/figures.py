@@ -13,14 +13,15 @@ from labellines import labelLines
 from matplotlib.lines import Line2D
 from scipy.interpolate import CubicSpline
 import matplotlib.patches as mpatches
+import matplotlib.ticker as ticker
 
 def plot_spectrum(retrieval_object):
     fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
     for order in range(7):
         for det in range(3):
             ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            lower=retrieval_object.data_flux[order,det]-retrieval_object.data_err[order,det]*retrieval_object.final_params['beta_ij'][order,det]
-            upper=retrieval_object.data_flux[order,det]+retrieval_object.data_err[order,det]*retrieval_object.final_params['beta_ij'][order,det]
+            lower=retrieval_object.data_flux[order,det]-retrieval_object.data_err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
+            upper=retrieval_object.data_flux[order,det]+retrieval_object.data_err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
             ax[order].fill_between(retrieval_object.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.final_spectrum[order,det],lw=0.8,alpha=0.8,c='c',label='model')
             #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
@@ -29,6 +30,48 @@ def plot_spectrum(retrieval_object):
         ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
     ax[6].set_xlabel('Wavelength [nm]')
     fig.tight_layout(h_pad=0.1)
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
+    plt.close()
+
+def plot_spectrum_w_residuals(retrieval_object):
+    retrieval=retrieval_object
+    residuals=(retrieval.data_flux-retrieval.final_spectrum)
+    fig,ax=plt.subplots(21,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.5]*7})
+    x=0
+    for order in range(7): 
+        ax1=ax[x]
+        ax2=ax[x+1]
+        ax3=ax[x+2] #for spacing
+        for det in range(3):
+            ax1.plot(retrieval.data_wave[order,det],retrieval.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
+            lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det]
+            upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det]
+            ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+            ax1.plot(retrieval.data_wave[order,det],retrieval.final_spectrum[order,det],lw=0.8,alpha=0.8,c='c',label='model')
+            ax1.set_xlim(np.nanmin(retrieval.data_wave[order]),np.nanmax(retrieval.data_wave[order]))
+            ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c='slateblue',label='residuals')
+            ax2.plot(retrieval.data_wave[order,det],np.zeros_like(retrieval.data_wave[order,det]),lw=0.8,alpha=0.5,c='k')
+            ax2.set_xlim(np.nanmin(retrieval.data_wave[order]),np.nanmax(retrieval.data_wave[order]))
+            if x==0 and det==0:
+                lines = [Line2D([0], [0], color='k',linewidth=2),
+                        mpatches.Patch(color='k',alpha=0.15),
+                        Line2D([0], [0], color='c', linewidth=2),
+                        Line2D([0], [0], color='slateblue', linewidth=2)]
+                labels = ['data', '1$\sigma$','model','residuals']
+                ax1.legend(lines,labels,fontsize=9,ncol=4) # to only have it once
+        min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
+        max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
+        ax1.set_ylim(min1,max1)
+        ax2.set_ylim(np.nanmin(residuals[order]),np.nanmax(residuals[order]))
+        ax1.tick_params(labelbottom=False)  # don't put tick labels at bottom
+        ax1.tick_params(axis="both")
+        ax2.tick_params(axis="both")
+        tick_spacing=1
+        ax2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+        ax3.set_visible(False) # invisible for spacing
+        x+=3
+    ax[20].set_xlabel('Wavelength [nm]')
+    fig.tight_layout(h_pad=-1.7)
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
     plt.close()
 
@@ -75,7 +118,7 @@ def plot_pt(retrieval_object):
     ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
 
     # compare with Zhang2022 science verification
-    PT_Zhang=np.loadtxt('/home/natalie/Desktop/atm_retrieval/2M0355_PT_Zhang2021.dat')
+    PT_Zhang=np.loadtxt('2M0355_PT_Zhang2021.dat')
     p_zhang=PT_Zhang[:,0]
     t_zhang=PT_Zhang[:,1]
     ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
@@ -114,7 +157,7 @@ def plot_pt(retrieval_object):
             Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'),
             Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot'),
             Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--')]
-    labels = ['This retrieval', '68%','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Zhang+2022','Contribution']
+    labels = ['This retrieval', '1$\sigma$','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Zhang+2022','Contribution']
     ax.legend(lines,labels,fontsize=9)
     fig.tight_layout()
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
@@ -181,8 +224,9 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
     plt.close()
 
 def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
-    plot_spectrum(retrieval_object)
-    plot_residuals(retrieval_object)
+    #plot_spectrum(retrieval_object)
+    #plot_residuals(retrieval_object)
+    plot_spectrum_w_residuals(retrieval_object)
     plot_pt(retrieval_object)
     if split_corner: # split corner plot to avoid massive files
         cornerplot(retrieval_object,only_abundances=True)

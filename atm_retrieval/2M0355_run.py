@@ -10,14 +10,14 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     comm = MPI.COMM_WORLD # important for MPI
     rank = comm.Get_rank() # important for MPI
     from atm_retrieval.target import Target
-    from atm_retrieval.likelihood import Retrieval
+    from atm_retrieval.retrieval import Retrieval
     from atm_retrieval.parameters import Parameters
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
     os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
     from target import Target
-    from likelihood import Retrieval
+    from retrieval import Retrieval
     from parameters import Parameters
 
 M0355 = Target('2M0355')
@@ -67,14 +67,8 @@ free_params = {'rv': ([5,20],r'$v_{\rm rad}$'),
             'epsilon_limb': [(0.2,1), r'$\epsilon_\mathrm{limb}$'], # limb-darkening coefficient (0-1) 
 
             # Uncertainty scaling
-            #'a_1': [(0.1,0.8), r'$a_1$'], 
-            #'a_2': [(0.1,0.8), r'$a_2$'], 
-            #'a_3': [(0.1,0.8), r'$a_3$'], 
-            #'a_4': [(0.1,0.8), r'$a_4$'], 
-            #'a_5': [(0.1,0.8), r'$a_5$'], 
-            #'a_6': [(0.1,0.8), r'$a_6$'], 
-            #'a_7': [(0.1,0.8), r'$a_7$'],  
-            #'l': [(10,40), r'$l$']
+            'a': [(0.1,0.8), r'$a$'], # one is enough, will be multipled with order/det error
+            'l': [(10,40), r'$l$']
             }
 
 parameters = Parameters(free_params, constant_params)
@@ -82,9 +76,9 @@ cube = np.random.rand(parameters.n_params)
 parameters(cube)
 params=parameters.params
 
-output='2M0355_test11'
+output='2M0355_test12'
 retrieval=Retrieval(target=M0355,parameters=parameters,output_name=output,cloud_mode='gray')
-#retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
-retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
+retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
+#retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
 #only_params=['vsini','log_H2O','log_12CO','log_13CO','T1','T2','T3','T4']
 retrieval.evaluate()
