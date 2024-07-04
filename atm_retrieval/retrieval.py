@@ -198,12 +198,12 @@ class Retrieval:
         # make dict of constant params + evaluated params + their errors
         self.final_params=self.parameters.constant_params.copy() # initialize dict with constant params
         #free_params_values=self.bestfit_params # use bestfit params with highest lnL (can differ from median, not as robust)
-        self.medians,self.minus_err,self.plus_err=self.get_quantiles(self.posterior)
-        free_params_values=self.medians # use median of posterior as resulting final values, more robust
+        medians,minus_err,plus_err=self.get_quantiles(self.posterior)
+        free_params_values=medians # use median of posterior as resulting final values, more robust
 
         for i,key in enumerate(self.parameters.param_keys):
             self.final_params[key]=free_params_values[i] # add evaluated params to constant params
-            self.final_params[f'{key}_err']=(self.minus_err[i],self.plus_err[i]) # add errors of evaluated params
+            self.final_params[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
 
         # create final spectrum to get phi_ij and s2_ij of bestfit model through likelihood
         self.final_object=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,

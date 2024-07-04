@@ -126,9 +126,15 @@ def plot_pt(retrieval_object):
     ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
 
     # plot errors on retrieved temperatures
-    medians=retrieval_object.medians[::-1] # reverse order so that T4,T3,T2,T1, like p_samp
-    lowers=retrieval_object.minus_err[::-1]+medians
-    uppers=retrieval_object.plus_err[::-1]+medians
+    lowers=[]
+    uppers=[]
+    medians=[]
+    for key in ['T4','T3','T2','T1']: # order T4,T3,T2,T1, like p_samp
+        median=retrieval_object.final_params[key]
+        medians.append(median)
+        minus_err,plus_err=retrieval_object.final_params[f'{key}_err']
+        lowers.append(minus_err+median)
+        uppers.append(median+plus_err)
     lower = CubicSpline(retrieval_object.final_object.p_samp,lowers)(np.log10(retrieval_object.pressure))
     upper = CubicSpline(retrieval_object.final_object.p_samp,uppers)(np.log10(retrieval_object.pressure))
     ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.2)
@@ -162,7 +168,7 @@ def plot_pt(retrieval_object):
 
 def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abundances=False):
     plot_posterior=retrieval_object.posterior # posterior that we plot here, might get clipped
-    medians,_,_=retrieval_object.get_quantiles(retrieval_object.posterior,save=True)
+    medians,_,_=retrieval_object.get_quantiles(retrieval_object.posterior)
     labels=list(retrieval_object.parameters.param_mathtext.values())
     indices=np.linspace(0,len(retrieval_object.parameters.params)-1,len(retrieval_object.parameters.params),dtype=int)
     plot_label='all'
@@ -196,6 +202,7 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
         medians=np.array([medians[i] for i in set_diff])
         indices=set_diff
 
+    fig = plt.figure(figsize=(20,20)) # fix size to avoid memory issues
     fig = corner.corner(plot_posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize': 12},
@@ -204,7 +211,8 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
                         fill_contours=True,
                         quantiles=[0.16,0.5,0.84],
                         title_quantiles=[0.16,0.5,0.84],
-                        show_titles=True)
+                        show_titles=True,
+                        fig=fig)
     corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median values of posterior
 
     if retrieval_object.bestfit_params is not None:
