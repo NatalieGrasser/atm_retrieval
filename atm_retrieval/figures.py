@@ -36,12 +36,13 @@ def plot_spectrum(retrieval_object):
 def plot_spectrum_w_residuals(retrieval_object):
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.final_spectrum)
-    fig,ax=plt.subplots(21,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.5]*7})
+    fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.5]*6+[2,0.9]})
     x=0
     for order in range(7): 
         ax1=ax[x]
         ax2=ax[x+1]
-        ax3=ax[x+2] #for spacing
+        if x!=18: # last ax cannot be spacer, or xlabel also invisible
+            ax3=ax[x+2] #for spacing
         for det in range(3):
             ax1.plot(retrieval.data_wave[order,det],retrieval.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
             lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det]
@@ -68,9 +69,10 @@ def plot_spectrum_w_residuals(retrieval_object):
         ax2.tick_params(axis="both")
         tick_spacing=1
         ax2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
-        ax3.set_visible(False) # invisible for spacing
+        if x!=18:
+            ax3.set_visible(False) # invisible for spacing
         x+=3
-    ax[20].set_xlabel('Wavelength [nm]')
+    ax[19].set_xlabel('Wavelength [nm]')
     fig.tight_layout(h_pad=-1.7)
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
     plt.close()
@@ -93,8 +95,8 @@ def plot_residuals(retrieval_object):
 def plot_pt(retrieval_object):
     
     if retrieval_object.free_chem==False:
-        C_O = retrieval_object.final_object.params['C_O']
-        Fe_H = retrieval_object.final_object.params['FEH']
+        C_O = retrieval_object.final_object.params['C/O']
+        Fe_H = retrieval_object.final_object.params['Fe/H']
     if retrieval_object.free_chem==True:
         C_O = retrieval_object.final_object.CO
         Fe_H = retrieval_object.final_object.FeH   
@@ -118,7 +120,7 @@ def plot_pt(retrieval_object):
     ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
 
     # compare with Zhang2022 science verification
-    PT_Zhang=np.loadtxt('2M0355_PT_Zhang2021.dat')
+    PT_Zhang=np.loadtxt(f'{retrieval_object.target.name}/2M0355_PT_Zhang2021.dat')
     p_zhang=PT_Zhang[:,0]
     t_zhang=PT_Zhang[:,1]
     ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)

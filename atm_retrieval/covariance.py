@@ -9,17 +9,12 @@ class Covariance:
         self.cov_cholesky = None # initialize
         self.beta=beta # uncertainty scaling factor 'beta' should be added to kwargs
 
-    def __call__(self, params, w_set, order, det, **kwargs):
-        self.cov_reset() # Reset the covariance matrix  
-        if params.get(f'beta_{w_set}') is None: # uncertainty scaling factor for wavelength set (order,det)
-            return
-        if params[f'beta_{w_set}'][order,det] != 1:
-            self.add_data_err_scaling(params[f'beta_{w_set}'][order,det])
+    def __call__(self,params,**kwargs):
+        self.cov_reset() # reset covariance matrix
 
-    def cov_reset(self): # Create covariance matrix from uncertainties
+    def cov_reset(self): # make diagonal covariance matrix from uncertainties
         self.cov = self.err**2
         self.is_matrix = (self.cov.ndim == 2) # = True if is matrix
-        self.cov_shape = self.cov.shape
 
     def add_data_err_scaling(self, beta): # Scale uncertainty with factor beta
         if not self.is_matrix:
@@ -58,7 +53,7 @@ class CovGauss: # covariance matrix suited for Gaussian processes
         self.cov_reset() # set up covariance matrix
 
         # Convert to banded matrices
-        self.separation = self.get_banded(self.separation,max_value=max_separation,pad_value=1000) # pad hig number bc will be truncated
+        self.separation = self.get_banded(self.separation,max_value=max_separation,pad_value=1000) # pad high number bc will be truncated
 
     def get_banded(cls, array, max_value=None, pad_value=0, n_pixels=2048):
         banded_array = [] # Make banded covariance matrix
@@ -74,13 +69,13 @@ class CovGauss: # covariance matrix suited for Gaussian processes
         return np.asarray(banded_array) # Convert to array for scipy
     
     def __call__(self,params,**kwargs):
-        self.cov_reset() # Reset the covariance matrix
-        a = params.get('a')
-        l = params.get('l')
+        self.cov_reset() # Reset covariance matrix
+        a = 10**(params.get('log_a'))
+        l = 10**(params.get('log_l'))
         if (a is not None) and (l is not None): 
             self.add_RBF_kernel(a=a,l=l,variance=self.err_eff, **kwargs) # add radial-basis function kernel
             
-    def cov_reset(self): # Create the covariance matrix from the uncertainties
+    def cov_reset(self): # Create covariance matrix from uncertainties
         self.cov = np.zeros_like(self.separation)
         self.cov[0] = self.err**2
         self.is_matrix = True

@@ -20,7 +20,7 @@ class Target:
             self.JD=2459976.5        
 
     def load_spectrum(self,spec_obj=False,merge_dets=False):
-        spectrum=np.load(f"{self.name}.npy")
+        spectrum=np.load(f"{self.name}/{self.name}.npy")
         self.wl=spectrum[0] # in nm
         self.fl=spectrum[1] # unitless
         self.err=spectrum[2]
@@ -50,10 +50,11 @@ class Target:
             for j in range(self.n_dets):
                 mask_ij = self.mask_isfinite[i,j] # Mask the arrays, on-the-spot is slower
                 wave_ij = self.wl[i,j,mask_ij]
-                separation_ij = np.abs(wave_ij[None,:] - wave_ij[:,None]) # wavelength separation
-                separation_ij = 2 *const.c.value*1e-3 * np.abs((wave_ij[None,:]-wave_ij[:,None]) / (wave_ij[None,:]+wave_ij[:,None])) # velocity separation in km/s
-                self.separation[i,j] = separation_ij    
-                err_ij  = self.err[i,j,mask_ij]  
+                separation_ij = np.abs(wave_ij[None,:]-wave_ij[:,None]) # wavelength separation
+                # velocity separation in km/s
+                #separation_ij = 2 *const.c.value*1e-3 * np.abs((wave_ij[None,:]-wave_ij[:,None])/(wave_ij[None,:]+wave_ij[:,None])) 
+                self.separation[i,j] = separation_ij  
+                err_ij = self.err[i,j,mask_ij]  
                 #self.err_eff[i,j] = np.sqrt(1/2*(err_ij[None,:]**2 + err_ij[:,None]**2)) # arithmetic mean of squared flux-errors
                 self.err_eff[i,j] = np.median(err_ij) # more stable
         return self.separation,self.err_eff

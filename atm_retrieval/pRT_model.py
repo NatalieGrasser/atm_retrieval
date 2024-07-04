@@ -30,7 +30,9 @@ class pRT_spectrum:
                  species,
                  atmosphere_objects,
                  spectral_resolution=100_000,  
-                 cloud_mode=None,contribution=False,free_chem=True): # contribution only for plotting atmosphere.contr_em
+                 cloud_mode=None,
+                 contribution=False, # only for plotting atmosphere.contr_em
+                 free_chem=True): 
         
         self.params=parameters
         self.data_wave=data_wave
@@ -51,19 +53,21 @@ class pRT_spectrum:
         self.contribution=contribution
         self.cloud_mode=cloud_mode
     
-        # do_scat_emis, sigma_lnorm, fsed, Kzz only relevant when there are clouds
+        # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
-        self.Kzz=None 
-        self.fsed=None
+        self.Kzz=None
+        self.fsed=None 
+        self.add_cloud_scat_as_abs=False
 
         if self.free_chem==True: # use free chemistry with defined VMRs
             self.mass_fractions, self.CO, self.FeH = self.free_chemistry(self.species,self.params)
             self.MMW = self.mass_fractions['MMW']
 
         if self.free_chem==False: # use equilibium chemistry
-            abunds = self.abundances(self.pressure,self.temperature,self.params['FEH'],self.params['C_O'])
+            abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
             self.mass_fractions = self.get_abundance_dict(self.species,abunds)
-            self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) # update mass_fractions with isotopologue ratios
+            # update mass_fractions with isotopologue ratios
+            self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) 
             self.MMW = abunds['MMW']
 
         self.spectrum_orders=[]
@@ -80,31 +84,22 @@ class pRT_spectrum:
         for specie in species:
             if specie in ['H2O_main_iso','H2O_pokazatel_main_iso']:
                 mass_fractions[specie] = abunds['H2O']
-            #elif specie=='CO_36':
-                #mass_fractions[specie] = abunds['13CO']
             elif specie=='CO_main_iso':
                 mass_fractions[specie] = abunds['CO']
             elif specie in ['CH4_main_iso','CH4_hargreaves_main_iso']:
                 mass_fractions[specie] = abunds['CH4']
-            elif specie=='FeH_main_iso':
-                mass_fractions[specie] = abunds['FeH']
             elif specie=='HCN_main_iso':
                 mass_fractions[specie] = abunds['HCN']
-            elif specie=='K':
-                mass_fractions[specie] = abunds['K']
-            elif specie=='Na_allard':
-                mass_fractions[specie] = abunds['Na']
             elif specie=='NH3_coles_main_iso':
                 mass_fractions[specie] = abunds['NH3']
             elif specie=='HF_main_iso':
-                mass_fractions[specie] = abunds['HF']
+                mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['HF'] not in pRT chem equ table
             elif specie=='H2S_ExoMol_main_iso':
                 mass_fractions[specie] = abunds['H2S']
             elif specie=='OH_main_iso':
-                mass_fractions[specie] = abunds['OH']
+                mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['OH'] not in pRT chem equ table
             elif specie=='CO2_main_iso':
                 mass_fractions[specie] = abunds['CO2']
-            
         mass_fractions['H2'] = abunds['H2']
         mass_fractions['He'] = abunds['He']
         return mass_fractions
@@ -131,21 +126,42 @@ class pRT_spectrum:
         mass_ratio_13CO_12CO = self.read_species_info('13CO','mass')/self.read_species_info('12CO','mass')
         mass_ratio_C18O_C16O = self.read_species_info('C18O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_C17O_C16O = self.read_species_info('C17O','mass')/self.read_species_info('12CO','mass')
+        mass_ratio_H218O_H2O = self.read_species_info('H2(18)O','mass')/self.read_species_info('H2O','mass')
+        self.C13_12_ratio = params.get('C13_12_ratio')
+        self.O18_16_ratio = params.get('O18_16_ratio')
+        self.O17_16_ratio = params.get('O17_16_ratio')
+
+        # in case they are not defined, set to zero
+        if self.C13_12_ratio is None:
+            self.C13_12_ratio = 0
+        if self.O18_16_ratio is None:
+            self.O18_16_ratio = 0
+        if self.O17_16_ratio is None:
+            self.O17_16_ratio = 0
+
         for species_i in species:
             if (species_i=='CO_main_iso'): # 12CO mass fraction
-                mass_fractions[species_i]=(1-params['C13_12_ratio']*mass_ratio_13CO_12CO
-                                            -params['O18_16_ratio']*mass_ratio_C18O_C16O
-                                            -params['O17_16_ratio']*mass_ratio_C17O_C16O)*mass_fractions['CO_main_iso']
+                mass_fractions[species_i]=(1-self.C13_12_ratio*mass_ratio_13CO_12CO
+                                            -self.O18_16_ratio*mass_ratio_C18O_C16O
+                                            -self.O17_16_ratio*mass_ratio_C17O_C16O)*mass_fractions['CO_main_iso']
                 continue
             if (species_i=='CO_36'): # 13CO mass fraction
-                mass_fractions[species_i]=params['C13_12_ratio']*mass_ratio_13CO_12CO*mass_fractions['CO_main_iso']
+                mass_fractions[species_i]=self.C13_12_ratio*mass_ratio_13CO_12CO*mass_fractions['CO_main_iso']
                 continue
             if (species_i=='CO_28'): # C18O mass fraction
-                mass_fractions[species_i]=params['O18_16_ratio']*mass_ratio_C18O_C16O*mass_fractions['CO_main_iso']
+                mass_fractions[species_i]=self.O18_16_ratio*mass_ratio_C18O_C16O*mass_fractions['CO_main_iso']
                 continue
             if (species_i=='CO_27'): # C17O mass fraction
-                mass_fractions[species_i]=params['O17_16_ratio']*mass_ratio_C17O_C16O*mass_fractions['CO_main_iso']
+                mass_fractions[species_i]=self.O17_16_ratio*mass_ratio_C17O_C16O*mass_fractions['CO_main_iso']
                 continue
+            if (species_i in ['H2O_main_iso','H2O_pokazatel_main_iso']): # H2O mass fraction
+                H2O_linelist=species_i
+                mass_fractions[species_i]=(1-self.O18_16_ratio*mass_ratio_H218O_H2O)*mass_fractions[species_i]
+                continue
+            if (species_i=='H2O_181_HotWat78'): # H2_18O mass fraction
+                mass_fractions[species_i]=self.O18_16_ratio*mass_ratio_H218O_H2O*mass_fractions[H2O_linelist]
+                continue
+            
         return mass_fractions
     
     def free_chemistry(self,line_species,params):
@@ -217,45 +233,44 @@ class pRT_spectrum:
         for order in range(self.orders):
             atmosphere=self.atmosphere_objects[order]
 
+            # MgSiO3 cloud model like in Sam's code
             if self.cloud_mode == 'MgSiO3':
-                # Cloud model like in Sam's code, mask pressure above cloud deck
                 if self.free_chem==True:
                     co=self.CO
                     feh=self.FeH
                 if self.free_chem==False:
-                    feh=self.params['FEH']
-                    co=self.params['C_O']
+                    feh=self.params['Fe/H']
+                    co=self.params['C/O']
                 P_base_MgSiO3 = simple_cdf_MgSiO3(self.pressure,self.temperature,feh,co,np.mean(self.MMW))
-                above_clouds = (self.pressure<=P_base_MgSiO3)
+                above_clouds = (self.pressure<=P_base_MgSiO3) # mask pressure above cloud deck
                 eq_MgSiO3 = return_XMgSiO3(feh, co)
                 self.mass_fractions['MgSiO3(c)'] = np.zeros_like(self.temperature)
                 condition=eq_MgSiO3*(self.pressure[above_clouds]/P_base_MgSiO3)**self.params['fsed']
                 self.mass_fractions['MgSiO3(c)'][above_clouds]=condition
                 self.sigma_lnorm=self.params['sigma_lnorm']
-                self.Kzz = 10**self.params['log_Kzz']*np.ones_like(self.pressure)
+                self.Kzz = 10**self.params['log_Kzz']*np.ones_like(self.pressure) 
                 self.fsed=self.params['fsed']
+                self.add_cloud_scat_as_abs=True
 
             elif self.cloud_mode == 'gray': # Gray cloud opacity
                 self.wave_micron = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
-                self.give_absorption_opacity=self.gray_cloud_opacity()
-                self.Kzz = 10**self.params['log_Kzz']*np.ones_like(self.pressure)
-                self.fsed=self.params['fsed_gray']
+                self.give_absorption_opacity=self.gray_cloud_opacity() # fsed_gray only needed here, not in calc_flux
 
             atmosphere.calc_flux(self.temperature,
                             self.mass_fractions,
                             self.gravity,
                             self.MMW,
-                            Kzz=self.Kzz,
-                            fsed = self.fsed, 
-                            sigma_lnorm = self.sigma_lnorm, 
-                            add_cloud_scat_as_abs=True,
+                            Kzz=self.Kzz, # only for MgSiO3 clouds
+                            fsed = self.fsed, # only for MgSiO3 clouds 
+                            sigma_lnorm = self.sigma_lnorm, # only for MgSiO3 clouds
+                            add_cloud_scat_as_abs=self.add_cloud_scat_as_abs, # only for MgSiO3 clouds
                             contribution =self.contribution,
                             give_absorption_opacity=self.give_absorption_opacity)
 
             wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
             flux = atmosphere.flux/np.nanmean(atmosphere.flux)
 
-            # Do RV+bary shifting and rotational broadening
+            # RV+bary shifting and rotational broadening
             v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
                             ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
             wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
@@ -271,8 +286,6 @@ class pRT_spectrum:
 
             # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
             flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
-            #ref_wave=ref_wave.reshape(data_wave.shape[1],data_wave.shape[2])
-            #spec = Spectrum(flux, ref_wave) 
             spectrum_orders.append(flux)
 
             if self.contribution==True:
