@@ -126,14 +126,9 @@ def plot_pt(retrieval_object):
     ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
 
     # plot errors on retrieved temperatures
-    temps=['T1','T2','T3','T4']
-    T_pm=np.zeros((len(temps),3))
-    for i,key in enumerate(temps):
-        T_pm[i]=(retrieval_object.params_pm_dict[key]) # median, lower, upper
-
-    medians=T_pm[:,1][::-1]
-    lowers=T_pm[:,0][::-1] # reverse order so that T4,T3,T2,T1, like p_samp
-    uppers=T_pm[:,2][::-1]
+    medians=retrieval_object.medians[::-1] # reverse order so that T4,T3,T2,T1, like p_samp
+    lowers=retrieval_object.minus_err[::-1]+medians
+    uppers=retrieval_object.plus_err[::-1]+medians
     lower = CubicSpline(retrieval_object.final_object.p_samp,lowers)(np.log10(retrieval_object.pressure))
     upper = CubicSpline(retrieval_object.final_object.p_samp,uppers)(np.log10(retrieval_object.pressure))
     ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.2)
