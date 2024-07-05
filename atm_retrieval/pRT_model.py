@@ -8,6 +8,7 @@ from astropy import constants as const
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 import pandas as pd
+from scipy.interpolate import interp1d
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -32,7 +33,8 @@ class pRT_spectrum:
                  spectral_resolution=100_000,  
                  cloud_mode=None,
                  contribution=False, # only for plotting atmosphere.contr_em
-                 free_chem=True): 
+                 chemistry='freechem',
+                 PT_type='PTknot'): 
         
         self.params=parameters
         self.data_wave=data_wave
@@ -40,11 +42,12 @@ class pRT_spectrum:
         self.coords = SkyCoord(ra=target.ra, dec=target.dec, frame='icrs')
         self.species=species
         self.spectral_resolution=spectral_resolution
-        self.free_chem=free_chem
+        self.chemistry=chemistry
         self.atmosphere_objects=atmosphere_objects
 
         self.n_atm_layers=50
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
+        self.PT_type=PT_type
         self.temperature = self.make_pt() #P-T profile
 
         self.give_absorption_opacity=None
@@ -52,18 +55,18 @@ class pRT_spectrum:
         self.gravity = 10**self.params['log_g'] 
         self.contribution=contribution
         self.cloud_mode=cloud_mode
-    
+
         # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
         self.Kzz=None
         self.fsed=None 
         self.add_cloud_scat_as_abs=False
 
-        if self.free_chem==True: # use free chemistry with defined VMRs
+        if self.chemistry=='freechem': # use free chemistry with defined VMRs
             self.mass_fractions, self.CO, self.FeH = self.free_chemistry(self.species,self.params)
             self.MMW = self.mass_fractions['MMW']
 
-        if self.free_chem==False: # use equilibium chemistry
+        if self.chemistry=='equchem': # use equilibium chemistry
             abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
             self.mass_fractions = self.get_abundance_dict(self.species,abunds)
             # update mass_fractions with isotopologue ratios
@@ -235,10 +238,10 @@ class pRT_spectrum:
 
             # MgSiO3 cloud model like in Sam's code
             if self.cloud_mode == 'MgSiO3':
-                if self.free_chem==True:
+                if self.chemistry=='freechem':
                     co=self.CO
                     feh=self.FeH
-                if self.free_chem==False:
+                if self.chemistry=='equchem':
                     feh=self.params['Fe/H']
                     co=self.params['C/O']
                 P_base_MgSiO3 = simple_cdf_MgSiO3(self.pressure,self.temperature,feh,co,np.mean(self.MMW))
@@ -295,12 +298,38 @@ class pRT_spectrum:
 
         return np.array(spectrum_orders)
 
-    def make_pt(self):
-        # if pt profile and condensation curve don't intersect, clouds have no effect
-        self.t_samp = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1']])
-        self.p_samp= np.linspace(np.log10(np.nanmin(self.pressure)),np.log10(np.nanmax(self.pressure)),len(self.t_samp))
-        sort = np.argsort(self.p_samp)
-        temperature = CubicSpline(self.p_samp[sort],self.t_samp[sort])(np.log10(self.pressure))
-        return temperature
+    def make_pt(self): 
+
+        if self.PT_type=='PTknot': # retrieve temperature knots
+            self.T_knots = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1'],self.params['T0']])
+            self.log_P_knots= np.linspace(np.log10(np.min(self.pressure)),np.log10(np.max(self.pressure)),num=len(self.T_knots))
+            sort = np.argsort(self.log_P_knots)
+            self.temperature = CubicSpline(self.log_P_knots[sort],self.T_knots[sort])(np.log10(self.pressure))
+        
+        if self.PT_type=='PTgrad':
+            self.log_P_knots = np.linspace(np.log10(np.min(self.pressure)),
+                                           np.log10(np.max(self.pressure)),num=5) # 5 gradient values
+            self.dlnT_dlnP_knots=[]
+            for i in range(5):
+                self.dlnT_dlnP_knots.append(self.params[f'dlnT_dlnP_{i}'])
+
+            # interpolate over dlnT/dlnP gradients
+            interp_func = interp1d(self.log_P_knots,self.dlnT_dlnP_knots,kind='quadratic') # for the other 50 atm layers
+            dlnT_dlnP = interp_func(np.log10(self.pressure))[::-1] # reverse order, start at bottom of atm
+
+            T_base = self.params['T_0'] # T0 is free param, at bottom of atmosphere
+            ln_P = np.log(self.pressure)[::-1]
+            temperature = [T_base, ]
+
+            # calc temperatures relative to base pressure, from bottom to top of atmosphere
+            for i, ln_P_up_i in enumerate(ln_P[1:]): # start after base, T at base already defined
+                ln_P_low_i = ln_P[i]
+                ln_T_low_i = np.log(temperature[-1])
+                # compute temperatures based on gradient
+                ln_T_up_i = ln_T_low_i + (ln_P_up_i - ln_P_low_i)*dlnT_dlnP[i+1]
+                temperature.append(np.exp(ln_T_up_i))
+            self.temperature = temperature[::-1] # reverse order, pRT reads temps from top to bottom of atm
+        
+        return self.temperature
     
 

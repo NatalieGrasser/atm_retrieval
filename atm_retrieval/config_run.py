@@ -23,57 +23,57 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     from parameters import Parameters
 
 # pass configuration as command line argument
-# example: config_run.py 2M0355 freechem graycloud GP
+# example: config_run.py 2M0355 freechem PTgrad
 brown_dwarf = sys.argv[1] # options: 2M0355 or 2M1425
 chem = sys.argv[2] # options: freechem or equchem
-cloud_mode = sys.argv[3] # options: nocloud, graycloud, or Mgcloud
-GP = sys.argv[4] # options: GP or noGP
-output=f'{brown_dwarf}_{chem}_{cloud_mode}_{GP}' # output folder name
+PT_type = sys.argv[3] # options: PTknot or PTgrad
+
+#brown_dwarf = '2M0355' # options: 2M0355 or 2M1425
+#chem = 'freechem' # options: freechem or equchem
+#PT_type = 'PTgrad' # options: PTknot or PTgrad
+output=f'{brown_dwarf}_{chem}_{PT_type}' # output folder name
 
 if brown_dwarf=='2M0355': 
     brown_dwarf = Target('2M0355') 
 elif brown_dwarf=='2M1425':
     brown_dwarf = Target('2M1425')
 
-if chem=='freechem':
-    free_chem=True
-elif chem=='equchem':
-    free_chem=False
-
-if cloud_mode=='nocloud':
-    cloud_mode=None
-elif cloud_mode=='graycloud':
-    cloud_mode='gray'
-elif cloud_mode=='Mgcloud':
-    cloud_mode='MgSiO3'
- 
-if GP=='GP':
-    GP=True
-elif GP=='noGP':
-    GP=False
+cloud_mode='gray' # options: None, gray, or MgSiO3
+GP=True # options: True/False
 
 constant_params={} # add if needed
 free_params = {'rv': ([2,20],r'$v_{\rm rad}$'),
                'vsini': ([0,40],r'$v$ sin$i$'),
                'log_g':([3,5],r'log $g$'),
-               'epsilon_limb': [(0.2,1), r'$\epsilon_\mathrm{limb}$'], # limb-darkening coefficient (0-1)
+               'epsilon_limb': [(0.2,1), r'$\epsilon_\mathrm{limb}$']} # limb-darkening coefficient (0-1)
 
-            # P-T profile
-            'T1' : ([1000,4000], r'$T_1$'), # bottom of the atmosphere (hotter)
+if PT_type=='PTknot':
+    pt_params={'T0' : ([1000,4000], r'$T_0$'), # bottom of the atmosphere (hotter)
+            'T1' : ([0,4000], r'$T_1$'),
             'T2' : ([0,4000], r'$T_2$'),
             'T3' : ([0,4000], r'$T_3$'),
-            'T4' : ([0,4000], r'$T_4$')} # top of atmosphere (cooler)
+            'T4' : ([0,4000], r'$T_4$'),} # top of atmosphere (cooler)
+    free_params.update(pt_params)
+
+if PT_type=='PTgrad':
+    pt_params={'dlnT_dlnP_0': ([0.,0.4], r'$\nabla_{T,0}$'), # gradient at T0 
+            'dlnT_dlnP_1': ([0.,0.4], r'$\nabla_{T,1}$'), 
+            'dlnT_dlnP_2': ([0.,0.4], r'$\nabla_{T,2}$'), 
+            'dlnT_dlnP_3': ([0.,0.4], r'$\nabla_{T,3}$'), 
+            'dlnT_dlnP_4': ([0.,0.4], r'$\nabla_{T,4}$'), 
+            'T_0': ([1000,4000], r'$T_0$')} # at bottom of atmosphere
+    free_params.update(pt_params)
 
 # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
-if free_chem==False:
-    chemistry={'C/O': [(0,1), r'C/O'], 
-            'Fe/H': [(-1.5,1.5), r'[Fe/H]'], 
-            'C13_12_ratio': [(1e-10,1e-1), r'$\mathrm{^{13}C/^{12}C}$'], 
-            'O18_16_ratio': [(1e-10,1e-1), r'$\mathrm{^{18}O/^{16}O}$'], 
-            'O17_16_ratio': [(1e-10,1e-1), r'$\mathrm{^{17}O/^{12}O}$']}
+if chem=='equchem':
+    chemistry={'C/O':([0,1], r'C/O'), 
+            'Fe/H': ([-1.5,1.5], r'[Fe/H]'), 
+            'C13_12_ratio': ([1e-10,1e-1], r'$\mathrm{^{13}C/^{12}C}$'), 
+            'O18_16_ratio': ([1e-10,1e-1], r'$\mathrm{^{18}O/^{16}O}$'), 
+            'O17_16_ratio': ([1e-10,1e-1], r'$\mathrm{^{17}O/^{12}O}$')}
     
 # if free chemistry, define VMRs
-if free_chem==True: 
+if chem=='freechem': 
     chemistry={'log_H2O':([-12,-1],r'log H$_2$O'),
             'log_12CO':([-12,-1],r'log $^{12}$CO'),
             'log_13CO':([-12,-1],r'log $^{13}$CO'),
@@ -101,8 +101,8 @@ if cloud_mode=='MgSiO3':
     free_params.update(cloud_props)
     
 if GP==True: # add uncertainty scaling
-    GP_params={'log_a': ([-0.7,0.3], r'$\log\ a$'), # one is enough, will be multipled with order/det error
-               'log_l': ([-3.0,-1.0], r'$\log\ l$')}
+    GP_params={'log_a': ([-1,1], r'$\log\ a$'), # one is enough, will be multipled with order/det error
+               'log_l': ([-3,0], r'$\log\ l$')}
     free_params.update(GP_params)
 
 free_params.update(chemistry)
@@ -112,9 +112,9 @@ parameters(cube)
 params=parameters.params
 
 retrieval=Retrieval(target=brown_dwarf,parameters=parameters,
-                    output_name=output,free_chem=free_chem,
-                    cloud_mode=cloud_mode,GP=GP)
-retrieval.PMN_run(N_live_points=100,evidence_tolerance=5)
+                    output_name=output,chemistry=chem,
+                    cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
+retrieval.PMN_run(N_live_points=200,evidence_tolerance=2)
 #retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
 #only_params=['vsini','log_H2O','log_12CO','log_13CO','T1','T2','T3','T4']
 retrieval.evaluate()

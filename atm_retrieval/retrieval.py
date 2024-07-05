@@ -21,7 +21,8 @@ import matplotlib.pyplot as plt
 
 class Retrieval:
 
-    def __init__(self,target,parameters,output_name,free_chem=True,GP=True,cloud_mode=None,redo=False):
+    def __init__(self,target,parameters,output_name,chemistry='freechem',
+                 GP=True,cloud_mode='gray',PT_type='PTknot',redo=False):
 
         self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
                 [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
@@ -36,7 +37,7 @@ class Retrieval:
         self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)
         self.separation,self.err_eff=target.prepare_for_covariance()
         self.parameters=parameters
-        self.free_chem=free_chem # True/False
+        self.chemistry=chemistry # freechem/equchem
         self.species=self.get_species(param_dict=self.parameters.params)
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
@@ -53,7 +54,7 @@ class Retrieval:
         if cloud_mode=='MgSiO3':
             self.cloud_species=['MgSiO3(c)_cd']
             self.do_scat_emis = True # enable scattering on cloud particles
-        
+        self.PT_type=PT_type
         self.lbl_opacity_sampling=3
         self.n_atm_layers=50
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
@@ -85,7 +86,7 @@ class Retrieval:
 
     def get_species(self,param_dict): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
-        if self.free_chem==True:
+        if self.chemistry=='freechem':
             self.chem_species=[]
             for par in param_dict:
                 if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
@@ -96,7 +97,7 @@ class Retrieval:
             species=[]
             for chemspec in self.chem_species:
                 species.append(species_info.loc[chemspec[4:],'pRT_name'])
-        elif self.free_chem==False:
+        elif self.chemistry=='equchem':
             self.chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
                          'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
             species=[]
@@ -135,18 +136,24 @@ class Retrieval:
             return atmosphere_objects
 
     def PMN_lnL(self,cube=None,ndim=None,nparams=None):
-        self.model_flux=pRT_spectrum(parameters=self.parameters.params,
+        self.model_object=pRT_spectrum(parameters=self.parameters.params,
                                      data_wave=self.data_wave,
                                      target=self.target,
                                      atmosphere_objects=self.atmosphere_objects,
                                      species=self.species,
-                                     free_chem=self.free_chem,
-                                     cloud_mode=self.cloud_mode).make_spectrum()
+                                     chemistry=self.chemistry,
+                                     cloud_mode=self.cloud_mode,
+                                     PT_type=self.PT_type)
+                                     #contribution=True) # comment out after debugging!!!
+        self.model_flux=self.model_object.make_spectrum()
         for j in range(self.n_orders): # update covariance matrix
             for k in range(self.n_dets):
                 if not self.mask_isfinite[j,k].any():
                     continue
                 self.Cov[j,k](self.parameters.params)
+        if False:
+            self.final_object=self.model_object
+            figs.plot_pt(self)
         if False: # just to check, for debugging
             plt.figure(figsize=(10,1),dpi=200)
             plt.plot(self.data_wave.flatten(),self.data_flux.flatten())
@@ -184,8 +191,7 @@ class Retrieval:
         self.posterior = self.posterior[:,:-1] # shape 
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
-        np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
-
+        
     def get_quantiles(self,posterior):
         quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
         medians=quantiles[:,1] # median of all params
@@ -197,26 +203,26 @@ class Retrieval:
         
         # make dict of constant params + evaluated params + their errors
         self.final_params=self.parameters.constant_params.copy() # initialize dict with constant params
-        #free_params_values=self.bestfit_params # use bestfit params with highest lnL (can differ from median, not as robust)
         medians,minus_err,plus_err=self.get_quantiles(self.posterior)
-        free_params_values=medians # use median of posterior as resulting final values, more robust
 
         for i,key in enumerate(self.parameters.param_keys):
-            self.final_params[key]=free_params_values[i] # add evaluated params to constant params
+            self.final_params[key]=medians[i] # add median of evaluated params (more robust)
             self.final_params[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
+            self.final_params[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
 
         # create final spectrum to get phi_ij and s2_ij of bestfit model through likelihood
         self.final_object=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,
                                        target=self.target,species=self.species,
                                        atmosphere_objects=self.atmosphere_objects,
-                                       free_chem=self.free_chem,contribution=contribution)
+                                       chemistry=self.chemistry,contribution=contribution,
+                                       PT_type=self.PT_type)
         self.final_model=self.final_object.make_spectrum()
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
         self.final_params['phi_ij']=self.LogLike.phi
         self.final_params['s2_ij']=self.LogLike.s2
 
         with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
-                pickle.dump(self.final_params,file)
+            pickle.dump(self.final_params,file)
 
         self.final_spectrum=np.zeros_like(self.final_model)
         phi_ij=self.final_params['phi_ij']
@@ -228,14 +234,14 @@ class Retrieval:
     def get_ratios(self): # can be run after self.evaluate()
         if self.final_params==None:
             self.final_params,_=self.get_final_params_and_spectrum()
-        if self.free_chem==False:
+        if self.chemistry=='equchem':
             C1213=1/self.final_params['C13_12_ratio']
             O1618=1/self.final_params['O18_16_ratio']
             O1617=1/self.final_params['O17_16_ratio']
             O1618_H2O=None
             FeH=self.final_params['Fe/H']
             CO=self.params['C/O']
-        if self.free_chem==True:
+        if self.chemistry=='freechem':
             VMR_12CO=10**(self.final_params['log_12CO'])
             VMR_13CO=10**(self.final_params['log_13CO'])
             VMR_C17O=10**(self.final_params['log_C17O'])

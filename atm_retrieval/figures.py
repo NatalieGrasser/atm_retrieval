@@ -94,10 +94,10 @@ def plot_residuals(retrieval_object):
 
 def plot_pt(retrieval_object):
     
-    if retrieval_object.free_chem==False:
+    if retrieval_object.chemistry=='equchem':
         C_O = retrieval_object.final_object.params['C/O']
         Fe_H = retrieval_object.final_object.params['Fe/H']
-    if retrieval_object.free_chem==True:
+    if retrieval_object.chemistry=='freechem':
         C_O = retrieval_object.final_object.CO
         Fe_H = retrieval_object.final_object.FeH   
     fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
@@ -105,6 +105,7 @@ def plot_pt(retrieval_object):
     cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
     cs_colors=['hotpink','fuchsia','crimson','plum']
 
+    # if pt profile and condensation curve don't intersect, clouds have no effect
     for i,cs in enumerate(cloud_species):
         cs_key = cs[:-3]
         if cs_key == 'KCl':
@@ -124,30 +125,47 @@ def plot_pt(retrieval_object):
     p_zhang=PT_Zhang[:,0]
     t_zhang=PT_Zhang[:,1]
     ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
+    
+    # plot PT-profile + errors on retrieved temperatures
+    ax.plot(retrieval_object.final_object.temperature,
+            retrieval_object.final_object.pressure,color='deepskyblue',lw=2)   
+    xmin=np.min(np.min(retrieval_object.final_object.temperature))-100
+    xmax=np.max(np.max(retrieval_object.final_object.temperature))+100
 
-    # plot errors on retrieved temperatures
-    lowers=[]
-    uppers=[]
-    medians=[]
-    for key in ['T4','T3','T2','T1']: # order T4,T3,T2,T1, like p_samp
-        median=retrieval_object.final_params[key]
-        medians.append(median)
-        minus_err,plus_err=retrieval_object.final_params[f'{key}_err']
-        lowers.append(minus_err+median)
-        uppers.append(median+plus_err)
-    lower = CubicSpline(retrieval_object.final_object.p_samp,lowers)(np.log10(retrieval_object.pressure))
-    upper = CubicSpline(retrieval_object.final_object.p_samp,uppers)(np.log10(retrieval_object.pressure))
-    ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.2)
+    if retrieval_object.PT_type=='PT_knot':
+        lowers=[]
+        uppers=[]
+        medians=[]
+        for key in ['T4','T3','T2','T1','T0']: # order T4,T3,T2,T1,T0 like log_P_knots
+            median=retrieval_object.final_params[key]
+            medians.append(median)
+            minus_err,plus_err=retrieval_object.final_params[f'{key}_err']
+            lowers.append(minus_err+median)
+            uppers.append(median+plus_err)
+        lower = CubicSpline(retrieval_object.final_object.log_P_knots,lowers)(np.log10(retrieval_object.pressure))
+        upper = CubicSpline(retrieval_object.final_object.log_P_knots,uppers)(np.log10(retrieval_object.pressure))
+        ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.2)
+        ax.scatter(medians,10**retrieval_object.final_object.log_P_knots,color='deepskyblue')
+        xmin=np.min(np.min(lowers))-100
+        xmax=np.max(np.max(uppers))+100
 
-    # temperature from medians of final posterior
-    #temperature = CubicSpline(self.final_object.p_samp,medians)(np.log10(self.pressure))
-    #ax.plot(temperature, self.final_object.pressure,color='deepskyblue',lw=2)
-    ax.scatter(medians,10**retrieval_object.final_object.p_samp,color='deepskyblue')
-    xmin=np.min(np.min(lowers))-100
-    xmax=np.max(np.max(uppers))+100
+    if False:#retrieval_object.PT_type=='PT_grad':
+
+        lowers=[]
+        uppers=[]
+        medians=[]
+        dlnT_dlnP_knots=retrieval_object.final_object.dlnT_dlnP_knots
+        log_P_knots=retrieval_object.final_object.log_P_knots
+        for key in dlnT_dlnP_knots:
+            median=retrieval_object.final_params[key]
+            medians.append(median)
+            minus_err,plus_err=retrieval_object.final_params[f'{key}_err']
+            lowers.append(minus_err+median)
+            uppers.append(median+plus_err)
+
     ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
-        ylim=(np.nanmax(retrieval_object.final_object.pressure),np.nanmin(retrieval_object.final_object.pressure)),
-        xlim=(xmin,xmax))
+        ylim=(np.nanmax(retrieval_object.final_object.pressure),
+              np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
     
     summed_contr=np.mean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
