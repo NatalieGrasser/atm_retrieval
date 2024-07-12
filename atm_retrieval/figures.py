@@ -1,5 +1,7 @@
 import getpass
 import os
+
+from sympy import DeferredVector
 if getpass.getuser() == "grasser": # when runnig from LEM
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     import atm_retrieval.cloud_cond as cloud_cond
@@ -100,7 +102,8 @@ def plot_pt(retrieval_object):
     if retrieval_object.chemistry=='freechem':
         C_O = retrieval_object.final_object.CO
         Fe_H = retrieval_object.final_object.FeH   
-    fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=100)
+
+    fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
     cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
     cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
     cs_colors=['hotpink','fuchsia','crimson','plum']
@@ -120,65 +123,71 @@ def plot_pt(retrieval_object):
     temp=file[:,2] # K
     ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
 
-    # compare with Zhang2022 science verification
-    PT_Zhang=np.loadtxt(f'{retrieval_object.target.name}/2M0355_PT_Zhang2021.dat')
-    p_zhang=PT_Zhang[:,0]
-    t_zhang=PT_Zhang[:,1]
-    ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
+    if retrieval_object.target.name=='2M0355': # compare with Zhang2022 science verification
+        PT_Zhang=np.loadtxt(f'{retrieval_object.target.name}/2M0355_PT_Zhang2021.dat')
+        p_zhang=PT_Zhang[:,0]
+        t_zhang=PT_Zhang[:,1]
+        ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
     
     # plot PT-profile + errors on retrieved temperatures
     ax.plot(retrieval_object.final_object.temperature,
             retrieval_object.final_object.pressure,color='deepskyblue',lw=2)   
-    xmin=np.min(np.min(retrieval_object.final_object.temperature))-100
-    xmax=np.max(np.max(retrieval_object.final_object.temperature))+100
 
-    if retrieval_object.PT_type=='PT_knot':
-        lowers=[]
-        uppers=[]
+    if retrieval_object.PT_type=='PTknot':
         medians=[]
-        for key in ['T4','T3','T2','T1','T0']: # order T4,T3,T2,T1,T0 like log_P_knots
-            median=retrieval_object.final_params[key]
-            medians.append(median)
-            minus_err,plus_err=retrieval_object.final_params[f'{key}_err']
-            lowers.append(minus_err+median)
-            uppers.append(median+plus_err)
-        lower = CubicSpline(retrieval_object.final_object.log_P_knots,lowers)(np.log10(retrieval_object.pressure))
-        upper = CubicSpline(retrieval_object.final_object.log_P_knots,uppers)(np.log10(retrieval_object.pressure))
-        ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.2)
-        ax.scatter(medians,10**retrieval_object.final_object.log_P_knots,color='deepskyblue')
-        xmin=np.min(np.min(lowers))-100
-        xmax=np.max(np.max(uppers))+100
-
-    if False:#retrieval_object.PT_type=='PT_grad':
-
-        lowers=[]
-        uppers=[]
-        medians=[]
-        dlnT_dlnP_knots=retrieval_object.final_object.dlnT_dlnP_knots
+        errs=[]
         log_P_knots=retrieval_object.final_object.log_P_knots
-        for key in dlnT_dlnP_knots:
-            median=retrieval_object.final_params[key]
-            medians.append(median)
-            minus_err,plus_err=retrieval_object.final_params[f'{key}_err']
-            lowers.append(minus_err+median)
-            uppers.append(median+plus_err)
+        for key in ['T4','T3','T2','T1','T0']: # order T4,T3,T2,T1,T0 like log_P_knots
+            medians.append(retrieval_object.final_params[key])
+            errs.append(retrieval_object.final_params[f'{key}_err'])
+        errs=np.array(errs)
+        for x in [1,2,3]: # plot 1-3 sigma errors
+            lower = CubicSpline(log_P_knots,medians+x*errs[:,0])(np.log10(retrieval_object.pressure))
+            upper = CubicSpline(log_P_knots,medians+x*errs[:,1])(np.log10(retrieval_object.pressure))
+            ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.15)
+        ax.scatter(medians,10**retrieval_object.final_object.log_P_knots,color='deepskyblue')
+        xmin=np.min(lower)-100
+        xmax=np.max(upper)+100
 
-    ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
-        ylim=(np.nanmax(retrieval_object.final_object.pressure),
-              np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
+    if retrieval_object.PT_type=='PTgrad':
+        dlnT_dlnP_knots=[]
+        derr=[]
+        for i in range(5):
+            key=f'dlnT_dlnP_{i}'
+            dlnT_dlnP_knots.append(retrieval_object.final_params[key]) # median values
+            derr.append(retrieval_object.final_params[f'{key}_err']) # -/+ errors
+        derr=np.array(derr)
+        T0=retrieval_object.final_params['T0']
+        err=retrieval_object.final_params['T0_err']
+        for i,x in enumerate([1,2,3]): # plot 1-3 sigma errors
+            lower=retrieval_object.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,0],
+                                                        T_base=T0+x*err[0])
+            upper=retrieval_object.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,1],
+                                                        T_base=T0+x*err[1])   
+            ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.15)
+        xmin=np.min((lower,upper))-100
+        xmax=np.max((lower,upper))+100
     
-    summed_contr=np.mean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
+    summed_contr=np.nanmean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
     ax.plot(contribution_plot,retrieval_object.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
 
+    ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
+           ylim=(np.nanmax(retrieval_object.final_object.pressure),
+           np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
+
     # https://github.com/cphyc/matplotlib-label-lines
     labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
-    lines = [Line2D([0], [0], marker='o', color='deepskyblue', markerfacecolor='deepskyblue' ,linewidth=2, linestyle='-'),
-            mpatches.Patch(color='deepskyblue',alpha=0.2),
-            Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'),
-            Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot'),
-            Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--')]
-    labels = ['This retrieval', '1$\sigma$','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Zhang+2022','Contribution']
+    if retrieval_object.PT_type=='PTknot':
+        lines=[Line2D([0], [0], marker='o', color='deepskyblue', markerfacecolor='deepskyblue' ,linewidth=2, linestyle='-')]
+    elif retrieval_object.PT_type=='PTgrad':
+        lines=[Line2D([0], [0], color='deepskyblue',linewidth=2, linestyle='-')]
+    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'))
+    lines.append(Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--'))
+    labels = ['This retrieval','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
+    if retrieval_object.target.name=='2M0355':
+        lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot'))
+        labels.append('Zhang+2022')
     ax.legend(lines,labels,fontsize=9)
     fig.tight_layout()
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
@@ -231,6 +240,15 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
                         title_quantiles=[0.16,0.5,0.84],
                         show_titles=True,
                         fig=fig)
+    
+    # split title to avoid overlap with plots
+    titles = [axi.title.get_text() for axi in fig.axes]
+    for i, title in enumerate(titles):
+        if len(title) > 30: # change 30 to 1 if you want all titles to be split
+            title_split = title.split('=')
+            titles[i] = title_split[0] + '\n ' + title_split[1]
+        fig.axes[i].title.set_text(titles[i])
+
     corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median values of posterior
 
     if retrieval_object.bestfit_params is not None:
@@ -242,7 +260,8 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
         plot_label='short'
     elif not_abundances==True:
         plot_label='rest'
-
+        
+    fig.tight_layout()
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf')
     plt.close()
 
@@ -256,3 +275,20 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
         cornerplot(retrieval_object,not_abundances=True)
     else: # make cornerplot with all parameters
         cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
+
+def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
+    fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
+    ax1.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+    ax2.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+    ax1.plot(RVs,CCF_norm,color='mediumslateblue',label='CCF')
+    ax1.plot(RVs,ACF_norm,color='mediumslateblue',linestyle='dashed',alpha=0.5,label='ACF')
+    ax1.set_ylabel('S/N')
+    ax1.legend()
+    molecule_label=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+    ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
+    ax2.plot(RVs,CCF_norm-ACF_norm,color='mediumslateblue')
+    ax2.set_ylabel('CCF-ACF')
+    ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
+    fig.tight_layout(h_pad=-2)
+    fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
+    plt.close()

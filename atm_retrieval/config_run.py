@@ -5,7 +5,7 @@ import numpy as np
 import sys
 os.environ['OMP_NUM_THREADS'] = '1' # to avoid using too many CPUs
 
-if getpass.getuser() == "grasser": # when runnig from LEM
+if getpass.getuser() == "grasser": # when running from LEM
     os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     from mpi4py import MPI 
@@ -22,22 +22,29 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     from retrieval import Retrieval
     from parameters import Parameters
 
+# default configuration
+brown_dwarf = '2M0355' # options: 2M0355 or 2M1425
+chem = 'freechem' # options: freechem or equchem
+PT_type = 'PTgrad' # options: PTknot or PTgrad
+Nlive=400 # number of live points
+tol=0.5 # evidence tolerance
+
 # pass configuration as command line argument
 # example: config_run.py 2M0355 freechem PTgrad
-brown_dwarf = sys.argv[1] # options: 2M0355 or 2M1425
-chem = sys.argv[2] # options: freechem or equchem
-PT_type = sys.argv[3] # options: PTknot or PTgrad
-
-#brown_dwarf = '2M0355' # options: 2M0355 or 2M1425
-#chem = 'freechem' # options: freechem or equchem
-#PT_type = 'PTgrad' # options: PTknot or PTgrad
+if len(sys.argv)>1:
+    brown_dwarf = sys.argv[1] # options: 2M0355 or 2M1425 or testspec
+    chem = sys.argv[2] # options: freechem or equchem
+    PT_type = sys.argv[3] # options: PTknot or PTgrad
 output=f'{brown_dwarf}_{chem}_{PT_type}' # output folder name
 
-if brown_dwarf=='2M0355': 
-    brown_dwarf = Target('2M0355') 
-elif brown_dwarf=='2M1425':
-    brown_dwarf = Target('2M1425')
-
+# option to change live points and evidence tolerance
+# example: config_run.py 2M0355 freechem PTgrad 200 5
+if len(sys.argv)>4:
+    Nlive=sys.argv[4]
+    tol=sys.argv[5]
+    output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
+    
+brown_dwarf = Target(brown_dwarf)
 cloud_mode='gray' # options: None, gray, or MgSiO3
 GP=True # options: True/False
 
@@ -114,7 +121,6 @@ params=parameters.params
 retrieval=Retrieval(target=brown_dwarf,parameters=parameters,
                     output_name=output,chemistry=chem,
                     cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
-retrieval.PMN_run(N_live_points=200,evidence_tolerance=2)
-#retrieval.PMN_run(N_live_points=200,evidence_tolerance=0.5)
+#retrieval.PMN_run(N_live_points=Nlive,evidence_tolerance=tol)
 #only_params=['vsini','log_H2O','log_12CO','log_13CO','T1','T2','T3','T4']
-retrieval.evaluate()
+#retrieval.evaluate()

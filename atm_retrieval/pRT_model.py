@@ -212,8 +212,8 @@ class pRT_spectrum:
         CO = C/O
         log_CH_solar = 8.46 - 12 # Asplund et al. (2021)
         FeH = np.log10(C/H)-log_CH_solar
-        CO = np.mean(CO)
-        FeH = np.mean(FeH)
+        CO = np.nanmean(CO)
+        FeH = np.nanmean(FeH)
 
         return mass_fractions, CO, FeH
 
@@ -244,7 +244,7 @@ class pRT_spectrum:
                 if self.chemistry=='equchem':
                     feh=self.params['Fe/H']
                     co=self.params['C/O']
-                P_base_MgSiO3 = simple_cdf_MgSiO3(self.pressure,self.temperature,feh,co,np.mean(self.MMW))
+                P_base_MgSiO3 = simple_cdf_MgSiO3(self.pressure,self.temperature,feh,co,np.nanmean(self.MMW))
                 above_clouds = (self.pressure<=P_base_MgSiO3) # mask pressure above cloud deck
                 eq_MgSiO3 = return_XMgSiO3(feh, co)
                 self.mass_fractions['MgSiO3(c)'] = np.zeros_like(self.temperature)
@@ -298,7 +298,7 @@ class pRT_spectrum:
 
         return np.array(spectrum_orders)
 
-    def make_pt(self): 
+    def make_pt(self,**kwargs): 
 
         if self.PT_type=='PTknot': # retrieve temperature knots
             self.T_knots = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1'],self.params['T0']])
@@ -309,15 +309,23 @@ class pRT_spectrum:
         if self.PT_type=='PTgrad':
             self.log_P_knots = np.linspace(np.log10(np.min(self.pressure)),
                                            np.log10(np.max(self.pressure)),num=5) # 5 gradient values
-            self.dlnT_dlnP_knots=[]
-            for i in range(5):
-                self.dlnT_dlnP_knots.append(self.params[f'dlnT_dlnP_{i}'])
+            
+            if 'dlnT_dlnP_knots' not in kwargs:
+                self.dlnT_dlnP_knots=[]
+                for i in range(5):
+                    self.dlnT_dlnP_knots.append(self.params[f'dlnT_dlnP_{i}'])
+            elif 'dlnT_dlnP_knots' in kwargs: # needed for calc error on PT, upper+lower bounds passed
+                self.dlnT_dlnP_knots=kwargs.get('dlnT_dlnP_knots')
 
             # interpolate over dlnT/dlnP gradients
             interp_func = interp1d(self.log_P_knots,self.dlnT_dlnP_knots,kind='quadratic') # for the other 50 atm layers
             dlnT_dlnP = interp_func(np.log10(self.pressure))[::-1] # reverse order, start at bottom of atm
 
-            T_base = self.params['T_0'] # T0 is free param, at bottom of atmosphere
+            if 'T_base' not in kwargs:
+                T_base = self.params['T0'] # T0 is free param, at bottom of atmosphere
+            elif 'T_base' in kwargs: # needed for calc error on PT, upper+lower bounds passed
+                T_base=kwargs.get('T_base')
+
             ln_P = np.log(self.pressure)[::-1]
             temperature = [T_base, ]
 

@@ -11,6 +11,7 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     from covariance import *
     from log_likelihood import *
 
+from networkx import selfloop_edges
 import numpy as np
 import pymultinest
 import pathlib
@@ -18,6 +19,8 @@ import pickle
 from petitRADTRANS import Radtrans
 import pandas as pd
 import matplotlib.pyplot as plt
+import astropy.constants as const
+from scipy.interpolate import interp1d
 
 class Retrieval:
 
@@ -63,7 +66,7 @@ class Retrieval:
         for i in range(self.n_orders):
             for j in range(self.n_dets):
                 mask_ij = self.mask_isfinite[i,j] # only finite pixels
-                if not mask_ij.any():
+                if not mask_ij.any(): # skip empty order/detector pairs
                     continue
                 if GP==True: # use Gaussian processes covariance matrix
                     maxval=10**(self.parameters.param_priors['log_l'][1])*3 # 3*max value of prior of l
@@ -148,7 +151,7 @@ class Retrieval:
         self.model_flux=self.model_object.make_spectrum()
         for j in range(self.n_orders): # update covariance matrix
             for k in range(self.n_dets):
-                if not self.mask_isfinite[j,k].any():
+                if not self.mask_isfinite[j,k].any(): # skip empty order/detector
                     continue
                 self.Cov[j,k](self.parameters.params)
         if False:
@@ -164,10 +167,10 @@ class Retrieval:
         ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
         return ln_L
 
-    def PMN_run(self,N_live_points=200,evidence_tolerance=0.5,resume=False):
+    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False):
         pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=self.parameters,n_dims=self.parameters.n_params, 
                         outputfiles_basename=f'{self.output_dir}/pmn_', 
-                        verbose=True,const_efficiency_mode=True, sampling_efficiency = 0.8,
+                        verbose=True,const_efficiency_mode=True, sampling_efficiency = 0.5,
                         n_live_points=N_live_points,resume=resume,
                         evidence_tolerance=evidence_tolerance, # default is 0.5, high number -> stops earlier
                         dump_callback=self.PMN_callback,n_iter_before_update=100)
@@ -229,6 +232,12 @@ class Retrieval:
         for order in range(7):
             for det in range(3):
                 self.final_spectrum[order,det]=phi_ij[order,det]*self.final_model[order,det] # scale model accordingly
+        
+        spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
+        spectrum[:,0]=self.data_wave.flatten()
+        spectrum[:,1]=self.final_spectrum.flatten()
+        np.savetxt(f'{self.output_dir}/{self.callback_label}spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux')
+        
         return self.final_params,self.final_spectrum
 
     def get_ratios(self): # can be run after self.evaluate()
@@ -261,4 +270,55 @@ class Retrieval:
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
         figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
+
+    def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
+
+        if isinstance(molecules, list)==False:
+            molecules=[molecules] # if only one, make list so that it works in for loop
+
+        for molecule in molecules:
+            # create final model without opacity from a certain molecule
+            path=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
+            with open(path,'rb') as file:
+                exclusion_dict=pickle.load(file)
+            exclusion_dict[f'log_{molecule}']=-12 # exclude molecule from model
+            exclusion_model=pRT_spectrum(parameters=exclusion_dict,
+                                            data_wave=self.data_wave,
+                                                target=self.target,species=self.species,
+                                                atmosphere_objects=self.atmosphere_objects,
+                                                chemistry=self.chemistry,
+                                                PT_type=self.PT_type).make_spectrum()
+            
+            # data minus model without certain molecule
+            residuals=self.data_flux-exclusion_model
+
+            # excluded molecule's template: 
+            # complete final model minus final model w/o molecule’s opacity
+            molecule_template=self.final_model-exclusion_model
+            
+            # cross-correlation between residuals and molecule template
+            RVs=np.arange(-300,300,1) # km/s
+            beta=1.0-RVs/const.c.to('km/s').value
+            CCF = np.zeros((self.n_orders,self.n_dets,len(RVs)))
+            ACF = np.zeros((self.n_orders,self.n_dets,len(RVs))) # auto-correlation
+            for order in range(self.n_orders):
+                for det in range(self.n_dets):
+                    wl=self.data_wave[order,det,self.mask_isfinite[order,det]] 
+                    res=residuals[order,det,self.mask_isfinite[order,det]] 
+                    s2_ij=self.final_params['s2_ij'][order,det]
+                    cov_0_res=self.Cov[order,det].solve(res)
+                    wl_shift=wl[:, np.newaxis]*beta[np.newaxis, :]
+                    template=molecule_template[order,det,self.mask_isfinite[order,det]]
+                    cov_0_temp=self.Cov[order,det].solve(template)
+                    template_shift=interp1d(wl,template,fill_value="extrapolate")(wl_shift) # interpolate template onto shifted wl
+                    CCF[order,det]=(template_shift.T).dot(cov_0_res)/s2_ij
+                    ACF[order,det]=(template_shift.T).dot(cov_0_temp)/s2_ij
+            CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
+            ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
+            noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
+            CCF_norm = CCF_sum/noise # get ccf map in S/N units
+            ACF_norm = ACF_sum/noise
+            figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
+        
+        
 
