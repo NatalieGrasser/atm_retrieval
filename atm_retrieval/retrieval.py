@@ -11,7 +11,6 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     from covariance import *
     from log_likelihood import *
 
-from networkx import selfloop_edges
 import numpy as np
 import pymultinest
 import pathlib

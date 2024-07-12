@@ -1,4 +1,3 @@
-from ast import If
 import getpass
 import os
 import numpy as np
