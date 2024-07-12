@@ -120,6 +120,6 @@ params=parameters.params
 retrieval=Retrieval(target=brown_dwarf,parameters=parameters,
                     output_name=output,chemistry=chem,
                     cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
-#retrieval.PMN_run(N_live_points=Nlive,evidence_tolerance=tol)
+retrieval.PMN_run(N_live_points=Nlive,evidence_tolerance=tol)
 #only_params=['vsini','log_H2O','log_12CO','log_13CO','T1','T2','T3','T4']
-#retrieval.evaluate()
+retrieval.evaluate()
