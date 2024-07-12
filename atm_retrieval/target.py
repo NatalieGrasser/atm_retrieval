@@ -3,6 +3,10 @@ from petitRADTRANS import nat_cst as nc
 import matplotlib.pyplot as plt
 import pathlib
 import os
+from numpy.polynomial import polynomial as Poly
+from scipy import signal, optimize
+from scipy.interpolate import interp1d
+import warnings
 
 class Target:
 
@@ -11,7 +15,7 @@ class Target:
         self.n_orders=7
         self.n_dets=3
         self.n_pixels=2048
-        if self.name in ['2M0355','testspec']: # testspectrum based on 2M0355
+        if self.name in ['2M0355','test']: # test spectrum based on 2M0355
             self.ra ="03h55m23.3735910810s"
             self.dec = "+11d33m43.797034332s"
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
@@ -26,7 +30,7 @@ class Target:
 
     def load_spectrum(self):
         self.cwd = os.getcwd()
-        file=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}.txt')
+        file=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}_spectrum.txt')
         if file.exists():
             file=np.genfromtxt(file,skip_header=1,delimiter=' ')
             self.wl=np.reshape(file[:,0],(self.n_orders,self.n_dets,self.n_pixels))
@@ -40,6 +44,30 @@ class Target:
             self.wl=np.reshape(self.wl,(self.n_orders,self.n_dets,self.n_pixels))
             self.fl=np.reshape(self.fl,(self.n_orders,self.n_dets,self.n_pixels))
             self.err=np.reshape(self.err,(self.n_orders,self.n_dets,self.n_pixels))
+
+        if self.name=='2M0355':
+            # use corrected wavelength solution, wasn't good for last order-detector
+            wlcorr=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}_corr_wl.txt')
+            if wlcorr.exists():
+                wl=np.genfromtxt(wlcorr,skip_header=1,delimiter=' ')
+                self.wl=np.reshape(wl,(self.n_orders,self.n_dets,self.n_pixels))
+            else:
+                model=np.genfromtxt(f'{self.cwd}/{self.name}/model_spectrum.txt',skip_header=1,delimiter=' ')
+                wlm=np.reshape(model[:,0],(self.n_orders,self.n_dets,self.n_pixels))
+                flm=np.reshape(model[:,1],(self.n_orders,self.n_dets,self.n_pixels))
+                wl_new=self.wlen_solution(self.fl,self.err,self.wl,flm)
+                np.savetxt(wlcorr,wl_new.flatten(),delimiter=' ',header='corrected wavelength solution (nm)')
+                fig = plt.figure(figsize=(9,3),dpi=200)
+                plt.plot(self.wl[6,2],self.fl[6,2],label='original')
+                plt.plot(wl_new[6,2],self.fl[6,2],label='corrected')
+                plt.plot(wlm[6,2],flm[6,2],linestyle='dashed',color='k',alpha=0.7,label='model')
+                plt.xlim(np.min(wlm[6,2]),np.max(wlm[6,2]))
+                plt.legend()
+                fig.tight_layout(h_pad=0)
+                fig.savefig(f'{self.cwd}/{self.name}/wavelength_correction.pdf')
+                plt.close()
+                self.wl=np.reshape(wl_new,(self.n_orders,self.n_dets,self.n_pixels))
+
         return self.wl,self.fl,self.err
         
     def get_mask_isfinite(self):
@@ -156,7 +184,111 @@ class Target:
             np.savetxt(outfile,spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
         
         return wl,fl,err
+
+    # functions below from excalibuhr/src/excalibuhr/utils.py
+    def func_wlen_optimization(self,poly,*args):
+        """
+        cost function for optimizing wavelength solutions
+
+        Parameters
+        ----------
+        poly: array
+            polynomial coefficients for correcting the wavelength solution
+        args: 
+            wave, flux: initial wavelengths and observed flux
+            template_interp_func: model spectrum 
         
-        
+        Returns
+        -------
+        correlation: float
+            minus correlation between observed and model spectra
+        """
+        wave, flux, template_interp_func = args
+        new_wave = Poly.polyval(wave - np.mean(wave), poly) + wave # apply polynomial coefficients
+        template = template_interp_func(new_wave) # interpolate template onto new wavelengths
+        correlation = -template.dot(flux) # maximize cross correlation
+        return correlation
+
+    def wlen_solution(self,fluxes,errs,w_init,transm_spec,order=2, # use bestfit model as transm_spec
+                    p_range=[0.5, 0.05, 0.01],cont_smooth_len=101,debug=False):
+        """
+        Method for refining wavelength solution using a quadratic 
+        polynomial correction Poly(p0, p1, p2). The optimization 
+        is achieved by maximizing cross-correlation functions 
+        between the spectrum and a telluric transmission model
+        NATALIE UPDATE: DOING IT PER ORDER/DET PAIR
+
+        fluxes: array
+            flux of observed spectrum in each spectral order
+        w_init: array
+            initial wavelengths of each spectral order
+        p_range: 0th,1st,2nd polynomial coefficient
+        cont_smooth_len: int
+            the window length used in the high-pass filter to remove 
+            the continuum of observed spectrum
+        debug : bool
+            if True, print the best fit polynomial coefficients.
+
+        Returns
+        -------
+        wlens: array
+            the refined wavelength solution    
+        """
+
+        # function to interpolate transmission spectrum
+        #template_interp_func = interp1d(w_init,transm_spec,kind='linear')
+        wlens = []
+        Ncut = 10 # ignore detector-edges 
+        minimum_strength=0.0005
+
+        for ord in range(fluxes.shape[0]):
+            for det in range(fluxes.shape[1]):
+                # function to interpolate transmission spectrum
+                template_interp_func = interp1d(w_init[ord,det],transm_spec[ord,det],kind='linear')
+
+                f, f_err, wlen_init = fluxes[ord,det], errs[ord,det], w_init[ord,det]
+                f, w, f_err = f[Ncut:-Ncut], wlen_init[Ncut:-Ncut], f_err[Ncut:-Ncut]
+
+                # Remove continuum and nans of spectra
+                # continuum estimated by smoothing spectrum with Savitzky-Golay filter
+                nans = np.isnan(f)
+                continuum = signal.savgol_filter(f[~nans], window_length=cont_smooth_len,polyorder=2, mode='interp')
+                f = f[~nans] - continuum
+                f, w, f_err = f[Ncut:-Ncut], w[~nans][Ncut:-Ncut], f_err[Ncut:-Ncut]
+                bound = [(-p_range[j], p_range[j]) for j in range(order+1)] # 2nd order polynomial -> 3 values
+
+                # Check if there are enough telluric features in this wavelength range
+                if np.std(transm_spec) > minimum_strength: 
+                    
+                    # Use scipy.optimize to find the best-fitting coefficients
+                    res = optimize.minimize(self.func_wlen_optimization, args=(w, f, template_interp_func), 
+                                            x0=np.zeros(order+1), method='Nelder-Mead', 
+                                            tol=1e-8,
+                                            bounds=bound) 
+                    poly_opt = res.x
+                    result = [f'{item:.6f}' for item in poly_opt]
+                    if debug:
+                        print(f"Order {ord,det} -> Poly(x^0, x^1, x^2): {result}")
+
+                    # if the coefficient hits the prior edge, fitting is unsuccessful
+                    # fall back to the 0th oder solution.
+                    if np.isclose(np.abs(poly_opt[-1]), p_range[-1]):
+                        warnings.warn(f"Fitting of wavelength solution for order {ord,det} is unsuccessful. Only a 0-order offset is applied.")
+                        res = optimize.minimize(
+                                self.func_wlen_optimization, 
+                                args=(w, f, template_interp_func), 
+                                x0=[0], method='Nelder-Mead', tol=1e-8, 
+                                bounds=[(-p_range[0],+p_range[0])])
+                        poly_opt = res.x
+                        if debug:
+                            print(poly_opt)
+                    wlen_cal = wlen_init+Poly.polyval(wlen_init-np.mean(wlen_init),poly_opt)  
+                else:
+                    warnings.warn(f"Not enough telluric features to correct wavelength for order {ord,det}")
+                    wlen_cal = wlen_init
+                wlens.append(wlen_cal)
+
+        return np.reshape(np.array(wlens),(self.n_orders,self.n_dets,self.n_pixels))
+            
     
 

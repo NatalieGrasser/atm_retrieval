@@ -22,7 +22,7 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     from parameters import Parameters
 
 # default configuration
-brown_dwarf = '2M0355' # options: 2M0355 or 2M1425
+brown_dwarf = '2M0355' # options: 2M0355 or 2M1425 or test
 chem = 'freechem' # options: freechem or equchem
 PT_type = 'PTgrad' # options: PTknot or PTgrad
 Nlive=400 # number of live points
@@ -31,7 +31,7 @@ tol=0.5 # evidence tolerance
 # pass configuration as command line argument
 # example: config_run.py 2M0355 freechem PTgrad
 if len(sys.argv)>1:
-    brown_dwarf = sys.argv[1] # options: 2M0355 or 2M1425 or testspec
+    brown_dwarf = sys.argv[1] # options: 2M0355 or 2M1425 or test
     chem = sys.argv[2] # options: freechem or equchem
     PT_type = sys.argv[3] # options: PTknot or PTgrad
 output=f'{brown_dwarf}_{chem}_{PT_type}' # output folder name

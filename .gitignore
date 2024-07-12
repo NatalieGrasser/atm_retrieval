@@ -1,6 +1,11 @@
-2M0355_*/
-2M1425_*/
-testspec/**/*
+*/2M0355/*
+!model_spectrum.txt
+!2M0355_corr_wl.txt
+!2M0355_spectrum.txt
+*/2M1425/*
+!2M1425_spectrum.txt
+*/test/*
+!test_spectrum.txt
 prepare_spectrum*
 atmosphere_objects*
 atm_retrieval.egg*
