@@ -1,7 +1,5 @@
 import getpass
 import os
-
-from sympy import DeferredVector
 if getpass.getuser() == "grasser": # when runnig from LEM
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     import atm_retrieval.cloud_cond as cloud_cond
