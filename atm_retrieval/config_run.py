@@ -39,8 +39,8 @@ output=f'{brown_dwarf}_{chem}_{PT_type}' # output folder name
 # option to change live points and evidence tolerance
 # example: config_run.py 2M0355 freechem PTgrad 200 5
 if len(sys.argv)>4:
-    Nlive=sys.argv[4]
-    tol=sys.argv[5]
+    Nlive=int(sys.argv[4])
+    tol=float(sys.argv[5])
     output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
     
 brown_dwarf = Target(brown_dwarf)
