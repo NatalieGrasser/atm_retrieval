@@ -67,7 +67,7 @@ if PT_type=='PTgrad':
             'dlnT_dlnP_2': ([0.,0.4], r'$\nabla_{T,2}$'), 
             'dlnT_dlnP_3': ([0.,0.4], r'$\nabla_{T,3}$'), 
             'dlnT_dlnP_4': ([0.,0.4], r'$\nabla_{T,4}$'), 
-            'T_0': ([1000,4000], r'$T_0$')} # at bottom of atmosphere
+            'T0': ([1000,4000], r'$T_0$')} # at bottom of atmosphere
     free_params.update(pt_params)
 
 # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios

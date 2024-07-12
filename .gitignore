@@ -1,6 +1,6 @@
 2M0355_*/
 2M1425_*/
-testspec_*/
+testspec/**/*
 prepare_spectrum*
 atmosphere_objects*
 atm_retrieval.egg*
