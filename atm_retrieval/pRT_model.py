@@ -271,7 +271,8 @@ class pRT_spectrum:
                             give_absorption_opacity=self.give_absorption_opacity)
 
             wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
-            flux = atmosphere.flux/np.nanmean(atmosphere.flux)
+            flux=atmosphere.flux
+            #flux = atmosphere.flux/np.nanmean(atmosphere.flux)
 
             # RV+bary shifting and rotational broadening
             v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
@@ -296,7 +297,9 @@ class pRT_spectrum:
                 summed_contr = np.nansum(contr_em,axis=1) # sum over all wavelengths
                 self.contr_em_orders.append(summed_contr)
 
-        return np.array(spectrum_orders)
+        spectrum_orders=np.array(spectrum_orders)
+        spectrum_orders/=np.nanmedian(spectrum_orders) # normalize in same way as data spectrum
+        return spectrum_orders
 
     def make_pt(self,**kwargs): 
 

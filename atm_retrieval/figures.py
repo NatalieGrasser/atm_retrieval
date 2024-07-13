@@ -245,6 +245,8 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
         if len(title) > 30: # change 30 to 1 if you want all titles to be split
             title_split = title.split('=')
             titles[i] = title_split[0] + '\n ' + title_split[1]
+            if i==0:
+                titles[i]=title # leave top-most title, or it will be cut off
         fig.axes[i].title.set_text(titles[i])
 
     corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median values of posterior
@@ -259,7 +261,6 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
     elif not_abundances==True:
         plot_label='rest'
         
-    fig.tight_layout()
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf')
     plt.close()
 

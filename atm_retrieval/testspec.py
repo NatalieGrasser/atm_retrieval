@@ -13,7 +13,7 @@ from astropy.coordinates import SkyCoord
 from spectrum import Spectrum, convolve_to_resolution
 
 def load_spectrum(target):
-   file=np.genfromtxt(f"{target}/{target}.txt",skip_header=1,delimiter=' ')
+   file=np.genfromtxt(f"{target}/{target}_spectrum.txt",skip_header=1,delimiter=' ')
    wl=np.reshape(file[:,0],(7,3,2048))
    fl=np.reshape(file[:,1],(7,3,2048))
    err=np.reshape(file[:,2],(7,3,2048))
@@ -156,7 +156,8 @@ for order in range(n_orders):
                         contribution=False)
    
    wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
-   flux = atmosphere.flux/np.nanmean(atmosphere.flux)
+   flux=atmosphere.flux
+   #flux = atmosphere.flux/np.nanmean(atmosphere.flux)
 
    # RV+bary shifting and rotational broadening
    v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
@@ -177,6 +178,7 @@ for order in range(n_orders):
    spectrum_orders.append(flux)
 
 test_spectrum=np.array(spectrum_orders)
+test_spectrum/=np.nanmedian(test_spectrum) # normalize in same way as data spectrum
 test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
 
 # add Gaussian noise by using flux_err*s^2 (approximate mean of s^2)
@@ -186,4 +188,15 @@ spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
 spectrum[:,0]=data_wave.flatten()
 spectrum[:,1]=test_spectrum_noisy.flatten()
 spectrum[:,2]=data_err.flatten()
-np.savetxt('testspec/testspec.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
+np.savetxt('test/test_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
+
+wl,fl,err=load_spectrum('2M0355')
+wlm,flm,errm=load_spectrum('test')
+fig,ax=plt.subplots(1,1,figsize=(9,2),dpi=200)
+ax.plot(wl.flatten(),fl.flatten(),label='2M0355')
+ax.plot(wlm.flatten(),flm.flatten(),label='testspec',alpha=0.5)
+ax.legend()
+ax.set_xlabel('Wavelength [nm]')
+fig.tight_layout(h_pad=0)
+fig.savefig(f'test/test_spectrum.pdf')
+plt.close()
