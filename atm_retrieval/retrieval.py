@@ -107,7 +107,7 @@ class Retrieval:
                 species.append(species_info.loc[chemspec,'pRT_name'])
         return species
 
-    def get_atmosphere_objects(self,redo=False):
+    def get_atmosphere_objects(self,redo=False,broader=True):
 
         atmosphere_objects=[]
         file=pathlib.Path(f'atmosphere_objects.pickle')
@@ -118,6 +118,10 @@ class Retrieval:
         else:
             for order in range(7):
                 wl_pad=7 # wavelength padding because spectrum is not wavelength shifted yet
+                if broader==True:  # larger wl pad needed when shifting during cross-correlation
+                    rv_max = 501 # maximum RV for cross-corr
+                    wl_max= np.max(self.K2166)
+                    wl_pad = 1.1*rv_max/(const.c.to('km/s').value)*wl_max
                 wlmin=np.min(self.K2166[order])-wl_pad
                 wlmax=np.max(self.K2166[order])+wl_pad
                 wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
@@ -243,12 +247,12 @@ class Retrieval:
         if self.final_params==None:
             self.final_params,_=self.get_final_params_and_spectrum()
         if self.chemistry=='equchem':
-            C1213=1/self.final_params['C13_12_ratio']
-            O1618=1/self.final_params['O18_16_ratio']
-            O1617=1/self.final_params['O17_16_ratio']
-            O1618_H2O=None
-            FeH=self.final_params['Fe/H']
-            CO=self.params['C/O']
+            self.C1213=1/self.final_params['C13_12_ratio']
+            self.O1618=1/self.final_params['O18_16_ratio']
+            self.O1617=1/self.final_params['O17_16_ratio']
+            self.O1618_H2O=None
+            self.FeH=self.final_params['Fe/H']
+            self.CO=self.params['C/O']
         if self.chemistry=='freechem':
             VMR_12CO=10**(self.final_params['log_12CO'])
             VMR_13CO=10**(self.final_params['log_13CO'])
@@ -256,13 +260,13 @@ class Retrieval:
             VMR_C18O=10**(self.final_params['log_C18O'])
             VMR_H2O=10**(self.final_params['log_H2O'])
             VMR_H218O=10**(self.final_params['log_H2(18)O'])
-            C1213=VMR_12CO/VMR_13CO
-            O1618=VMR_12CO/VMR_C18O
-            O1617=VMR_12CO/VMR_C17O
-            O1618_H2O=VMR_H2O/VMR_H218O # 16O/18O as determined through H2O instead of CO
-            FeH=self.final_object.FeH
-            CO=self.final_object.CO
-        return FeH,CO,C1213,O1617,O1618,O1618_H2O # output Fe/H, C/O & isotope ratios
+            self.C1213=VMR_12CO/VMR_13CO
+            self.O1618=VMR_12CO/VMR_C18O
+            self.O1617=VMR_12CO/VMR_C17O
+            self.O1618_H2O=VMR_H2O/VMR_H218O # 16O/18O as determined through H2O instead of CO
+            self.FeH=self.final_object.FeH
+            self.CO=self.final_object.CO
+        return self.FeH,self.CO,self.C1213,self.O1617,self.O1618,self.O1618_H2O # output Fe/H, C/O & isotope ratios
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True):
         self.callback_label='final_'
@@ -279,39 +283,60 @@ class Retrieval:
             # create final model without opacity from a certain molecule
             path=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
             with open(path,'rb') as file:
-                exclusion_dict=pickle.load(file)
-            exclusion_dict[f'log_{molecule}']=-12 # exclude molecule from model
-            exclusion_model=pRT_spectrum(parameters=exclusion_dict,
-                                            data_wave=self.data_wave,
-                                                target=self.target,species=self.species,
-                                                atmosphere_objects=self.atmosphere_objects,
-                                                chemistry=self.chemistry,
-                                                PT_type=self.PT_type).make_spectrum()
-            
-            # data minus model without certain molecule
-            residuals=self.data_flux-exclusion_model
+                final_dict=pickle.load(file)
 
-            # excluded molecule's template: 
-            # complete final model minus final model w/o molecule’s opacity
-            molecule_template=self.final_model-exclusion_model
+            exclusion_dict=final_dict.copy()
+            exclusion_dict[f'log_{molecule}']=-12 # exclude molecule from model
+
+            # necessary for cross-correlation:
+            # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
+            # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
+            # must still be shaped correctly and interpolated
+            exclusion_model,exclusion_model_wl=pRT_spectrum(parameters=exclusion_dict,
+                                        data_wave=self.data_wave,
+                                        target=self.target,species=self.species,
+                                        atmosphere_objects=self.atmosphere_objects,
+                                        chemistry=self.chemistry,PT_type=self.PT_type,
+                                        interpolate=False).make_spectrum()
             
-            # cross-correlation between residuals and molecule template
-            RVs=np.arange(-300,300,1) # km/s
+            final_model_broad,_=pRT_spectrum(parameters=final_dict,
+                                        data_wave=self.data_wave,
+                                        target=self.target,species=self.species,
+                                        atmosphere_objects=self.atmosphere_objects,
+                                        chemistry=self.chemistry,PT_type=self.PT_type,
+                                        interpolate=False).make_spectrum()
+
+            RVs=np.arange(-500,500,1) # km/s
             beta=1.0-RVs/const.c.to('km/s').value
             CCF = np.zeros((self.n_orders,self.n_dets,len(RVs)))
             ACF = np.zeros((self.n_orders,self.n_dets,len(RVs))) # auto-correlation
+
             for order in range(self.n_orders):
                 for det in range(self.n_dets):
-                    wl=self.data_wave[order,det,self.mask_isfinite[order,det]] 
-                    res=residuals[order,det,self.mask_isfinite[order,det]] 
-                    s2_ij=self.final_params['s2_ij'][order,det]
-                    cov_0_res=self.Cov[order,det].solve(res)
-                    wl_shift=wl[:, np.newaxis]*beta[np.newaxis, :]
-                    template=molecule_template[order,det,self.mask_isfinite[order,det]]
-                    cov_0_temp=self.Cov[order,det].solve(template)
-                    template_shift=interp1d(wl,template,fill_value="extrapolate")(wl_shift) # interpolate template onto shifted wl
-                    CCF[order,det]=(template_shift.T).dot(cov_0_res)/s2_ij
-                    ACF[order,det]=(template_shift.T).dot(cov_0_temp)/s2_ij
+
+                    wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
+                    fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
+                    
+                    wl_excl=exclusion_model_wl[order]
+                    fl_excl=exclusion_model[order]*final_dict['phi_ij'][order,det]
+                    fl_final=final_model_broad[order]*final_dict['phi_ij'][order,det]
+
+                    # data minus model without certain molecule
+                    fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
+                    residuals=fl_data-fl_excl_rebinned
+                    self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                    cov_0_res=self.Cov[order,det].solve(residuals)
+                    
+                    # excluded molecule template: complete final model minus final model w/o molecule
+                    molecule_template=fl_final-fl_excl
+                    molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
+                    cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
+                    wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
+                    template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
+                    
+                    CCF[order,det]=(template_shift.T).dot(cov_0_res)
+                    ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+
             CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
             ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
             noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV

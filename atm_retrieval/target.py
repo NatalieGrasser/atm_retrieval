@@ -57,16 +57,30 @@ class Target:
                 flm=np.reshape(model[:,1],(self.n_orders,self.n_dets,self.n_pixels))
                 wl_new=self.wlen_solution(self.fl,self.err,self.wl,flm)
                 np.savetxt(wlcorr,wl_new.flatten(),delimiter=' ',header='corrected wavelength solution (nm)')
+                
                 fig = plt.figure(figsize=(9,3),dpi=200)
                 plt.plot(self.wl[6,2],self.fl[6,2],label='original')
                 plt.plot(wl_new[6,2],self.fl[6,2],label='corrected')
                 plt.plot(wlm[6,2],flm[6,2],linestyle='dashed',color='k',alpha=0.7,label='model')
                 plt.xlim(np.min(wlm[6,2]),np.max(wlm[6,2]))
                 plt.xlabel('Wavelength [nm]')
+                plt.ylabel('Flux')
                 plt.legend()
+                fig.tight_layout()
+                fig.savefig(f'{self.cwd}/{self.name}/wave_corr_part.pdf')
+                plt.close()
+
+                fig = plt.figure(figsize=(9,3),dpi=200)
+                for ord in range(7):
+                    for det in range(3):
+                        plt.plot(self.wl[ord,det],(self.wl[ord,det]-wl_new[ord,det]),color='slateblue')
+                plt.xlim(np.min(self.wl)-10,np.max(self.wl)+10)
+                plt.xlabel('Original wavelength [nm]')
+                plt.ylabel('Original - corrected wavelength [nm]')
                 fig.tight_layout()
                 fig.savefig(f'{self.cwd}/{self.name}/wavelength_correction.pdf')
                 plt.close()
+
                 self.wl=np.reshape(wl_new,(self.n_orders,self.n_dets,self.n_pixels))
 
         return self.wl,self.fl,self.err

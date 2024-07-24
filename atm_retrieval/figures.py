@@ -33,6 +33,101 @@ def plot_spectrum(retrieval_object):
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
     plt.close()
 
+def plot_spectrum_w_inset_nores(retrieval_object):
+
+    wave=retrieval_object.data_wave
+    flux=retrieval_object.data_flux
+    err=retrieval_object.data_err
+    flux_m=retrieval_object.final_spectrum
+
+    fig,ax=plt.subplots(1,1,figsize=(8,1.7),dpi=200)
+    for order in range(7):
+        for det in range(3):
+            lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
+            upper=flux[order,det]+err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
+            ax.plot(wave[order,det],flux[order,det],lw=0.8,alpha=1,c='k',label='data')
+            ax.fill_between(wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+            ax.plot(wave[order,det],flux_m[order,det],lw=0.8,alpha=0.8,c='c',label='model')
+            if order==0 and det==0:
+                ax.legend(ncol=3)
+    ax.set_ylabel('Flux')
+    ax.set_xlim(np.min(wave)-10,np.max(wave)+10)
+
+    ord=5
+    det=2  
+    wl=wave[ord,det]
+    fl=flux[ord,det]
+    fl_m=flux_m[ord,det]
+    axins = ax.inset_axes([0,-1.2,1,1])
+    axins.plot(wl,fl,lw=1,c='k')
+    axins.plot(wl,fl_m,lw=1,c='c')
+    x1, x2, y1, y2 = np.min(wl),np.max(wl),np.nanmin(fl),np.nanmax(fl)
+    axins.set_xlim(x1, x2)
+    box,lines=ax.indicate_inset_zoom(axins, edgecolor="black",alpha=0.3)
+    axins.set_xlabel('Wavelength [nm]')
+    axins.set_ylabel('Flux')
+
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
+                bbox_inches='tight')
+    plt.close()
+
+def plot_spectrum_w_inset(retrieval_object):
+
+    wave=retrieval_object.data_wave
+    flux=retrieval_object.data_flux
+    err=retrieval_object.data_err
+    flux_m=retrieval_object.final_spectrum
+
+    fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
+    for order in range(7):
+        for det in range(3):
+            lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
+            upper=flux[order,det]+err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
+            ax[0].plot(wave[order,det],flux[order,det],lw=0.8,alpha=1,c='k',label='data')
+            ax[0].fill_between(wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+            ax[0].plot(wave[order,det],flux_m[order,det],lw=0.8,alpha=0.8,c='c',label='model')
+            ax[1].plot(wave[order,det],flux[order,det]-flux_m[order,det],lw=0.8,c='slateblue',label='residuals')
+            if order==0 and det==0:
+                lines = [Line2D([0], [0], color='k',linewidth=2),
+                        mpatches.Patch(color='k',alpha=0.15),
+                        Line2D([0], [0], color='c', linewidth=2),
+                        Line2D([0], [0], color='slateblue', linewidth=2)]
+                labels = ['data', '1$\sigma$','model','residuals']
+                ax[0].legend(lines,labels,fontsize=9,ncol=2) # to only have it once
+        ax[1].plot(wave[order].flatten(),np.zeros_like(wave[order].flatten()),lw=0.8,alpha=0.5,c='k')
+    ax[0].set_ylabel('Flux')
+    ax[0].set_xlim(np.min(wave)-10,np.max(wave)+10)
+    ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
+    tick_spacing=10
+    ax[1].xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+    fig.tight_layout(h_pad=-1.7)
+
+    ord=5 
+    axins = ax[0].inset_axes([0,-1.3,1,0.8])
+    for det in range(3):
+        lower=flux[ord,det]-err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+        upper=flux[ord,det]+err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+        axins.fill_between(wave[ord,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+        axins.plot(wave[ord,det],flux[ord,det],lw=0.8,c='k')
+        axins.plot(wave[ord,det],flux_m[ord,det],lw=0.8,c='c',alpha=0.8)
+    x1, x2 = np.min(wave[ord]),np.max(wave[ord])
+    axins.set_xlim(x1, x2)
+    box,lines=ax[0].indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
+    axins.set_ylabel('Flux')
+
+    axins2 = axins.inset_axes([0,-0.3,1,0.3])
+    for det in range(3):
+        axins2.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c='slateblue')
+        axins2.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
+    axins2.set_xlim(x1, x2)
+    axins2.set_xlabel('Wavelength [nm]')
+    tick_spacing=1
+    axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
+                bbox_inches='tight')
+    plt.close()
+
 def plot_spectrum_w_residuals(retrieval_object):
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.final_spectrum)
@@ -67,6 +162,7 @@ def plot_spectrum_w_residuals(retrieval_object):
         ax1.tick_params(labelbottom=False)  # don't put tick labels at bottom
         ax1.tick_params(axis="both")
         ax2.tick_params(axis="both")
+        ax1.set_ylabel('Flux')
         tick_spacing=1
         ax2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
         if x!=18:
@@ -252,7 +348,21 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
     corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median values of posterior
 
     if retrieval_object.bestfit_params is not None:
-        corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='r',lw=1.3,linestyle='solid')
+        corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='b',lw=1.3,linestyle='solid')
+
+    # overplot true values of test spectrum
+    if retrieval_object.target.name=='test':
+        from testspec import test_parameters,test_mathtext
+        compare=np.full(labels.shape,None) # =None for non-input values of test spectrum
+        for key_i in test_parameters.keys():
+            label_i=test_mathtext[key_i]
+            value_i=test_parameters[key_i]
+            if label_i in labels:
+                i=np.where(labels==label_i)[0][0]
+                compare[i]=value_i
+        corner.overplot_lines(fig,np.array(compare),color='r',lw=1.3,linestyle='solid')
+
+    plt.subplots_adjust(wspace=0, hspace=0)
 
     if only_abundances==True:
         plot_label='abundances'
@@ -268,6 +378,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     #plot_spectrum(retrieval_object)
     #plot_residuals(retrieval_object)
     plot_spectrum_w_residuals(retrieval_object)
+    plot_spectrum_w_inset(retrieval_object)
     plot_pt(retrieval_object)
     if split_corner: # split corner plot to avoid massive files
         cornerplot(retrieval_object,only_abundances=True)

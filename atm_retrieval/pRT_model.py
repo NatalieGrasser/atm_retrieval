@@ -9,6 +9,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 import pandas as pd
 from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -34,7 +35,8 @@ class pRT_spectrum:
                  cloud_mode=None,
                  contribution=False, # only for plotting atmosphere.contr_em
                  chemistry='freechem',
-                 PT_type='PTknot'): 
+                 PT_type='PTknot',
+                 interpolate=True): 
         
         self.params=parameters
         self.data_wave=data_wave
@@ -44,6 +46,8 @@ class pRT_spectrum:
         self.spectral_resolution=spectral_resolution
         self.chemistry=chemistry
         self.atmosphere_objects=atmosphere_objects
+        self.lbl_opacity_sampling=3
+        self.interpolate=interpolate
 
         self.n_atm_layers=50
         self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
@@ -232,6 +236,7 @@ class pRT_spectrum:
     def make_spectrum(self):
 
         spectrum_orders=[]
+        waves_orders=[]
         self.contr_em_orders=[]
         for order in range(self.orders):
             atmosphere=self.atmosphere_objects[order]
@@ -283,24 +288,40 @@ class pRT_spectrum:
             spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
             spec = Spectrum(spec, waves_even)
             spec = convolve_to_resolution(spec,self.spectral_resolution)
-            
-            # Interpolate/rebin onto the data's wavelength grid
-            ref_wave = self.data_wave[order].flatten() # [nm]
-            flux = np.interp(ref_wave, spec.wavelengths*1e3, spec) # pRT wavelengths from microns to nm
 
-            # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
-            flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
+            #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
+            self.resolution = int(1e6/self.lbl_opacity_sampling)
+            flux=self.instr_broadening(spec.wavelengths*1e3,spec,
+                                             out_res=self.resolution,in_res=500000)
+
+            # Interpolate/rebin onto the data's wavelength grid
+            # should not be done when making spectrum for cross-corr, or wl padding will be cut off
+            if self.interpolate==True:
+                ref_wave = self.data_wave[order].flatten() # [nm]
+                flux = np.interp(ref_wave, spec.wavelengths*1e3, flux) # pRT wavelengths from microns to nm
+
+                # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
+                flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
+
             spectrum_orders.append(flux)
+            waves_orders.append(waves_even*1e3) # from um to nm
 
             if self.contribution==True:
                 contr_em = atmosphere.contr_em # emission contribution
                 summed_contr = np.nansum(contr_em,axis=1) # sum over all wavelengths
                 self.contr_em_orders.append(summed_contr)
 
-        spectrum_orders=np.array(spectrum_orders)
-        spectrum_orders/=np.nanmedian(spectrum_orders) # normalize in same way as data spectrum
-        return spectrum_orders
-
+        if self.interpolate==False:
+            get_median=np.array([])
+            for order in range(7): # append value by value because not all the same size
+                get_median=np.append(get_median,spectrum_orders[order]) 
+            spectrum_orders/=np.nanmedian(get_median) # orders not same size, np.median didn't work otherwise
+            return spectrum_orders, waves_orders
+        else:
+            spectrum_orders=np.array(spectrum_orders)
+            spectrum_orders/=np.nanmedian(spectrum_orders) # normalize in same way as data spectrum
+            return spectrum_orders
+            
     def make_pt(self,**kwargs): 
 
         if self.PT_type=='PTknot': # retrieve temperature knots
@@ -343,4 +364,17 @@ class pRT_spectrum:
         
         return self.temperature
     
+    def instr_broadening(self, wave, flux, out_res=1e6, in_res=1e6):
+
+        # Delta lambda of resolution element is FWHM of the LSF's standard deviation
+        sigma_LSF = np.sqrt(1/out_res**2-1/in_res**2)/(2*np.sqrt(2*np.log(2)))
+        spacing = np.mean(2*np.diff(wave) / (wave[1:] + wave[:-1]))
+
+        # Calculate the sigma to be used in the gauss filter in pixels
+        sigma_LSF_gauss_filter = sigma_LSF / spacing
+        
+        # Apply gaussian filter to broaden with the spectral resolution
+        flux_LSF = gaussian_filter(flux, sigma=sigma_LSF_gauss_filter,mode='nearest')
+
+        return flux_LSF
 
