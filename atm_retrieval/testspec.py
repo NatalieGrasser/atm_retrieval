@@ -26,7 +26,6 @@ if __name__ == "__main__":
    import numpy as np
    import pandas as pd
    import os
-   os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
    from petitRADTRANS import Radtrans
    from PyAstronomy.pyasl import fastRotBroad, helcorr
    from astropy import constants as const
