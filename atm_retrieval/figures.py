@@ -190,7 +190,7 @@ def plot_residuals(retrieval_object):
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_residuals.pdf')
     plt.close()
 
-def plot_pt(retrieval_object):
+def plot_pt(retrieval_object,ax=None):
     
     if retrieval_object.chemistry=='equchem':
         C_O = retrieval_object.final_object.params['C/O']
@@ -199,7 +199,8 @@ def plot_pt(retrieval_object):
         C_O = retrieval_object.final_object.CO
         Fe_H = retrieval_object.final_object.FeH   
 
-    fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
+    if ax==None: # make separate plot
+        fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
     cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
     cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
     cs_colors=['hotpink','fuchsia','crimson','plum']
@@ -285,11 +286,15 @@ def plot_pt(retrieval_object):
         lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot'))
         labels.append('Zhang+2022')
     ax.legend(lines,labels,fontsize=9)
-    fig.tight_layout()
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
-    plt.close()
 
-def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abundances=False):
+    if ax==None: # save as separate plot
+        fig.tight_layout()
+        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
+        plt.close()
+
+def cornerplot(retrieval_object,getfig=False,
+               only_abundances=False,only_params=None,not_abundances=False):
+    
     plot_posterior=retrieval_object.posterior # posterior that we plot here, might get clipped
     medians,_,_=retrieval_object.get_quantiles(retrieval_object.posterior)
     labels=list(retrieval_object.parameters.param_mathtext.values())
@@ -374,8 +379,12 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
     elif not_abundances==True:
         plot_label='rest'
         
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf')
-    plt.close()
+    if getfig==False:
+        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf')
+        plt.close()
+    else:
+        ax = np.array(fig.axes)
+        return fig, ax
 
 def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
     #plot_spectrum(retrieval_object)
@@ -385,9 +394,15 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     if split_corner: # split corner plot to avoid massive files
         cornerplot(retrieval_object,only_abundances=True)
         cornerplot(retrieval_object,not_abundances=True)
-    else: # make cornerplot with all parameters
+    else: # make cornerplot with all parameters, could be huge
         cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
     plot_pt(retrieval_object)
+
+def summary_plot(retrieval_object):
+    fig, ax = corner.corner(getfig=True)
+    l, b, w, h = [0.4,0.70,0.57,0.25] # left, bottom, width, height
+    ax_PT = fig.add_axes([l,b,w,h])
+    plot_pt(ax=ax_PT)
 
 def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
@@ -406,6 +421,5 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     ax2.set_ylabel('CCF-ACF')
     ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
     plt.subplots_adjust(wspace=0, hspace=0)
-    #fig.tight_layout(h_pad=-2)
     fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
     plt.close()

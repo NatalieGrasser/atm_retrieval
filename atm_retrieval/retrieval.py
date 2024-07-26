@@ -364,7 +364,7 @@ class Retrieval:
     def bayes_evidence(self,molecules):
 
         parent_output_dir=self.output_dir # save end results here
-        self.output_dir=f'{parent_output_dir}/evidence_retrievals' # store output in separate folder
+        self.output_dir=pathlib.Path(f'{parent_output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
 

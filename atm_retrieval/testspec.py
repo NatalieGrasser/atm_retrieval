@@ -218,19 +218,20 @@ if __name__ == "__main__":
    test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
 
    # add Gaussian noise by using flux_err*s^2 (approximate mean of s^2)
-   test_spectrum_noisy=test_spectrum+np.random.normal(0,np.nanmean(data_err)*10,size=test_spectrum.shape)
+   test_spectrum_noisy=test_spectrum+np.random.normal(0,np.nanmean(data_err)*20,size=test_spectrum.shape)
 
    spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
    spectrum[:,0]=data_wave.flatten()
    spectrum[:,1]=test_spectrum_noisy.flatten()
-   spectrum[:,2]=data_err.flatten()*10
+   spectrum[:,2]=data_err.flatten()
    np.savetxt('test/test_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
 
    wl,fl,err=load_spectrum('2M0355')
    wlm,flm,errm=load_spectrum('test')
    fig,ax=plt.subplots(1,1,figsize=(9,2),dpi=200)
-   ax.plot(wl.flatten(),fl.flatten(),label='2M0355')
-   ax.plot(wlm.flatten(),flm.flatten(),label='testspec',alpha=0.5)
+   ax.plot(wl.flatten(),fl.flatten(),label='2M0355',lw=0.8)
+   ax.plot(wlm.flatten(),flm.flatten(),label='testspec',alpha=0.5,lw=0.8)
+   ax.plot(wlm.flatten(),test_spectrum.flatten(),label='noiseless testspec',alpha=0.2,color='k',lw=0.8)
    ax.legend()
    ax.set_xlabel('Wavelength [nm]')
    fig.tight_layout(h_pad=0)
