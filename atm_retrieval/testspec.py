@@ -1,22 +1,21 @@
 # generate synthetic spectrum based on 2M0355 to test retrieval
 
-test_dict={'rv': (11.9,r'$v_{\rm rad}$'),
-            'vsini': (5.5,r'$v$ sin$i$'),
+test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
+            'vsini': (6.0,r'$v$ sin$i$'),
             'log_g':(4.75,r'log $g$'),
             'epsilon_limb': (0.6, r'$\epsilon_\mathrm{limb}$'),
-            'log_H2O':(-3.4,r'log H$_2$O'),
-            'log_12CO':(-3.7,r'log $^{12}$CO'),
-            'log_13CO':(-5.2,r'log $^{13}$CO'),
-            'log_CH4':(-6.7,r'log CH$_4$'),
-            'log_NH3':(-7.1,r'log NH$_3$'),
-            'log_HF':(-6.5,r'log HF'),
-            'log_H2(18)O':(-7.5,r'log H$_2^{18}$O'),
-            'log_H2S':(-5.4,r'log H$_2$S')}
+            'log_H2O':(-3.0,r'log H$_2$O'),
+            'log_12CO':(-3.0,r'log $^{12}$CO'),
+            'log_13CO':(-5.0,r'log $^{13}$CO'),
+            'log_CH4':(-6.0,r'log CH$_4$'),
+            'log_HF':(-6.0,r'log HF'),
+            'log_H2(18)O':(-6.0,r'log H$_2^{18}$O'),
+            'log_H2S':(-5.0,r'log H$_2$S')}
 
 test_parameters={}
 test_mathtext={}
 for key_i, (value_i, mathtext_i) in test_dict.items():
-   test_parameters[key_i]   = value_i
+   test_parameters[key_i] = value_i
    test_mathtext[key_i] = mathtext_i
 
 # only execute code if run directly from terminal, otherwise just import params dict
@@ -26,6 +25,13 @@ if __name__ == "__main__":
    import numpy as np
    import pandas as pd
    import os
+   import getpass
+
+   if getpass.getuser() == "natalie": # when testing from my laptop
+      os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
+   elif getpass.getuser() == "grasser": # when running from LEM
+      os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
+   
    from petitRADTRANS import Radtrans
    from PyAstronomy.pyasl import fastRotBroad, helcorr
    from astropy import constants as const
@@ -33,7 +39,6 @@ if __name__ == "__main__":
    from astropy.coordinates import SkyCoord
    from spectrum import Spectrum, convolve_to_resolution
    from scipy.ndimage import gaussian_filter
-
 
    def load_spectrum(target):
       file=np.genfromtxt(f"{target}/{target}_spectrum.txt",skip_header=1,delimiter=' ')
@@ -218,7 +223,7 @@ if __name__ == "__main__":
    spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
    spectrum[:,0]=data_wave.flatten()
    spectrum[:,1]=test_spectrum_noisy.flatten()
-   spectrum[:,2]=data_err.flatten()
+   spectrum[:,2]=data_err.flatten()*10
    np.savetxt('test/test_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
 
    wl,fl,err=load_spectrum('2M0355')

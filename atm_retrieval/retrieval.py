@@ -80,6 +80,7 @@ class Retrieval:
         # redo atmosphere objects when introdocuing new species or MgSiO3 clouds
         self.atmosphere_objects=self.get_atmosphere_objects(redo=redo)
         self.callback_label='live_' # label for plots
+        self.prefix='pmn_'
 
         # will be updated, but needed as None until then
         self.bestfit_params=None 
@@ -172,7 +173,7 @@ class Retrieval:
 
     def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False):
         pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=self.parameters,n_dims=self.parameters.n_params, 
-                        outputfiles_basename=f'{self.output_dir}/pmn_', 
+                        outputfiles_basename=f'{self.output_dir}/{self.prefix}', 
                         verbose=True,const_efficiency_mode=True, sampling_efficiency = 0.5,
                         n_live_points=N_live_points,resume=resume,
                         evidence_tolerance=evidence_tolerance, # default is 0.5, high number -> stops earlier
@@ -180,7 +181,7 @@ class Retrieval:
 
     def PMN_callback(self,n_samples,n_live,n_params,live_points,posterior, 
                     stats,max_ln_L,ln_Z,ln_Z_err,nullcontext):
-        self.callback_label='live_' # label for plots
+        #self.callback_label='live_' # label for plots
         self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
         np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
         self.posterior = posterior[:,:-2] # remove last 2 columns
@@ -189,15 +190,18 @@ class Retrieval:
         figs.make_all_plots(self)
      
     def PMN_analyse(self):
-        self.callback_label='final_'
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
-                                        outputfiles_basename=f'{self.output_dir}/pmn_')  # set up analyzer object
+                                        outputfiles_basename=f'{self.output_dir}/{self.prefix}')  # set up analyzer object
         stats = analyzer.get_stats()
         self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
         self.posterior = self.posterior[:,:-1] # shape 
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
-        
+        if self.prefix=='pmn_':
+            self.lnZ = stats['nested importance sampling global log-evidence']
+        else: # when doing exclusion
+            self.lnZ_ex = stats['nested importance sampling global log-evidence']
+
     def get_quantiles(self,posterior):
         quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
         medians=quantiles[:,1] # median of all params
@@ -216,13 +220,25 @@ class Retrieval:
             self.final_params[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
             self.final_params[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
 
-        # create final spectrum to get phi_ij and s2_ij of bestfit model through likelihood
+        # create final spectrum
         self.final_object=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,
                                        target=self.target,species=self.species,
                                        atmosphere_objects=self.atmosphere_objects,
                                        chemistry=self.chemistry,contribution=contribution,
                                        PT_type=self.PT_type)
         self.final_model=self.final_object.make_spectrum()
+
+        # get isotope and element ratios and save them in final params dict
+        C1213,O1618,O1617,O1618_H2O,FeH,CO=self.get_ratios()
+        self.final_params['12CO/13CO']=C1213
+        self.final_params['12CO/C18O']=O1618
+        self.final_params['12CO/C17O']=O1617
+        self.final_params['H2O/H2(18)O']=O1618_H2O
+        if self.chemistry=='freechem': # otherwise already in dict
+            self.final_params['Fe/H']=FeH
+            self.final_params['C/O']=CO
+
+        # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
         self.final_params['phi_ij']=self.LogLike.phi
         self.final_params['s2_ij']=self.LogLike.s2
@@ -243,16 +259,14 @@ class Retrieval:
         
         return self.final_params,self.final_spectrum
 
-    def get_ratios(self): # can be run after self.evaluate()
-        if self.final_params==None:
-            self.final_params,_=self.get_final_params_and_spectrum()
+    def get_ratios(self): # can only be run after self.evaluate()
         if self.chemistry=='equchem':
-            self.C1213=1/self.final_params['C13_12_ratio']
-            self.O1618=1/self.final_params['O18_16_ratio']
-            self.O1617=1/self.final_params['O17_16_ratio']
-            self.O1618_H2O=None
-            self.FeH=self.final_params['Fe/H']
-            self.CO=self.params['C/O']
+            C1213=1/self.final_params['C13_12_ratio']
+            O1618=1/self.final_params['O18_16_ratio']
+            O1617=1/self.final_params['O17_16_ratio']
+            O1618_H2O=1/self.final_params['O18_16_ratio']
+            FeH=self.final_params['Fe/H']
+            CO=self.final_params['C/O']
         if self.chemistry=='freechem':
             VMR_12CO=10**(self.final_params['log_12CO'])
             VMR_13CO=10**(self.final_params['log_13CO'])
@@ -260,16 +274,16 @@ class Retrieval:
             VMR_C18O=10**(self.final_params['log_C18O'])
             VMR_H2O=10**(self.final_params['log_H2O'])
             VMR_H218O=10**(self.final_params['log_H2(18)O'])
-            self.C1213=VMR_12CO/VMR_13CO
-            self.O1618=VMR_12CO/VMR_C18O
-            self.O1617=VMR_12CO/VMR_C17O
-            self.O1618_H2O=VMR_H2O/VMR_H218O # 16O/18O as determined through H2O instead of CO
-            self.FeH=self.final_object.FeH
-            self.CO=self.final_object.CO
-        return self.FeH,self.CO,self.C1213,self.O1617,self.O1618,self.O1618_H2O # output Fe/H, C/O & isotope ratios
+            C1213=VMR_12CO/VMR_13CO
+            O1618=VMR_12CO/VMR_C18O
+            O1617=VMR_12CO/VMR_C17O
+            O1618_H2O=VMR_H2O/VMR_H218O # 16O/18O as determined through H2O instead of CO
+            FeH=self.final_object.FeH
+            CO=self.final_object.CO
+        return C1213,O1618,O1617,O1618_H2O,FeH,CO
 
-    def evaluate(self,only_abundances=False,only_params=None,split_corner=True):
-        self.callback_label='final_'
+    def evaluate(self,only_abundances=False,only_params=None,split_corner=True,callback_label='final_'):
+        self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
         figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
@@ -324,16 +338,19 @@ class Retrieval:
                     # data minus model without certain molecule
                     fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
                     residuals=fl_data-fl_excl_rebinned
+                    residuals-=np.nanmean(residuals) # mean should be at zero
                     self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
                     cov_0_res=self.Cov[order,det].solve(residuals)
                     
                     # excluded molecule template: complete final model minus final model w/o molecule
                     molecule_template=fl_final-fl_excl
                     molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
+                    molecule_template_rebinned-=np.nanmean(molecule_template_rebinned) # mean should be at zero
                     cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
                     wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
                     template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
-                    
+                    template_shift-=np.nanmean(template_shift) # mean should be at zero
+
                     CCF[order,det]=(template_shift.T).dot(cov_0_res)
                     ACF[order,det]=(template_shift.T).dot(cov_0_temp)
 
@@ -344,5 +361,62 @@ class Retrieval:
             ACF_norm = ACF_sum/noise
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
         
+    def bayes_evidence(self,molecules):
+
+        parent_output_dir=self.output_dir # save end results here
+        self.output_dir=f'{parent_output_dir}/evidence_retrievals' # store output in separate folder
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
+
+        if isinstance(molecules, list)==False:
+            molecules=[molecules] # if only one, make list so that it works in for loop
+
+        for molecule in molecules: # exclude molecule from retrieval
+            new_params=self.parameters.params.copy()
+            key=f'log_{molecule}'
+            if key in new_params: del new_params[key]
+            self.callback_label=f'live_wo{molecule}_'
+            self.prefix=f'pmn_wo{molecule}_' 
+            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+            self.callback_label=f'final_wo{molecule}_'
+            self.evaluate(callback_label=self.callback_label)
+            self.PMN_analyse() # gets self.lnZ_ex
+            lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
+            self.final_params[f'lnBm_{molecule}']=lnB
+            self.final_params[f'sigma_{molecule}']=sigma # save result in dict
+
+        with open(f'{parent_output_dir}/final_params_dict.pickle','wb') as file:
+            pickle.dump(self.final_params,file)
+
+    def compare_evidence(self,ln_Z_A,ln_Z_B):
+        '''
+        Convert log-evidences of two models to a sigma confidence level
+        Originally from Benneke & Seager (2013)
+        Adapted from samderegt/retrieval_base
+        '''
+
+        from scipy.special import lambertw as W
+        from scipy.special import erfcinv
+
+        ln_B = ln_Z_A-ln_Z_B
+        p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
+        sigma = np.sqrt(2)*erfcinv(p)
+            
+        return ln_B,sigma
+
+    def run_retrieval(self,N_live_points=400,evidence_tolerance=0.5,
+                      crosscorr_molecules=None,bayes_molecules=None): 
+        self.N_live_points=N_live_points
+        self.evidence_tolerance=evidence_tolerance
+
+        # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
+        final_params=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
+        if final_params.exists()==False:
+            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+        self.evaluate()
+        if crosscorr_molecules!=None:
+            self.cross_correlation(crosscorr_molecules)
+        if bayes_molecules!=None:
+            self.bayes_evidence(bayes_molecules)
         
 

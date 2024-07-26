@@ -315,6 +315,7 @@ class pRT_spectrum:
             get_median=np.array([])
             for order in range(7): # append value by value because not all the same size
                 get_median=np.append(get_median,spectrum_orders[order]) 
+            spectrum_orders=np.array(spectrum_orders,dtype=object)
             spectrum_orders/=np.nanmedian(get_median) # orders not same size, np.median didn't work otherwise
             return spectrum_orders, waves_orders
         else:

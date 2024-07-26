@@ -123,6 +123,7 @@ def plot_spectrum_w_inset(retrieval_object):
     axins2.set_xlabel('Wavelength [nm]')
     tick_spacing=1
     axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+    plt.subplots_adjust(wspace=0, hspace=0)
 
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
                 bbox_inches='tight')
@@ -131,7 +132,7 @@ def plot_spectrum_w_inset(retrieval_object):
 def plot_spectrum_w_residuals(retrieval_object):
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.final_spectrum)
-    fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.5]*6+[2,0.9]})
+    fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.65]*6+[2,0.9]})
     x=0
     for order in range(7): 
         ax1=ax[x]
@@ -169,7 +170,8 @@ def plot_spectrum_w_residuals(retrieval_object):
             ax3.set_visible(False) # invisible for spacing
         x+=3
     ax[19].set_xlabel('Wavelength [nm]')
-    fig.tight_layout(h_pad=-1.7)
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0,hspace=0)
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
     plt.close()
 
@@ -259,8 +261,8 @@ def plot_pt(retrieval_object):
             upper=retrieval_object.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,1],
                                                         T_base=T0+x*err[1])   
             ax.fill_betweenx(retrieval_object.pressure,lower,upper,color='deepskyblue',alpha=0.15)
-        xmin=np.min((lower,upper))-100
-        xmax=np.max((lower,upper))+100
+        xmin=np.nanmin((lower,upper))-100
+        xmax=np.nanmax((lower,upper))+100
     
     summed_contr=np.nanmean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
@@ -351,16 +353,17 @@ def cornerplot(retrieval_object,only_abundances=False,only_params=None,not_abund
         corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='b',lw=1.3,linestyle='solid')
 
     # overplot true values of test spectrum
-    if retrieval_object.target.name=='test':
-        from testspec import test_parameters,test_mathtext
-        compare=np.full(labels.shape,None) # =None for non-input values of test spectrum
-        for key_i in test_parameters.keys():
-            label_i=test_mathtext[key_i]
-            value_i=test_parameters[key_i]
-            if label_i in labels:
-                i=np.where(labels==label_i)[0][0]
-                compare[i]=value_i
-        corner.overplot_lines(fig,np.array(compare),color='r',lw=1.3,linestyle='solid')
+    if False: # didn't work so well bc x-axis range so small, some didn't show up
+        if retrieval_object.target.name=='test':
+            from testspec import test_parameters,test_mathtext
+            compare=np.full(labels.shape,None) # =None for non-input values of test spectrum
+            for key_i in test_parameters.keys():
+                label_i=test_mathtext[key_i]
+                value_i=test_parameters[key_i]
+                if label_i in labels:
+                    i=np.where(labels==label_i)[0][0]
+                    compare[i]=value_i
+            corner.overplot_lines(fig,np.array(compare),color='r',lw=1.3,linestyle='solid')
 
     plt.subplots_adjust(wspace=0, hspace=0)
 
@@ -379,17 +382,20 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     #plot_residuals(retrieval_object)
     plot_spectrum_w_residuals(retrieval_object)
     plot_spectrum_w_inset(retrieval_object)
-    plot_pt(retrieval_object)
     if split_corner: # split corner plot to avoid massive files
         cornerplot(retrieval_object,only_abundances=True)
         cornerplot(retrieval_object,not_abundances=True)
     else: # make cornerplot with all parameters
         cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
+    plot_pt(retrieval_object)
 
 def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
-    ax1.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-    ax2.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+    for ax in (ax1,ax2):
+        ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+        ax.set_xlim(np.min(RVs),np.max(RVs))
+        ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
+        ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
     ax1.plot(RVs,CCF_norm,color='mediumslateblue',label='CCF')
     ax1.plot(RVs,ACF_norm,color='mediumslateblue',linestyle='dashed',alpha=0.5,label='ACF')
     ax1.set_ylabel('S/N')
@@ -399,6 +405,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     ax2.plot(RVs,CCF_norm-ACF_norm,color='mediumslateblue')
     ax2.set_ylabel('CCF-ACF')
     ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
-    fig.tight_layout(h_pad=-2)
+    plt.subplots_adjust(wspace=0, hspace=0)
+    #fig.tight_layout(h_pad=-2)
     fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
     plt.close()

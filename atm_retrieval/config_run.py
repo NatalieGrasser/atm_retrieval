@@ -91,8 +91,9 @@ if chem=='freechem':
             'log_HF':([-12,-1],r'log HF'),
             'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
             'log_H2S':([-12,-1],r'log H$_2$S'),
-            'log_OH':([-12,-1],r'log OH'),
-            'log_CO2':([-12,-1],r'log CO$_2$')}
+            #'log_OH':([-12,-1],r'log OH'),
+            #'log_CO2':([-12,-1],r'log CO$_2$')
+            }
     
 if cloud_mode=='gray':
     cloud_props={'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'),  
@@ -107,7 +108,7 @@ if cloud_mode=='MgSiO3':
     free_params.update(cloud_props)
     
 if GP==True: # add uncertainty scaling
-    GP_params={'log_a': ([-1,1], r'$\log\ a$'), # one is enough, will be multipled with order/det error
+    GP_params={'log_a': ([-1,1], r'$\log\ a$'), # one is enough, will be multiplied with order/det error
                'log_l': ([-3,0], r'$\log\ l$')}
     free_params.update(GP_params)
 
@@ -120,6 +121,6 @@ params=parameters.params
 retrieval=Retrieval(target=brown_dwarf,parameters=parameters,
                     output_name=output,chemistry=chem,
                     cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
-retrieval.PMN_run(N_live_points=Nlive,evidence_tolerance=tol)
-#only_params=['vsini','log_H2O','log_12CO','log_13CO','T1','T2','T3','T4']
-retrieval.evaluate()
+molecules=['13CO','H2(18)O','H2S']
+retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
+                        crosscorr_molecules=molecules,bayes_molecules=molecules)
