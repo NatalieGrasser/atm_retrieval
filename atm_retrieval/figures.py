@@ -1,4 +1,5 @@
 import getpass
+from math import e
 import os
 if getpass.getuser() == "grasser": # when runnig from LEM
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
@@ -17,13 +18,18 @@ import matplotlib.ticker as ticker
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning) 
 
-def plot_spectrum_inset(retrieval_object,ax=None,inset=True):
+def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
+
+    fontsize=kwargs.pop('fontsize',None)
+    if fontsize!=None:
+        plt.rcParams.update({'font.size': fontsize})
 
     wave=retrieval_object.data_wave
     flux=retrieval_object.data_flux
     err=retrieval_object.data_err
     flux_m=retrieval_object.final_spectrum
 
+    ax=kwargs.pop('ax',None) # ax=None if not passed
     if ax==None:
         fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
@@ -48,7 +54,6 @@ def plot_spectrum_inset(retrieval_object,ax=None,inset=True):
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
     ax[1].xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
-    #fig.tight_layout(h_pad=-1.7)
 
     if inset==True:
         ord=5 
@@ -72,8 +77,10 @@ def plot_spectrum_inset(retrieval_object,ax=None,inset=True):
         axins2.set_xlabel('Wavelength [nm]')
         tick_spacing=1
         axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
-    plt.subplots_adjust(wspace=0, hspace=0)
+    else:
+        ax[1].set_xlabel('Wavelength [nm]') # if no inset
 
+    plt.subplots_adjust(wspace=0, hspace=0)
     if ax==None:
         fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
                     bbox_inches='tight')
@@ -125,8 +132,12 @@ def plot_spectrum_split(retrieval_object):
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
     plt.close()
 
-def plot_pt(retrieval_object,ax=None):
-    
+def plot_pt(retrieval_object,**kwargs):
+
+    fontsize=kwargs.pop('fontsize',None)
+    if fontsize!=None:
+        plt.rcParams.update({'font.size': fontsize})
+
     if retrieval_object.chemistry=='equchem':
         C_O = retrieval_object.final_object.params['C/O']
         Fe_H = retrieval_object.final_object.params['Fe/H']
@@ -134,6 +145,7 @@ def plot_pt(retrieval_object,ax=None):
         C_O = retrieval_object.final_object.CO
         Fe_H = retrieval_object.final_object.FeH   
 
+    ax=kwargs.pop('ax',None) # ax=None if not passed
     if ax==None: # make separate plot
         fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
     cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
@@ -328,51 +340,21 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     else: # make cornerplot with all parameters, could be huge
         cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
     plot_pt(retrieval_object)
+    summary_plot(retrieval_object)
 
 def summary_plot(retrieval_object):
 
-    only_params=['rv','vsini','log_g','epsilon_limb','T0','log_H2O','log_12CO',
+    only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
                  'log_13CO','log_HF','log_H2(18)O','log_H2S']
-    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(14,14))
-    l, b, w, h = [0.37,0.82,0.6,0.15] # left, bottom, width, height
+    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(16,16))
+    l, b, w, h = [0.37,0.84,0.6,0.15] # left, bottom, width, height
     ax_spec = fig.add_axes([l,b,w,h])
+    ax_res = fig.add_axes([l,b-0.03,w,h-0.12])
+    plot_spectrum_inset(retrieval_object,ax=(ax_spec,ax_res),inset=False)
 
-    wave=retrieval_object.data_wave
-    flux=retrieval_object.data_flux
-    err=retrieval_object.data_err
-    flux_m=retrieval_object.final_spectrum
-
-    ord=5 
-    for det in range(3):
-        lower=flux[ord,det]-err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
-        upper=flux[ord,det]+err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
-        ax_spec.fill_between(wave[ord,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
-        ax_spec.plot(wave[ord,det],flux[ord,det],lw=0.8,c='k')
-        ax_spec.plot(wave[ord,det],flux_m[ord,det],lw=0.8,c='c',alpha=0.8)
-        ax_spec.set_xlim(np.min(wave[ord]),np.max(wave[ord]))
-        ax_spec.set_ylabel('Flux')
-
-        ax_res = ax_spec.inset_axes([0,-0.3,1,0.3])
-        for det in range(3):
-            ax_res.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c='slateblue')
-            ax_res.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
-        ax_res.set_xlim(np.min(wave[ord]),np.max(wave[ord]))
-        ax_res.set_xlabel('Wavelength [nm]')
-        tick_spacing=1
-        ax_res.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
-        if det==0:
-            lines = [Line2D([0], [0], color='k',linewidth=2,label='data'),
-                    mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
-                    Line2D([0], [0], color='c', linewidth=2,label='model'),
-                    Line2D([0], [0], color='slateblue', linewidth=2,label='residuals')]
-            ax_res.legend(handles=lines,ncol=2) # to only have it once
-
-    plt.subplots_adjust(wspace=0, hspace=0)
-
-    l, b, w, h = [0.7,0.45,0.27,0.27] # left, bottom, width, height
+    l, b, w, h = [0.68,0.47,0.29,0.29] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
     plot_pt(retrieval_object,ax=ax_PT)
-
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}summary.pdf',
                 bbox_inches="tight",dpi=200)
     plt.close()

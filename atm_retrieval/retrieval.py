@@ -21,6 +21,9 @@ import matplotlib.pyplot as plt
 import astropy.constants as const
 from scipy.interpolate import interp1d
 import copy
+#import warnings
+#warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
+
 
 class Retrieval:
 
@@ -190,7 +193,7 @@ class Retrieval:
         self.posterior = posterior[:,:-2] # remove last 2 columns
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
-        figs.make_all_plots(self)
+        figs.summary_plot(self)
      
     def PMN_analyse(self):
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
@@ -202,7 +205,7 @@ class Retrieval:
         self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
         if self.prefix=='pmn_':
             self.lnZ = stats['nested importance sampling global log-evidence']
-        else: # when doing exclusion
+        else: # when doing exclusion retrievals
             self.lnZ_ex = stats['nested importance sampling global log-evidence']
 
     def get_quantiles(self,posterior):
@@ -245,7 +248,8 @@ class Retrieval:
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
         self.final_params['phi_ij']=self.LogLike.phi
         self.final_params['s2_ij']=self.LogLike.s2
-        self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
+        if self.callback_label=='final_':
+            self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
 
         with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
             pickle.dump(self.final_params,file)
@@ -290,8 +294,8 @@ class Retrieval:
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
-        #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
-        figs.summary_plot(self)
+        figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
+        #figs.summary_plot(self)
         
     def cross_correlation(self,molecules,noiserange=50,save=False): # can only be run after evaluate()
 
