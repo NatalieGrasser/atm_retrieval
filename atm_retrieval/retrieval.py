@@ -200,7 +200,7 @@ class Retrieval:
         if self.prefix=='pmn_':
             self.lnZ = stats['nested importance sampling global log-evidence']
         else: # when doing exclusion
-            self.lnZ_ex = stats['nested importance sampling global log-evidence']
+            self.lnZ_ex = np.log(stats['nested importance sampling global log-evidence'])
 
     def get_quantiles(self,posterior):
         quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
@@ -387,6 +387,8 @@ class Retrieval:
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label)
             self.PMN_analyse() # gets self.lnZ_ex
+            print(f'lnZ=',self.lnZ)
+            print(f'lnZ_{molecule}=',self.lnZ_ex)
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
             print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
@@ -408,6 +410,10 @@ class Retrieval:
 
         ln_B = ln_Z_A-ln_Z_B
         p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
+
+        #RuntimeWarning: overflow encountered in exp
+        #p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
+
         sigma = np.sqrt(2)*erfcinv(p)
             
         return ln_B,sigma
