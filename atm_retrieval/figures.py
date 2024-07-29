@@ -14,71 +14,19 @@ from matplotlib.lines import Line2D
 from scipy.interpolate import CubicSpline
 import matplotlib.patches as mpatches
 import matplotlib.ticker as ticker
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning) 
 
-def plot_spectrum(retrieval_object):
-    fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
-    for order in range(7):
-        for det in range(3):
-            ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            lower=retrieval_object.data_flux[order,det]-retrieval_object.data_err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
-            upper=retrieval_object.data_flux[order,det]+retrieval_object.data_err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
-            ax[order].fill_between(retrieval_object.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
-            ax[order].plot(retrieval_object.data_wave[order,det],retrieval_object.final_spectrum[order,det],lw=0.8,alpha=0.8,c='c',label='model')
-            #ax[order].yaxis.set_visible(False) # remove ylabels because anyway unitless
-            if order==0 and det==0:
-                ax[order].legend(ncol=3) # to only have it once
-        ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
-    ax[6].set_xlabel('Wavelength [nm]')
-    fig.tight_layout(h_pad=0.1)
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
-    plt.close()
-
-def plot_spectrum_w_inset_nores(retrieval_object):
+def plot_spectrum_inset(retrieval_object,ax=None,inset=True):
 
     wave=retrieval_object.data_wave
     flux=retrieval_object.data_flux
     err=retrieval_object.data_err
     flux_m=retrieval_object.final_spectrum
 
-    fig,ax=plt.subplots(1,1,figsize=(8,1.7),dpi=200)
-    for order in range(7):
-        for det in range(3):
-            lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
-            upper=flux[order,det]+err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
-            ax.plot(wave[order,det],flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            ax.fill_between(wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
-            ax.plot(wave[order,det],flux_m[order,det],lw=0.8,alpha=0.8,c='c',label='model')
-            if order==0 and det==0:
-                ax.legend(ncol=3)
-    ax.set_ylabel('Flux')
-    ax.set_xlim(np.min(wave)-10,np.max(wave)+10)
+    if ax==None:
+        fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
-    ord=5
-    det=2  
-    wl=wave[ord,det]
-    fl=flux[ord,det]
-    fl_m=flux_m[ord,det]
-    axins = ax.inset_axes([0,-1.2,1,1])
-    axins.plot(wl,fl,lw=1,c='k')
-    axins.plot(wl,fl_m,lw=1,c='c')
-    x1, x2, y1, y2 = np.min(wl),np.max(wl),np.nanmin(fl),np.nanmax(fl)
-    axins.set_xlim(x1, x2)
-    box,lines=ax.indicate_inset_zoom(axins, edgecolor="black",alpha=0.3)
-    axins.set_xlabel('Wavelength [nm]')
-    axins.set_ylabel('Flux')
-
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
-                bbox_inches='tight')
-    plt.close()
-
-def plot_spectrum_w_inset(retrieval_object):
-
-    wave=retrieval_object.data_wave
-    flux=retrieval_object.data_flux
-    err=retrieval_object.data_err
-    flux_m=retrieval_object.final_spectrum
-
-    fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
     for order in range(7):
         for det in range(3):
             lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
@@ -100,36 +48,38 @@ def plot_spectrum_w_inset(retrieval_object):
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
     ax[1].xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
-    fig.tight_layout(h_pad=-1.7)
+    #fig.tight_layout(h_pad=-1.7)
 
-    ord=5 
-    axins = ax[0].inset_axes([0,-1.3,1,0.8])
-    for det in range(3):
-        lower=flux[ord,det]-err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
-        upper=flux[ord,det]+err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
-        axins.fill_between(wave[ord,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
-        axins.plot(wave[ord,det],flux[ord,det],lw=0.8,c='k')
-        axins.plot(wave[ord,det],flux_m[ord,det],lw=0.8,c='c',alpha=0.8)
-    x1, x2 = np.min(wave[ord]),np.max(wave[ord])
-    axins.set_xlim(x1, x2)
-    box,lines=ax[0].indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
-    axins.set_ylabel('Flux')
+    if inset==True:
+        ord=5 
+        axins = ax[0].inset_axes([0,-1.3,1,0.8])
+        for det in range(3):
+            lower=flux[ord,det]-err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+            upper=flux[ord,det]+err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+            axins.fill_between(wave[ord,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+            axins.plot(wave[ord,det],flux[ord,det],lw=0.8,c='k')
+            axins.plot(wave[ord,det],flux_m[ord,det],lw=0.8,c='c',alpha=0.8)
+        x1, x2 = np.min(wave[ord]),np.max(wave[ord])
+        axins.set_xlim(x1, x2)
+        box,lines=ax[0].indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
+        axins.set_ylabel('Flux')
 
-    axins2 = axins.inset_axes([0,-0.3,1,0.3])
-    for det in range(3):
-        axins2.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c='slateblue')
-        axins2.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
-    axins2.set_xlim(x1, x2)
-    axins2.set_xlabel('Wavelength [nm]')
-    tick_spacing=1
-    axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+        axins2 = axins.inset_axes([0,-0.3,1,0.3])
+        for det in range(3):
+            axins2.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c='slateblue')
+            axins2.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
+        axins2.set_xlim(x1, x2)
+        axins2.set_xlabel('Wavelength [nm]')
+        tick_spacing=1
+        axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
     plt.subplots_adjust(wspace=0, hspace=0)
 
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
-                bbox_inches='tight')
-    plt.close()
+    if ax==None:
+        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
+                    bbox_inches='tight')
+        plt.close()
 
-def plot_spectrum_w_residuals(retrieval_object):
+def plot_spectrum_split(retrieval_object):
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.final_spectrum)
     fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.65]*6+[2,0.9]})
@@ -173,21 +123,6 @@ def plot_spectrum_w_residuals(retrieval_object):
     fig.tight_layout()
     plt.subplots_adjust(wspace=0,hspace=0)
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
-    plt.close()
-
-def plot_residuals(retrieval_object):
-    fig,ax=plt.subplots(7,1,figsize=(9,9),dpi=200)
-    residuals=(retrieval_object.data_flux-retrieval_object.final_spectrum)
-    for order in range(7):
-        for det in range(3):
-            ax[order].plot(retrieval_object.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c='k',label='residuals')
-            ax[order].plot(retrieval_object.data_wave[order,det],np.zeros_like(retrieval_object.data_wave[order,det]),lw=0.8,alpha=0.8,c='c')
-            if order==0 and det==0:
-                ax[order].legend() # to only have it once
-        ax[order].set_xlim(np.nanmin(retrieval_object.data_wave[order]),np.nanmax(retrieval_object.data_wave[order]))
-    ax[6].set_xlabel('Wavelength [nm]')
-    fig.tight_layout(h_pad=0.1)
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_residuals.pdf')
     plt.close()
 
 def plot_pt(retrieval_object,ax=None):
@@ -276,23 +211,22 @@ def plot_pt(retrieval_object,ax=None):
     # https://github.com/cphyc/matplotlib-label-lines
     labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
     if retrieval_object.PT_type=='PTknot':
-        lines=[Line2D([0], [0], marker='o', color='deepskyblue', markerfacecolor='deepskyblue' ,linewidth=2, linestyle='-')]
+        lines=[Line2D([0],[0],marker='o',color='deepskyblue',markerfacecolor='deepskyblue',
+                      linewidth=2,linestyle='-',label='This retrieval')]
     elif retrieval_object.PT_type=='PTgrad':
-        lines=[Line2D([0], [0], color='deepskyblue',linewidth=2, linestyle='-')]
-    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot'))
-    lines.append(Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--'))
-    labels = ['This retrieval','Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$','Contribution']
+        lines=[Line2D([0], [0], color='deepskyblue',linewidth=2, linestyle='-',label='This retrieval')]
+    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
+    lines.append(Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--',label='Contribution'))
     if retrieval_object.target.name=='2M0355':
-        lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot'))
-        labels.append('Zhang+2022')
-    ax.legend(lines,labels,fontsize=9)
+        lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
+    ax.legend(handles=lines,fontsize=9)
 
     if ax==None: # save as separate plot
         fig.tight_layout()
         fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
         plt.close()
 
-def cornerplot(retrieval_object,getfig=False,
+def cornerplot(retrieval_object,getfig=False,figsize=(20,20),
                only_abundances=False,only_params=None,not_abundances=False):
     
     plot_posterior=retrieval_object.posterior # posterior that we plot here, might get clipped
@@ -330,7 +264,7 @@ def cornerplot(retrieval_object,getfig=False,
         medians=np.array([medians[i] for i in set_diff])
         indices=set_diff
 
-    fig = plt.figure(figsize=(20,20)) # fix size to avoid memory issues
+    fig = plt.figure(figsize=figsize) # fix size to avoid memory issues
     fig = corner.corner(plot_posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize': 12},
@@ -348,14 +282,12 @@ def cornerplot(retrieval_object,getfig=False,
         if len(title) > 30: # change 30 to 1 if you want all titles to be split
             title_split = title.split('=')
             titles[i] = title_split[0] + '\n ' + title_split[1]
-            if i==0:
-                titles[i]=title # leave top-most title, or it will be cut off
         fig.axes[i].title.set_text(titles[i])
 
-    corner.overplot_lines(fig,medians,color='c',lw=1.3,linestyle='solid') # plot median values of posterior
+    corner.overplot_lines(fig,medians,color='b',lw=1.3,linestyle='solid') # plot median values of posterior
 
-    if retrieval_object.bestfit_params is not None:
-        corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='b',lw=1.3,linestyle='solid')
+    #if retrieval_object.bestfit_params is not None:
+        #corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='b',lw=1.3,linestyle='solid')
 
     # overplot true values of test spectrum
     if False: # didn't work so well bc x-axis range so small, some didn't show up
@@ -380,17 +312,16 @@ def cornerplot(retrieval_object,getfig=False,
         plot_label='rest'
         
     if getfig==False:
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf')
+        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf',
+                    bbox_inches="tight",dpi=200)
         plt.close()
     else:
         ax = np.array(fig.axes)
         return fig, ax
 
 def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
-    #plot_spectrum(retrieval_object)
-    #plot_residuals(retrieval_object)
-    plot_spectrum_w_residuals(retrieval_object)
-    plot_spectrum_w_inset(retrieval_object)
+    plot_spectrum_split(retrieval_object)
+    plot_spectrum_inset(retrieval_object)
     if split_corner: # split corner plot to avoid massive files
         cornerplot(retrieval_object,only_abundances=True)
         cornerplot(retrieval_object,not_abundances=True)
@@ -399,10 +330,52 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     plot_pt(retrieval_object)
 
 def summary_plot(retrieval_object):
-    fig, ax = corner.corner(getfig=True)
-    l, b, w, h = [0.4,0.70,0.57,0.25] # left, bottom, width, height
+
+    only_params=['rv','vsini','log_g','epsilon_limb','T0','log_H2O','log_12CO',
+                 'log_13CO','log_HF','log_H2(18)O','log_H2S']
+    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(14,14))
+    l, b, w, h = [0.37,0.82,0.6,0.15] # left, bottom, width, height
+    ax_spec = fig.add_axes([l,b,w,h])
+
+    wave=retrieval_object.data_wave
+    flux=retrieval_object.data_flux
+    err=retrieval_object.data_err
+    flux_m=retrieval_object.final_spectrum
+
+    ord=5 
+    for det in range(3):
+        lower=flux[ord,det]-err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+        upper=flux[ord,det]+err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+        ax_spec.fill_between(wave[ord,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+        ax_spec.plot(wave[ord,det],flux[ord,det],lw=0.8,c='k')
+        ax_spec.plot(wave[ord,det],flux_m[ord,det],lw=0.8,c='c',alpha=0.8)
+        ax_spec.set_xlim(np.min(wave[ord]),np.max(wave[ord]))
+        ax_spec.set_ylabel('Flux')
+
+        ax_res = ax_spec.inset_axes([0,-0.3,1,0.3])
+        for det in range(3):
+            ax_res.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c='slateblue')
+            ax_res.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
+        ax_res.set_xlim(np.min(wave[ord]),np.max(wave[ord]))
+        ax_res.set_xlabel('Wavelength [nm]')
+        tick_spacing=1
+        ax_res.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+        if det==0:
+            lines = [Line2D([0], [0], color='k',linewidth=2,label='data'),
+                    mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
+                    Line2D([0], [0], color='c', linewidth=2,label='model'),
+                    Line2D([0], [0], color='slateblue', linewidth=2,label='residuals')]
+            ax_res.legend(handles=lines,ncol=2) # to only have it once
+
+    plt.subplots_adjust(wspace=0, hspace=0)
+
+    l, b, w, h = [0.7,0.45,0.27,0.27] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
-    plot_pt(ax=ax_PT)
+    plot_pt(retrieval_object,ax=ax_PT)
+
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}summary.pdf',
+                bbox_inches="tight",dpi=200)
+    plt.close()
 
 def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
@@ -420,6 +393,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     ax2.plot(RVs,CCF_norm-ACF_norm,color='mediumslateblue')
     ax2.set_ylabel('CCF-ACF')
     ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
+    fig.tight_layout()
     plt.subplots_adjust(wspace=0, hspace=0)
     fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
     plt.close()

@@ -242,6 +242,7 @@ class Retrieval:
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
         self.final_params['phi_ij']=self.LogLike.phi
         self.final_params['s2_ij']=self.LogLike.s2
+        self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
 
         with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
             pickle.dump(self.final_params,file)
@@ -286,20 +287,18 @@ class Retrieval:
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
-        figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
-
+        #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
+        figs.summary_plot(self)
+        
     def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
 
+        self.SNRs={}
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules:
             # create final model without opacity from a certain molecule
-            path=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
-            with open(path,'rb') as file:
-                final_dict=pickle.load(file)
-
-            exclusion_dict=final_dict.copy()
+            exclusion_dict=self.final_params.copy()
             exclusion_dict[f'log_{molecule}']=-12 # exclude molecule from model
 
             # necessary for cross-correlation:
@@ -313,7 +312,7 @@ class Retrieval:
                                         chemistry=self.chemistry,PT_type=self.PT_type,
                                         interpolate=False).make_spectrum()
             
-            final_model_broad,_=pRT_spectrum(parameters=final_dict,
+            final_model_broad,_=pRT_spectrum(parameters=self.final_params,
                                         data_wave=self.data_wave,
                                         target=self.target,species=self.species,
                                         atmosphere_objects=self.atmosphere_objects,
@@ -332,8 +331,8 @@ class Retrieval:
                     fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
                     
                     wl_excl=exclusion_model_wl[order]
-                    fl_excl=exclusion_model[order]*final_dict['phi_ij'][order,det]
-                    fl_final=final_model_broad[order]*final_dict['phi_ij'][order,det]
+                    fl_excl=exclusion_model[order]*self.final_params['phi_ij'][order,det]
+                    fl_final=final_model_broad[order]*self.final_params['phi_ij'][order,det]
 
                     # data minus model without certain molecule
                     fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
@@ -359,14 +358,21 @@ class Retrieval:
             noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
             CCF_norm = CCF_sum/noise # get ccf map in S/N units
             ACF_norm = ACF_sum/noise
+            SNR=CCF_norm[np.where(RVs==0)[0][0]]
+            self.SNRs[f'SNR_{molecule}']=SNR
+            self.final_params[f'SNR_{molecule}']=SNR
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
-        
+
+        #with open(f'{self.output_dir}/final_params_dict.pickle','ab+') as file:
+            #pickle.dump(self.SNRs,file) # append SNRs to final params dict (to avoid issues with overwriting)
+        with open(f'{self.output_dir}/final_params_dict.pickle','wb') as file:
+            pickle.dump(self.final_params,file) # append SNRs to final params dict (to avoid issues with overwriting)
+
     def bayes_evidence(self,molecules):
 
         parent_output_dir=self.output_dir # save end results here
         self.output_dir=pathlib.Path(f'{parent_output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
 
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
@@ -382,6 +388,8 @@ class Retrieval:
             self.evaluate(callback_label=self.callback_label)
             self.PMN_analyse() # gets self.lnZ_ex
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
+            print(f'lnBm_{molecule}=',lnB)
+            print(f'sigma_{molecule}=',sigma)
             self.final_params[f'lnBm_{molecule}']=lnB
             self.final_params[f'sigma_{molecule}']=sigma # save result in dict
 
