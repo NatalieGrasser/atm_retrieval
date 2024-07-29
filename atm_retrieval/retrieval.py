@@ -20,6 +20,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import astropy.constants as const
 from scipy.interpolate import interp1d
+import copy
 
 class Retrieval:
 
@@ -377,7 +378,7 @@ class Retrieval:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            new_parameters=self.parameters.copy()
+            new_parameters=copy.copy(self.parameters)
             key=f'log_{molecule}'
             if key in new_parameters.params: del new_parameters.params[key]
             print('New parameter priors for exclusion retrieval:\n',new_parameters.params)
