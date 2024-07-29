@@ -171,8 +171,10 @@ class Retrieval:
         ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
         return ln_L
 
-    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False):
-        pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=self.parameters,n_dims=self.parameters.n_params, 
+    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False,param_prior=None):
+        if param_prior==None: # can also be added manually for exclusion retrievals
+            param_prior=self.parameters # use default if not passed as kwarg
+        pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=param_prior,n_dims=param_prior.n_params, 
                         outputfiles_basename=f'{self.output_dir}/{self.prefix}', 
                         verbose=True,const_efficiency_mode=True, sampling_efficiency = 0.5,
                         n_live_points=N_live_points,resume=resume,
@@ -200,7 +202,7 @@ class Retrieval:
         if self.prefix=='pmn_':
             self.lnZ = stats['nested importance sampling global log-evidence']
         else: # when doing exclusion
-            self.lnZ_ex = np.log(stats['nested importance sampling global log-evidence'])
+            self.lnZ_ex = stats['nested importance sampling global log-evidence']
 
     def get_quantiles(self,posterior):
         quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
@@ -290,9 +292,8 @@ class Retrieval:
         #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
         figs.summary_plot(self)
         
-    def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
+    def cross_correlation(self,molecules,noiserange=50,save=False): # can only be run after evaluate()
 
-        self.SNRs={}
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
@@ -359,16 +360,14 @@ class Retrieval:
             CCF_norm = CCF_sum/noise # get ccf map in S/N units
             ACF_norm = ACF_sum/noise
             SNR=CCF_norm[np.where(RVs==0)[0][0]]
-            self.SNRs[f'SNR_{molecule}']=SNR
             self.final_params[f'SNR_{molecule}']=SNR
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
 
-        #with open(f'{self.output_dir}/final_params_dict.pickle','ab+') as file:
-            #pickle.dump(self.SNRs,file) # append SNRs to final params dict (to avoid issues with overwriting)
-        with open(f'{self.output_dir}/final_params_dict.pickle','wb') as file:
-            pickle.dump(self.final_params,file) # append SNRs to final params dict (to avoid issues with overwriting)
+        if save:
+            with open(f'{self.output_dir}/final_params_dict.pickle','wb') as file:
+                pickle.dump(self.final_params,file) # save to final_params
 
-    def bayes_evidence(self,molecules):
+    def bayes_evidence(self,molecules,save=False):
 
         parent_output_dir=self.output_dir # save end results here
         self.output_dir=pathlib.Path(f'{parent_output_dir}/evidence_retrievals') # store output in separate folder
@@ -378,12 +377,14 @@ class Retrieval:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            new_params=self.parameters.params.copy()
+            new_parameters=self.parameters.copy()
             key=f'log_{molecule}'
-            if key in new_params: del new_params[key]
+            if key in new_parameters.params: del new_parameters.params[key]
+            print('New parameter priors for exclusion retrieval:\n',new_parameters.params)
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
-            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,
+                         param_prior=new_parameters)
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label)
             self.PMN_analyse() # gets self.lnZ_ex
@@ -395,8 +396,9 @@ class Retrieval:
             self.final_params[f'lnBm_{molecule}']=lnB
             self.final_params[f'sigma_{molecule}']=sigma # save result in dict
 
-        with open(f'{parent_output_dir}/final_params_dict.pickle','wb') as file:
-            pickle.dump(self.final_params,file)
+        if save:
+            with open(f'{parent_output_dir}/final_params_dict.pickle','wb') as file:
+                pickle.dump(self.final_params,file)
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):
         '''
@@ -410,10 +412,6 @@ class Retrieval:
 
         ln_B = ln_Z_A-ln_Z_B
         p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
-
-        #RuntimeWarning: overflow encountered in exp
-        #p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
-
         sigma = np.sqrt(2)*erfcinv(p)
             
         return ln_B,sigma
@@ -429,8 +427,8 @@ class Retrieval:
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
         self.evaluate()
         if crosscorr_molecules!=None:
-            self.cross_correlation(crosscorr_molecules)
+            self.cross_correlation(crosscorr_molecules,save=True)
         if bayes_molecules!=None:
-            self.bayes_evidence(bayes_molecules)
+            self.bayes_evidence(bayes_molecules,save=True)
         
 

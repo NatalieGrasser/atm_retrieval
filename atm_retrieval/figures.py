@@ -378,6 +378,7 @@ def summary_plot(retrieval_object):
     plt.close()
 
 def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
+    SNR=CCF_norm[np.where(RVs==0)[0][0]]
     fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
     for ax in (ax1,ax2):
         ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
@@ -387,8 +388,9 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     ax1.plot(RVs,CCF_norm,color='mediumslateblue',label='CCF')
     ax1.plot(RVs,ACF_norm,color='mediumslateblue',linestyle='dashed',alpha=0.5,label='ACF')
     ax1.set_ylabel('S/N')
-    ax1.legend()
-    molecule_label=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+    ax1.legend(loc='upper right')
+    molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+    molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
     ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
     ax2.plot(RVs,CCF_norm-ACF_norm,color='mediumslateblue')
     ax2.set_ylabel('CCF-ACF')
