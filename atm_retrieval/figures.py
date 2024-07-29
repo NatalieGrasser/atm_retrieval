@@ -30,7 +30,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
     flux_m=retrieval_object.final_spectrum
 
     ax=kwargs.pop('ax',None) # ax=None if not passed
-    if ax==None:
+    if 'ax'==None:
+        #print('making figure and ax')
         fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
     for order in range(7):

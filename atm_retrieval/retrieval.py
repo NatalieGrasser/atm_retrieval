@@ -294,8 +294,9 @@ class Retrieval:
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
-        figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
-        #figs.summary_plot(self)
+        #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
+        figs.summary_plot(self)
+        #figs.plot_spectrum_inset(self)
         
     def cross_correlation(self,molecules,noiserange=50,save=False): # can only be run after evaluate()
 
