@@ -139,10 +139,12 @@ class Target:
                            lw=0.8,alpha=alph,label=label3,c='k')
             ax[order].set_xlim(np.min(np.reshape(wl,(self.n_orders,self.n_dets*self.n_pixels))[order]),
                                np.max(np.reshape(wl,(self.n_orders,self.n_dets*self.n_pixels))[order]))
-        ax[0].legend(fontsize=8)
+            ax[order].tick_params(labelsize=8)
+        ax[0].legend(fontsize=11,ncol=3,bbox_to_anchor=(0.5,1.4),loc='upper center')
         ax[6].set_xlabel('Wavelength [nm]')
-        fig.tight_layout(h_pad=0)
-        fig.savefig(f'{self.name}/prepare_spectrum.pdf')
+        ax[3].set_ylabel('Normalized Flux')
+        fig.tight_layout(h_pad=0.05)
+        fig.savefig(f'{self.name}/molecfit_{self.name}.pdf')
         plt.close()
 
     def prepare_spectrum(self,target,target_tel,temp,outfile=None):
@@ -155,7 +157,7 @@ class Target:
         fl[zero_mask]=np.nan
         err[zero_mask]=np.nan
         flt[zero_mask]=np.nan
-        #fl0[zero_mask]=np.nan
+        fl0[zero_mask]=np.nan
 
         # mask deepest tellurics: use telluric model because it has a flat baseline
         tel_mask=np.where(flt/np.nanmedian(flt)<0.7)[0]
@@ -168,7 +170,7 @@ class Target:
         err/=flt/continuum*bb
 
         # mask pixels at beginning and end of each detector
-        pm=25 # mask pixels on edge of each detector, plus/minus 20 pixels
+        pm=3 # plus/minus mask pixels on edge of each detector -> NECESSARY?
         fl=np.reshape(fl,(self.n_orders,self.n_dets,2048))
         err=np.reshape(err,(self.n_orders,self.n_dets,2048))
         for order in range(self.n_orders):
@@ -177,6 +179,11 @@ class Target:
                 fl[order,det][-pm:]=np.nan
                 err[order,det][:pm]=np.nan
                 err[order,det][-pm:]=np.nan
+
+        # has issues, needs more masking...
+        pm2=25
+        fl[6,2][:pm2]=np.nan
+        err[6,2][:pm2]=np.nan
         
         # normalize
         fl/=np.nanmedian(fl)
@@ -189,7 +196,7 @@ class Target:
             bad_pixel=np.where(fl[2,1]>mean+5*std)[0][0] # 890
             fl[2,1][bad_pixel-2:bad_pixel+2]=np.nan
 
-        self.plot_orders3(wl,fl0/np.nanmedian(fl0),wl,flt,wl,fl,'Original','Molecfit','Corrected')
+        self.plot_orders3(wl,fl0/np.nanmedian(fl0),wl,flt,wl,fl,'Uncorrected','Telluric model','Corrected')
             
         if outfile!=None:
             spectrum=np.full(shape=(self.n_pixels*self.n_orders*self.n_dets,3),fill_value=np.nan)

@@ -90,6 +90,15 @@ class Retrieval:
         self.bestfit_params=None 
         self.posterior = None
         self.final_params=None
+        self.figs=figs
+        if self.target.name in ['2M0355','test']:
+            self.color1='deepskyblue' # color of retrieval output
+            self.color2='tab:blue' # color of residuals
+        elif self.target.name=='2M1425':
+            #self.color1='limegreen' # color of retrieval output
+            #self.color2='forestgreen' # color of residuals
+            self.color1='lightcoral' # color of retrieval output
+            self.color2='indianred' # color of residuals
 
     def get_species(self,param_dict): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -193,7 +202,7 @@ class Retrieval:
         self.posterior = posterior[:,:-2] # remove last 2 columns
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
-        figs.summary_plot(self)
+        self.figs.summary_plot(self)
      
     def PMN_analyse(self):
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
@@ -295,7 +304,7 @@ class Retrieval:
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
         #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
-        figs.summary_plot(self)
+        self.figs.summary_plot(self)
         #figs.plot_spectrum_inset(self)
         
     def cross_correlation(self,molecules,noiserange=50,save=False): # can only be run after evaluate()
@@ -367,7 +376,7 @@ class Retrieval:
             ACF_norm = ACF_sum/noise
             SNR=CCF_norm[np.where(RVs==0)[0][0]]
             self.final_params[f'SNR_{molecule}']=SNR
-            figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
+            self.figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
 
         if save:
             with open(f'{self.output_dir}/final_params_dict.pickle','wb') as file:
