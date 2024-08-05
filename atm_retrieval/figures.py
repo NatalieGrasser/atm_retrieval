@@ -492,8 +492,8 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
         ax1.plot(RVs,ACF_norm2,color=retrieval_object2.color1,linestyle='dashed',alpha=0.5)
 
         lines = [Line2D([0], [0], color=retrieval_object1.color1,linewidth=2,label=f'{retrieval_object1.target.name}'),
-                 Line2D([0], [0], color=retrieval_object2.color1,linewidth=2,label=f'{retrieval_object2.target.name}'),
                  Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
+                 Line2D([0], [0], color=retrieval_object2.color1,linewidth=2,label=f'{retrieval_object2.target.name}'),
                  Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
         ax1.legend(handles=lines,fontsize=9,ncol=2,loc='upper right')
         ax1.set_ylabel('S/N')

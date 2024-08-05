@@ -391,9 +391,10 @@ class Retrieval:
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
             self.final_params[f'SNR_{molecule}']=SNR
+            print('self.final_params=\n',self.final_params)   
             self.figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
         self.CCF_list=CCF_list
-        self.ACF_lsit=CCF_list
+        self.ACF_lsit=ACF_list
 
     def bayes_evidence(self,molecules):
 
@@ -421,7 +422,8 @@ class Retrieval:
             print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
             self.final_params[f'lnBm_{molecule}']=lnB
-            self.final_params[f'sigma_{molecule}']=sigma # save result in dict            
+            self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
+            print('self.final_params=\n',self.final_params)   
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):
         '''
@@ -457,7 +459,8 @@ class Retrieval:
             self.cross_correlation(crosscorr_molecules)
         if bayes_molecules!=None:
             self.bayes_evidence(bayes_molecules)
-
+            
+        print('self.final_params=\n',self.final_params)   
         with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
                 pickle.dump(self.final_params,file)
         
