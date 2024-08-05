@@ -130,7 +130,7 @@ class Retrieval:
                 atmosphere_objects=pickle.load(file)
                 return atmosphere_objects
         else:
-            for order in range(7):
+            for order in range(self.n_orders):
                 wl_pad=7 # wavelength padding because spectrum is not wavelength shifted yet
                 if broader==True:  # larger wl pad needed when shifting during cross-correlation
                     rv_max = 501 # maximum RV for cross-corr
@@ -265,8 +265,8 @@ class Retrieval:
 
         self.final_spectrum=np.zeros_like(self.final_model)
         phi_ij=self.final_params['phi_ij']
-        for order in range(7):
-            for det in range(3):
+        for order in range(self.n_orders):
+            for det in range(self.n_dets):
                 self.final_spectrum[order,det]=phi_ij[order,det]*self.final_model[order,det] # scale model accordingly
         
         spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
@@ -343,31 +343,35 @@ class Retrieval:
             for order in range(self.n_orders):
                 for det in range(self.n_dets):
 
-                    wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
-                    fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
-                    
-                    wl_excl=exclusion_model_wl[order]
-                    fl_excl=exclusion_model[order]*self.final_params['phi_ij'][order,det]
-                    fl_final=final_model_broad[order]*self.final_params['phi_ij'][order,det]
+                    if np.isnan(self.data_flux[order,det]).all():
+                        pass # skip empty order/det, CCF and ACF remains 0 
 
-                    # data minus model without certain molecule
-                    fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
-                    residuals=fl_data-fl_excl_rebinned
-                    residuals-=np.nanmean(residuals) # mean should be at zero
-                    self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
-                    cov_0_res=self.Cov[order,det].solve(residuals)
-                    
-                    # excluded molecule template: complete final model minus final model w/o molecule
-                    molecule_template=fl_final-fl_excl
-                    molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
-                    molecule_template_rebinned-=np.nanmean(molecule_template_rebinned) # mean should be at zero
-                    cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
-                    wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
-                    template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
-                    template_shift-=np.nanmean(template_shift) # mean should be at zero
+                    else:
+                        wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
+                        fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
+                        
+                        wl_excl=exclusion_model_wl[order]
+                        fl_excl=exclusion_model[order]*self.final_params['phi_ij'][order,det]
+                        fl_final=final_model_broad[order]*self.final_params['phi_ij'][order,det]
 
-                    CCF[order,det]=(template_shift.T).dot(cov_0_res)
-                    ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+                        # data minus model without certain molecule
+                        fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
+                        residuals=fl_data-fl_excl_rebinned
+                        residuals-=np.nanmean(residuals) # mean should be at zero
+                        self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                        cov_0_res=self.Cov[order,det].solve(residuals)
+                        
+                        # excluded molecule template: complete final model minus final model w/o molecule
+                        molecule_template=fl_final-fl_excl
+                        molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
+                        molecule_template_rebinned-=np.nanmean(molecule_template_rebinned) # mean should be at zero
+                        cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
+                        wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
+                        template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
+                        template_shift-=np.nanmean(template_shift) # mean should be at zero
+
+                        CCF[order,det]=(template_shift.T).dot(cov_0_res)
+                        ACF[order,det]=(template_shift.T).dot(cov_0_temp)
 
             CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
             ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)

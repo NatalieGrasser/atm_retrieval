@@ -121,6 +121,6 @@ params=parameters.params
 retrieval=Retrieval(target=brown_dwarf,parameters=parameters,
                     output_name=output,chemistry=chem,
                     cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
-molecules=['13CO','HF','H2S','H2(18)O']
+molecules=['13CO','HF','H2S','H2(18)O','H2O']
 retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
                         crosscorr_molecules=molecules,bayes_molecules=molecules)

@@ -234,8 +234,8 @@ def plot_pt(retrieval_object,**kwargs):
         retrieval_object2=kwargs.get('retrieval_object2')
         xmin2,xmax2=plot_temperature(retrieval_object2,ax)
         #lines = lines[:1]+[lines[-1]]+lines[1:-1] # move object2 to second position in legend instead of last
-        xmin=np.min([xmin,xmin2])
-        xmax=np.max([xmax,xmax2])
+        xmin=np.nanmin([xmin,xmin2])
+        xmax=np.nanmax([xmax,xmax2])
         if retrieval_object2.target.name=='2M0355':
             lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
 
@@ -249,8 +249,8 @@ def plot_pt(retrieval_object,**kwargs):
     ax.plot(contribution_plot,retrieval_object.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
 
     ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
-        ylim=(np.max(retrieval_object.final_object.pressure),
-        np.min(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
+        ylim=(np.nanmax(retrieval_object.final_object.pressure),
+        np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
     
     ax.legend(handles=lines,fontsize=9)
 
