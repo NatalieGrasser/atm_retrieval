@@ -394,7 +394,7 @@ class Retrieval:
             print('self.final_params=\n',self.final_params)   
             self.figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
         self.CCF_list=CCF_list
-        self.ACF_lsit=ACF_list
+        self.ACF_list=ACF_list
 
     def bayes_evidence(self,molecules):
 
@@ -459,7 +459,7 @@ class Retrieval:
             self.cross_correlation(crosscorr_molecules)
         if bayes_molecules!=None:
             self.bayes_evidence(bayes_molecules)
-            
+
         print('self.final_params=\n',self.final_params)   
         with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
                 pickle.dump(self.final_params,file)
