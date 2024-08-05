@@ -218,7 +218,7 @@ if __name__ == "__main__":
    test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
 
    # add Gaussian noise by using flux_err*s^2 (approximate mean of s^2)
-   test_spectrum_noisy=test_spectrum+np.random.normal(0,np.nanmean(data_err)*20,size=test_spectrum.shape)
+   test_spectrum_noisy=test_spectrum+np.random.normal(0,np.nanmean(data_err)*10,size=test_spectrum.shape)
 
    spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
    spectrum[:,0]=data_wave.flatten()

@@ -258,11 +258,17 @@ class Retrieval:
         self.final_params['phi_ij']=self.LogLike.phi
         self.final_params['s2_ij']=self.LogLike.s2
         if self.callback_label=='final_':
-            self.final_params['lnZ_fiducial']=self.lnZ # save lnZ of fiducial model
+            self.final_params['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
+            self.final_params['lnZ']=self.lnZ # save lnZ of fiducial model
 
-        with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
-            pickle.dump(self.final_params,file)
-
+        final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
+        if final_dict.exists()==False: # only save if doesn't exist yet, to avoid overwriting
+            with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
+                pickle.dump(self.final_params,file)
+        else:
+            with open(final_dict,'rb') as file:
+                self.final_params=pickle.load(file)
+            
         self.final_spectrum=np.zeros_like(self.final_model)
         phi_ij=self.final_params['phi_ij']
         for order in range(self.n_orders):
@@ -305,10 +311,13 @@ class Retrieval:
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
         #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
         self.figs.summary_plot(self)
+        self.figs.plot_spectrum_split(self)
         #figs.plot_spectrum_inset(self)
         
-    def cross_correlation(self,molecules,noiserange=50,save=False): # can only be run after evaluate()
+    def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
 
+        CCF_list=[]
+        ACF_list=[]
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
@@ -379,17 +388,16 @@ class Retrieval:
             CCF_norm = CCF_sum/noise # get ccf map in S/N units
             ACF_norm = ACF_sum/noise
             SNR=CCF_norm[np.where(RVs==0)[0][0]]
+            CCF_list.append(CCF_norm)
+            ACF_list.append(ACF_norm)
             self.final_params[f'SNR_{molecule}']=SNR
             self.figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
+        self.CCF_list=CCF_list
+        self.ACF_lsit=CCF_list
 
-        if save:
-            with open(f'{self.output_dir}/final_params_dict.pickle','wb') as file:
-                pickle.dump(self.final_params,file) # save to final_params
+    def bayes_evidence(self,molecules):
 
-    def bayes_evidence(self,molecules,save=False):
-
-        parent_output_dir=self.output_dir # save end results here
-        self.output_dir=pathlib.Path(f'{parent_output_dir}/evidence_retrievals') # store output in separate folder
+        self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         if isinstance(molecules, list)==False:
@@ -413,11 +421,7 @@ class Retrieval:
             print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
             self.final_params[f'lnBm_{molecule}']=lnB
-            self.final_params[f'sigma_{molecule}']=sigma # save result in dict
-
-        if save:
-            with open(f'{parent_output_dir}/final_params_dict.pickle','wb') as file:
-                pickle.dump(self.final_params,file)
+            self.final_params[f'sigma_{molecule}']=sigma # save result in dict            
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):
         '''
@@ -439,15 +443,22 @@ class Retrieval:
                       crosscorr_molecules=None,bayes_molecules=None): 
         self.N_live_points=N_live_points
         self.evidence_tolerance=evidence_tolerance
+        retrieval_output_dir=self.output_dir # save end results here
 
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
-        final_params=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
-        if final_params.exists()==False:
+        final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
+        if final_dict.exists()==False:
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+        else:
+            with open(final_dict,'rb') as file:
+                self.final_params=pickle.load(file)
         self.evaluate()
         if crosscorr_molecules!=None:
-            self.cross_correlation(crosscorr_molecules,save=True)
+            self.cross_correlation(crosscorr_molecules)
         if bayes_molecules!=None:
-            self.bayes_evidence(bayes_molecules,save=True)
+            self.bayes_evidence(bayes_molecules)
+
+        with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
+                pickle.dump(self.final_params,file)
         
 

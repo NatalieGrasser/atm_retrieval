@@ -397,6 +397,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     ax1.legend(loc='upper right')
     molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
     molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
+    #molecule_label=f'{molecule_name}'
     ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
     ax2.plot(RVs,CCF_norm-ACF_norm,color=retrieval_object.color1)
     ax2.set_ylabel('CCF-ACF')
@@ -406,7 +407,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
     plt.close()
 
-def compare_two(retrieval_object1,retrieval_object2): # comapre cornerplot+PT of two retrievals
+def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre cornerplot+PT of two retrievals
 
     only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
                  'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
@@ -465,3 +466,47 @@ def compare_two(retrieval_object1,retrieval_object2): # comapre cornerplot+PT of
     filename=f'comparison_{retrieval_object1.target.name}_{retrieval_object2.target.name}.pdf'
     fig.savefig(f'{retrieval_object1.output_dir}/{filename}',bbox_inches="tight",dpi=200)
     plt.close()
+
+def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50):
+
+    RVs=np.arange(-500,500,1) # km/s
+    for i,molecule in enumerate(molecules):
+
+        CCF_norm1=retrieval_object1.CCF_list[i]
+        ACF_norm1=retrieval_object1.ACF_list[i]
+        SNR1=CCF_norm1[np.where(RVs==0)[0][0]]
+        CCF_norm2=retrieval_object2.CCF_list[i]
+        ACF_norm2=retrieval_object2.ACF_list[i]
+        SNR2=CCF_norm2[np.where(RVs==0)[0][0]]
+
+        fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
+        for ax in (ax1,ax2):
+            ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+            ax.set_xlim(np.min(RVs),np.max(RVs))
+            ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
+            ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
+        ax1.plot(RVs,CCF_norm1,color=retrieval_object1.color1,label=f'{retrieval_object1.target.name}')
+        ax1.plot(RVs,ACF_norm1,color=retrieval_object1.color1,linestyle='dashed',alpha=0.5)
+
+        ax1.plot(RVs,CCF_norm2,color=retrieval_object2.color1,label=f'{retrieval_object2.target.name}')
+        ax1.plot(RVs,ACF_norm2,color=retrieval_object2.color1,linestyle='dashed',alpha=0.5)
+
+        lines = [Line2D([0], [0], color=retrieval_object1.color1,linewidth=2,label=f'{retrieval_object1.target.name}'),
+                 Line2D([0], [0], color=retrieval_object2.color1,linewidth=2,label=f'{retrieval_object2.target.name}'),
+                 Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
+                 Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
+        ax1.legend(handles=lines,fontsize=9,ncol=2,loc='upper right')
+        ax1.set_ylabel('S/N')
+
+        molecule_label=str(retrieval_object1.parameters.param_mathtext[f'log_{molecule}'][4:]) # remove log_
+        ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
+
+        ax2.plot(RVs,CCF_norm1-ACF_norm1,color=retrieval_object1.color1)
+        ax2.plot(RVs,CCF_norm2-ACF_norm2,color=retrieval_object2.color1)
+        ax2.set_ylabel('CCF-ACF')
+        ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
+        fig.tight_layout()
+        plt.subplots_adjust(wspace=0, hspace=0)
+        filename=f'comparison_{molecule}_{retrieval_object1.target.name}_{retrieval_object2.target.name}.pdf'
+        fig.savefig(f'{retrieval_object1.output_dir}/{filename}',bbox_inches="tight",dpi=200)
+        plt.close()
