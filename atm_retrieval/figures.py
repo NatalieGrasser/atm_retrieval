@@ -16,6 +16,7 @@ from scipy.interpolate import CubicSpline
 import matplotlib.patches as mpatches
 import matplotlib.ticker as ticker
 import warnings
+import pathlib
 warnings.filterwarnings("ignore", category=UserWarning) 
 
 def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
@@ -68,6 +69,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
         axins.set_xlim(x1, x2)
         box,lines=ax[0].indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
         axins.set_ylabel('Normalized Flux')
+        ax[1].set_facecolor('none') # to avoid hiding lines
+        ax[0].set_xticks([])
 
         axins2 = axins.inset_axes([0,-0.3,1,0.3])
         for det in range(3):
@@ -109,8 +112,8 @@ def plot_spectrum_split(retrieval_object):
             if x==0 and det==0:
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
                         mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
-                        Line2D([0], [0], color='c', linewidth=2,label='Bestfit'),
-                        Line2D([0], [0], color='slateblue', linewidth=2,label='Residuals')]
+                        Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit'),
+                        Line2D([0], [0], color=retrieval.color2, linewidth=2,label='Residuals')]
                 ax1.legend(handles=lines,fontsize=12,ncol=4,bbox_to_anchor=(0.5,1.4),loc='upper center')
         min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
         max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
@@ -463,13 +466,19 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
     ax_PT = fig.add_axes([l,b,w,h])
     plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,ax=ax_PT)
 
+    comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+
     filename=f'comparison_{retrieval_object1.target.name}_{retrieval_object2.target.name}.pdf'
-    fig.savefig(f'{retrieval_object1.output_dir}/{filename}',bbox_inches="tight",dpi=200)
+    fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
     plt.close()
 
 def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50):
 
     RVs=np.arange(-500,500,1) # km/s
+    comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+
     for i,molecule in enumerate(molecules):
 
         CCF_norm1=retrieval_object1.CCF_list[i]
@@ -495,7 +504,7 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
                  Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
                  Line2D([0], [0], color=retrieval_object2.color1,linewidth=2,label=f'{retrieval_object2.target.name}'),
                  Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
-        ax1.legend(handles=lines,fontsize=9,ncol=2,loc='upper right')
+        ax1.legend(handles=lines,fontsize=9,loc='upper right')
         ax1.set_ylabel('S/N')
 
         molecule_label=str(retrieval_object1.parameters.param_mathtext[f'log_{molecule}'][4:]) # remove log_
@@ -507,6 +516,7 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
         ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
         fig.tight_layout()
         plt.subplots_adjust(wspace=0, hspace=0)
+
         filename=f'comparison_{molecule}_{retrieval_object1.target.name}_{retrieval_object2.target.name}.pdf'
-        fig.savefig(f'{retrieval_object1.output_dir}/{filename}',bbox_inches="tight",dpi=200)
+        fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
         plt.close()

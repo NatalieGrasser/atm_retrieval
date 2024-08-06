@@ -90,7 +90,6 @@ class Retrieval:
         self.bestfit_params=None 
         self.posterior = None
         self.final_params=None
-        self.figs=figs
         if self.target.name in ['2M0355','test']:
             self.color1='deepskyblue' # color of retrieval output
             self.color2='tab:blue' # color of residuals
@@ -164,30 +163,17 @@ class Retrieval:
                                      chemistry=self.chemistry,
                                      cloud_mode=self.cloud_mode,
                                      PT_type=self.PT_type)
-                                     #contribution=True) # comment out after debugging!!!
         self.model_flux=self.model_object.make_spectrum()
         for j in range(self.n_orders): # update covariance matrix
             for k in range(self.n_dets):
                 if not self.mask_isfinite[j,k].any(): # skip empty order/detector
                     continue
                 self.Cov[j,k](self.parameters.params)
-        if False:
-            self.final_object=self.model_object
-            figs.plot_pt(self)
-        if False: # just to check, for debugging
-            plt.figure(figsize=(10,1),dpi=200)
-            plt.plot(self.data_wave.flatten(),self.data_flux.flatten())
-            plt.plot(self.data_wave.flatten(),self.model_flux.flatten())
-            #plt.xlim(2422,2437)
-            plt.show()
-            plt.close()
         ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
         return ln_L
 
-    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False,param_prior=None):
-        if param_prior==None: # can also be added manually for exclusion retrievals
-            param_prior=self.parameters # use default if not passed as kwarg
-        pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=param_prior,n_dims=param_prior.n_params, 
+    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False):
+        pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=self.parameters,n_dims=self.parameters.n_params, 
                         outputfiles_basename=f'{self.output_dir}/{self.prefix}', 
                         verbose=True,const_efficiency_mode=True, sampling_efficiency = 0.5,
                         n_live_points=N_live_points,resume=resume,
@@ -202,7 +188,7 @@ class Retrieval:
         self.posterior = posterior[:,:-2] # remove last 2 columns
         np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
-        self.figs.summary_plot(self)
+        figs.summary_plot(self)
      
     def PMN_analyse(self):
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
@@ -224,7 +210,7 @@ class Retrieval:
         minus_err=quantiles[:,0]-medians # -error
         return medians,minus_err,plus_err
 
-    def get_final_params_and_spectrum(self,contribution=True): 
+    def get_final_params_and_spectrum(self,contribution=True,save=False): 
         
         # make dict of constant params + evaluated params + their errors
         self.final_params=self.parameters.constant_params.copy() # initialize dict with constant params
@@ -261,13 +247,9 @@ class Retrieval:
             self.final_params['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
             self.final_params['lnZ']=self.lnZ # save lnZ of fiducial model
 
-        final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
-        if final_dict.exists()==False: # only save if doesn't exist yet, to avoid overwriting
+        if save==True:
             with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
                 pickle.dump(self.final_params,file)
-        else:
-            with open(final_dict,'rb') as file:
-                self.final_params=pickle.load(file)
             
         self.final_spectrum=np.zeros_like(self.final_model)
         phi_ij=self.final_params['phi_ij']
@@ -305,14 +287,19 @@ class Retrieval:
             CO=self.final_object.CO
         return C1213,O1618,O1617,O1618_H2O,FeH,CO
 
-    def evaluate(self,only_abundances=False,only_params=None,split_corner=True,callback_label='final_'):
+    def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
+                 callback_label='final_',save=False):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
-        self.final_params,self.final_spectrum=self.get_final_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
-        #figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
-        self.figs.summary_plot(self)
-        self.figs.plot_spectrum_split(self)
-        #figs.plot_spectrum_inset(self)
+        self.final_params,self.final_spectrum=self.get_final_params_and_spectrum(save=save) # all params: constant + free + scaling phi_ij + s2_ij
+        if callback_label=='final_':
+            #figs.plot_spectrum_split(self)
+            #figs.plot_spectrum_inset(self)
+            #figs.plot_pt(self)
+            #figs.summary_plot(self)
+            figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
+        else:
+            figs.summary_plot(self)
         
     def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
 
@@ -392,7 +379,7 @@ class Retrieval:
             ACF_list.append(ACF_norm)
             self.final_params[f'SNR_{molecule}']=SNR
             print('self.final_params=\n',self.final_params)   
-            self.figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
+            figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
         self.CCF_list=CCF_list
         self.ACF_list=ACF_list
 
@@ -400,19 +387,19 @@ class Retrieval:
 
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        old_parameters=copy.copy(self.parameters) # keep, self.params must be overwritten for other functions
 
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            new_parameters=copy.copy(self.parameters)
+            self.parameters=copy.copy(old_parameters)
             key=f'log_{molecule}'
-            if key in new_parameters.params: del new_parameters.params[key]
-            print('New parameter priors for exclusion retrieval:\n',new_parameters.params)
+            if key in self.parameters.params: del self.parameters.params[key]
+            print('New parameter priors for exclusion retrieval:\n',self.parameters.params)
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
-            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,
-                         param_prior=new_parameters)
+            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label)
             self.PMN_analyse() # gets self.lnZ_ex
@@ -451,10 +438,12 @@ class Retrieval:
         final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
         if final_dict.exists()==False:
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+            save=True
         else:
+            save=False
             with open(final_dict,'rb') as file:
-                self.final_params=pickle.load(file)
-        self.evaluate()
+                self.final_params=pickle.load(file) 
+        self.evaluate(save=save)
         if crosscorr_molecules!=None:
             self.cross_correlation(crosscorr_molecules)
         if bayes_molecules!=None:
@@ -462,6 +451,6 @@ class Retrieval:
 
         print('self.final_params=\n',self.final_params)   
         with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
-                pickle.dump(self.final_params,file)
+            pickle.dump(self.final_params,file)
         
 
