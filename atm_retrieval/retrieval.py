@@ -428,7 +428,7 @@ class Retrieval:
 
         for molecule in molecules: # exclude molecule from retrieval
             self.parameters=copy.copy(old_parameters)
-            self.parameters.param_priors[f'log_{molecule}']=[-12,-12] # exclude molecule from retrieval
+            self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude molecule from retrieval
             #self.parameters.params[f'log_{molecule}']=-12 # exclude molecule from retrieval
             #key=f'log_{molecule}'
             #if key in self.parameters.params: del self.parameters.params[key]
