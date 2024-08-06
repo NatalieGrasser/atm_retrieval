@@ -230,14 +230,7 @@ class Retrieval:
         self.final_model=self.final_object.make_spectrum()
 
         # get isotope and element ratios and save them in final params dict
-        C1213,O1618,O1617,O1618_H2O,FeH,CO=self.get_ratios()
-        self.final_params['12CO/13CO']=C1213
-        self.final_params['12CO/C18O']=O1618
-        self.final_params['12CO/C17O']=O1617
-        self.final_params['H2O/H2(18)O']=O1618_H2O
-        if self.chemistry=='freechem': # otherwise already in dict
-            self.final_params['Fe/H']=FeH
-            self.final_params['C/O']=CO
+        self.get_ratios()
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
@@ -264,28 +257,60 @@ class Retrieval:
         
         return self.final_params,self.final_spectrum
 
-    def get_ratios(self): # can only be run after self.evaluate()
+    def get_ratios(self,output=False): # can only be run after self.evaluate()
         if self.chemistry=='equchem':
             C1213=1/self.final_params['C13_12_ratio']
             O1618=1/self.final_params['O18_16_ratio']
             O1617=1/self.final_params['O17_16_ratio']
-            O1618_H2O=1/self.final_params['O18_16_ratio']
             FeH=self.final_params['Fe/H']
             CO=self.final_params['C/O']
+            if output:
+                return C1213,O1618,O1617,FeH,CO
+
         if self.chemistry=='freechem':
-            VMR_12CO=10**(self.final_params['log_12CO'])
-            VMR_13CO=10**(self.final_params['log_13CO'])
-            VMR_C17O=10**(self.final_params['log_C17O'])
-            VMR_C18O=10**(self.final_params['log_C18O'])
-            VMR_H2O=10**(self.final_params['log_H2O'])
-            VMR_H218O=10**(self.final_params['log_H2(18)O'])
-            C1213=VMR_12CO/VMR_13CO
-            O1618=VMR_12CO/VMR_C18O
-            O1617=VMR_12CO/VMR_C17O
-            O1618_H2O=VMR_H2O/VMR_H218O # 16O/18O as determined through H2O instead of CO
-            FeH=self.final_object.FeH
-            CO=self.final_object.CO
-        return C1213,O1618,O1617,O1618_H2O,FeH,CO
+            log_12CO=self.final_params['log_12CO']
+            log_12CO_me=(self.final_params['log_12CO_err'][0]) # minus error
+            log_12CO_pe=(self.final_params['log_12CO_err'][1]) # plus error
+
+            log_13CO=self.final_params['log_13CO']
+            log_13CO_me=(self.final_params['log_13CO_err'][0]) # minus error
+            log_13CO_pe=(self.final_params['log_13CO_err'][1]) # plus error
+
+            log_C17O=self.final_params['log_C17O']
+            log_C17O_me=(self.final_params['log_C17O_err'][0]) # minus error
+            log_C17O_pe=(self.final_params['log_C17O_err'][1]) # plus error
+
+            log_C18O=self.final_params['log_C18O']
+            log_C18O_me=(self.final_params['log_C18O_err'][0]) # minus error
+            log_C18O_pe=(self.final_params['log_C18O_err'][1]) # plus error
+
+            log_H2O=self.final_params['log_H2O']
+            log_H2O_me=(self.final_params['log_H2O_err'][0]) # minus error
+            log_H2O_pe=(self.final_params['log_H2O_err'][1]) # plus error
+
+            log_H218O=self.final_params['log_H2(18)O']
+            log_H218O_me=(self.final_params['log_H2(18)O_err'][0]) # minus error
+            log_H218O_pe=(self.final_params['log_H2(18)O_err'][1]) # plus error
+
+            def error_prop(f,A,Ame,Ape,B,Bme,Bpe):
+                fme=np.sqrt(f**2*((Ame/A)**2+(Bme/B)**2)) # minus error of f when f=A*B
+                fpe=np.sqrt(f**2*((Ape/A)**2+(Bpe/B)**2)) # plus error of f when f=A*B
+                return fme,fpe
+            
+            self.final_params['12CO/13CO']=10**(log_12CO-log_13CO)
+            self.final_params['12CO/13CO_err']=error_prop(log_12CO-log_13CO,log_12CO,log_12CO_me,log_12CO_pe,
+                                                          log_13CO,log_13CO_me,log_13CO_pe)
+            self.final_params['12CO/C18O']=10**(log_12CO-log_C18O)
+            self.final_params['12CO/C18O_err']=error_prop(log_12CO-log_C18O,log_12CO,log_12CO_me,log_12CO_pe,
+                                                          log_C18O,log_C18O_me,log_C18O_pe)
+            self.final_params['12CO/C17O']=10**(log_12CO-log_C17O)
+            self.final_params['12CO/C17O_err']=error_prop(log_12CO-log_C17O,log_12CO,log_12CO_me,log_12CO_pe,
+                                                          log_C17O,log_C17O_me,log_C17O_pe)
+            self.final_params['H2O/H2(18)O']=10**(log_H2O-log_H218O)
+            self.final_params['H2O/H2(18)O_err']=error_prop(log_H2O-log_H218O,log_H2O,log_H2O_me,log_H2O_pe,
+                                                          log_H218O,log_H218O_me,log_H218O_pe)
+            self.final_params['Fe/H']=self.final_object.FeH
+            self.final_params['C/O']=self.final_object.CO
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',save=False):
@@ -303,6 +328,7 @@ class Retrieval:
         
     def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
 
+        ccf_dict={}
         CCF_list=[]
         ACF_list=[]
         if isinstance(molecules, list)==False:
@@ -377,14 +403,17 @@ class Retrieval:
             SNR=CCF_norm[np.where(RVs==0)[0][0]]
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
-            self.final_params[f'SNR_{molecule}']=SNR
-            print('self.final_params=\n',self.final_params)   
+            ccf_dict[f'SNR_{molecule}']=SNR
+            #self.final_params[f'SNR_{molecule}']=SNR
+            #print('self.final_params=\n',self.final_params)   
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
         self.CCF_list=CCF_list
         self.ACF_list=ACF_list
+        return ccf_dict
 
     def bayes_evidence(self,molecules):
 
+        bayes_dict={}
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
         old_parameters=copy.copy(self.parameters) # keep, self.params must be overwritten for other functions
@@ -396,7 +425,7 @@ class Retrieval:
             self.parameters=copy.copy(old_parameters)
             key=f'log_{molecule}'
             if key in self.parameters.params: del self.parameters.params[key]
-            print('New parameter priors for exclusion retrieval:\n',self.parameters.params)
+            #print('New parameter priors for exclusion retrieval:\n',self.parameters.params)
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
@@ -408,9 +437,12 @@ class Retrieval:
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
             print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
-            self.final_params[f'lnBm_{molecule}']=lnB
-            self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
-            print('self.final_params=\n',self.final_params)   
+            bayes_dict[f'lnBm_{molecule}']=lnB
+            bayes_dict[f'sigma_{molecule}']=sigma
+            #self.final_params[f'lnBm_{molecule}']=lnB
+            #self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
+            #print('self.final_params=\n',self.final_params)   
+        return bayes_dict
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):
         '''
@@ -423,10 +455,13 @@ class Retrieval:
         from scipy.special import erfcinv
 
         ln_B = ln_Z_A-ln_Z_B
+        sign=1
+        if ln_B<0: # ln_Z_B larger -> second model favored
+            sign=-1
+            ln_B*=sign # can't handle negative values (-> nan), multiply back later
         p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
         sigma = np.sqrt(2)*erfcinv(p)
-            
-        return ln_B,sigma
+        return ln_B*sign,sigma*sign
 
     def run_retrieval(self,N_live_points=400,evidence_tolerance=0.5,
                       crosscorr_molecules=None,bayes_molecules=None): 
@@ -445,11 +480,14 @@ class Retrieval:
                 self.final_params=pickle.load(file) 
         self.evaluate(save=save)
         if crosscorr_molecules!=None:
-            self.cross_correlation(crosscorr_molecules)
+            ccf_dict=self.cross_correlation(crosscorr_molecules)
+            self.final_params.update(ccf_dict)
+            print('self.final_params.update(ccf_dict)=\n',self.final_params)
         if bayes_molecules!=None:
-            self.bayes_evidence(bayes_molecules)
+            bayes_dict=self.bayes_evidence(bayes_molecules)
+            self.final_params.update(bayes_dict)
+            print('self.final_params.update(bayes_dict)=\n',self.final_params)
 
-        print('self.final_params=\n',self.final_params)   
         with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
             pickle.dump(self.final_params,file)
         
