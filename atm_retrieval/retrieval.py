@@ -169,6 +169,11 @@ class Retrieval:
                 if not self.mask_isfinite[j,k].any(): # skip empty order/detector
                     continue
                 self.Cov[j,k](self.parameters.params)
+        if False: # debugging
+            ord=4
+            det=2
+            plt.plot(self.data_wave[ord,det],self.data_flux[ord,det],lw=0.8)
+            plt.plot(self.data_wave[ord,det],self.model_flux[ord,det],alpha=0.7,lw=0.8)
         ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
         return ln_L
 
@@ -423,8 +428,10 @@ class Retrieval:
 
         for molecule in molecules: # exclude molecule from retrieval
             self.parameters=copy.copy(old_parameters)
-            key=f'log_{molecule}'
-            if key in self.parameters.params: del self.parameters.params[key]
+            self.parameters.param_priors[f'log_{molecule}']=[-12,-12] # exclude molecule from retrieval
+            #self.parameters.params[f'log_{molecule}']=-12 # exclude molecule from retrieval
+            #key=f'log_{molecule}'
+            #if key in self.parameters.params: del self.parameters.params[key]
             #print('New parameter priors for exclusion retrieval:\n',self.parameters.params)
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
@@ -441,7 +448,8 @@ class Retrieval:
             bayes_dict[f'sigma_{molecule}']=sigma
             #self.final_params[f'lnBm_{molecule}']=lnB
             #self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
-            #print('self.final_params=\n',self.final_params)   
+            #print('self.final_params=\n',self.final_params) 
+            print('bayes_dict=',bayes_dict)  
         return bayes_dict
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):
