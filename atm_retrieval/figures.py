@@ -321,7 +321,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
         if len(title) > 30: # change 30 to 1 if you want all titles to be split
             title_split = title.split('=')
             titles[i] = title_split[0] + '\n ' + title_split[1]
-        fig.axes[i].title.set_text(titles[i],fontsize=fs)
+        fig.axes[i].title.set_text(titles[i])
 
     #corner.overplot_lines(fig,medians,color=retrieval_object.color2,lw=1.3,linestyle='solid') # plot median values of posterior
 
