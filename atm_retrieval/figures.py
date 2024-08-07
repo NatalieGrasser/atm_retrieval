@@ -19,11 +19,7 @@ import warnings
 import pathlib
 warnings.filterwarnings("ignore", category=UserWarning) 
 
-def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
-
-    fontsize=kwargs.get('fontsize',None)
-    if fontsize!=None:
-        plt.rcParams.update({'font.size': fontsize})
+def plot_spectrum_inset(retrieval_object,inset=True,fs=12,**kwargs):
 
     wave=retrieval_object.data_wave
     flux=retrieval_object.data_flux
@@ -48,9 +44,9 @@ def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
                         mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
                         Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label='Bestfit'),
                         Line2D([0], [0], color=retrieval_object.color2, linewidth=2,label='Residuals')]
-                ax[0].legend(handles=lines,fontsize=9,ncol=2) # to only have it once
+                ax[0].legend(handles=lines,fontsize=fs,ncol=2) # to only have it once
         ax[1].plot(wave[order].flatten(),np.zeros_like(wave[order].flatten()),lw=0.8,alpha=0.5,c='k')
-    ax[0].set_ylabel('Normalized Flux')
+    ax[0].set_ylabel('Normalized Flux',fontsize=fs)
     ax[0].set_xlim(np.min(wave)-10,np.max(wave)+10)
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
@@ -68,20 +64,22 @@ def plot_spectrum_inset(retrieval_object,inset=True,**kwargs):
         x1, x2 = np.min(wave[ord]),np.max(wave[ord])
         axins.set_xlim(x1, x2)
         box,lines=ax[0].indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
-        axins.set_ylabel('Normalized Flux')
+        axins.set_ylabel('Normalized Flux',fontsize=fs)
+        ax[0].tick_params(labelsize=fs)
+        ax[1].tick_params(labelsize=fs)
         ax[1].set_facecolor('none') # to avoid hiding lines
         ax[0].set_xticks([])
-
+        
         axins2 = axins.inset_axes([0,-0.3,1,0.3])
         for det in range(3):
             axins2.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c=retrieval_object.color2)
             axins2.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
         axins2.set_xlim(x1, x2)
-        axins2.set_xlabel('Wavelength [nm]')
+        axins2.set_xlabel('Wavelength [nm]',fontsize=fs)
         tick_spacing=1
         axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
     else:
-        ax[1].set_xlabel('Wavelength [nm]') # if no inset
+        ax[1].set_xlabel('Wavelength [nm]',fontsize=fs) # if no inset
 
     plt.subplots_adjust(wspace=0, hspace=0)
     if 'ax' not in kwargs:
@@ -136,11 +134,7 @@ def plot_spectrum_split(retrieval_object):
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
     plt.close()
 
-def plot_pt(retrieval_object,**kwargs):
-
-    fontsize=kwargs.get('fontsize',None)
-    if fontsize!=None:
-        plt.rcParams.update({'font.size': fontsize})
+def plot_pt(retrieval_object,fs=12,**kwargs):
 
     if retrieval_object.chemistry=='equchem':
         C_O = retrieval_object.final_object.params['C/O']
@@ -168,7 +162,7 @@ def plot_pt(retrieval_object,**kwargs):
         pi=np.where((P_cloud>min(retrieval_object.final_object.pressure))&(P_cloud<max(retrieval_object.final_object.pressure)))[0]
         ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
     # https://github.com/cphyc/matplotlib-label-lines
-    labelLines(ax.get_lines(),align=False,fontsize=9,drop_label=True)
+    labelLines(ax.get_lines(),align=False,fontsize=fs*0.7,drop_label=True)
     
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     file=np.loadtxt('t1400g562nc_m0.0.dat')
@@ -251,18 +245,21 @@ def plot_pt(retrieval_object,**kwargs):
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
     ax.plot(contribution_plot,retrieval_object.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
 
-    ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]', yscale='log', 
+    ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]',yscale='log',
         ylim=(np.nanmax(retrieval_object.final_object.pressure),
         np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
     
-    ax.legend(handles=lines,fontsize=9)
+    ax.legend(handles=lines,fontsize=fs)
+    ax.tick_params(labelsize=fs)
+    ax.set_xlabel('Temperature [K]', fontsize=fs)
+    ax.set_ylabel('Pressure [bar]', fontsize=fs)
 
     if 'ax' not in kwargs: # save as separate plot
         fig.tight_layout()
         fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
         plt.close()
 
-def cornerplot(retrieval_object,getfig=False,figsize=(20,20),
+def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
             only_abundances=False,only_params=None,not_abundances=False):
     
     plot_posterior=retrieval_object.posterior # posterior that we plot here, might get clipped
@@ -303,13 +300,19 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),
     fig = plt.figure(figsize=figsize) # fix size to avoid memory issues
     fig = corner.corner(plot_posterior, 
                         labels=labels, 
-                        title_kwargs={'fontsize': 12},
+                        title_kwargs={'fontsize':fs},
+                        label_kwargs={'fontsize':fs*0.7},
                         color=retrieval_object.color1,
                         linewidths=0.5,
                         fill_contours=True,
                         quantiles=[0.16,0.5,0.84],
                         title_quantiles=[0.16,0.5,0.84],
                         show_titles=True,
+                        hist_kwargs={'density': False,
+                                'fill': True,
+                                'alpha': 0.7,
+                                'edgecolor': 'k',
+                                'linewidth': 1.0},
                         fig=fig)
     
     # split title to avoid overlap with plots
@@ -318,7 +321,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),
         if len(title) > 30: # change 30 to 1 if you want all titles to be split
             title_split = title.split('=')
             titles[i] = title_split[0] + '\n ' + title_split[1]
-        fig.axes[i].title.set_text(titles[i])
+        fig.axes[i].title.set_text(titles[i],fontsize=fs)
 
     #corner.overplot_lines(fig,medians,color=retrieval_object.color2,lw=1.3,linestyle='solid') # plot median values of posterior
 
@@ -338,10 +341,10 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),
         x=0
         for i in range(len(compare)):
             titles[x] = titles[x]+'\n'+f'{compare[i]}'
-            fig.axes[x].title.set_text(titles[x])
+            fig.axes[x].title.set_text(titles[x],fontsize=fs)
             x+=len(labels)+1
 
-    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.subplots_adjust(wspace=0,hspace=0)
 
     if only_abundances==True:
         plot_label='abundances'
@@ -371,9 +374,10 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
 
 def summary_plot(retrieval_object):
 
+    fs=15
     only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
                 'log_13CO','log_HF','log_H2(18)O','log_H2S']
-    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(16,16))
+    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(16,16),fs=fs)
     l, b, w, h = [0.37,0.84,0.6,0.15] # left, bottom, width, height
     ax_spec = fig.add_axes([l,b,w,h])
     ax_res = fig.add_axes([l,b-0.03,w,h-0.12])
@@ -381,7 +385,7 @@ def summary_plot(retrieval_object):
 
     l, b, w, h = [0.68,0.47,0.29,0.29] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
-    plot_pt(retrieval_object,ax=ax_PT)
+    plot_pt(retrieval_object,ax=ax_PT,fs=fs)
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}summary.pdf',
                 bbox_inches="tight",dpi=200)
     plt.close()
@@ -436,6 +440,11 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
                     title_quantiles=[0.16,0.5,0.84],
                     show_titles=True,
                     plot_contours=True,
+                    hist_kwargs={'density': False,
+                                'fill': True,
+                                'alpha': 0.7,
+                                'edgecolor': 'k',
+                                'linewidth': 1.0},
                     fig=fig)
     
     titles = [axi.title.get_text() for axi in fig.axes]
@@ -449,6 +458,11 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
                     quantiles=[0.16,0.5,0.84],
                     title_quantiles=[0.16,0.5,0.84],
                     show_titles=True,
+                    hist_kwargs={'density': False,
+                                'fill': True,
+                                'alpha': 0.7,
+                                'edgecolor': 'k',
+                                'linewidth': 1.0},
                     fig=fig)
 
     # split title to avoid overlap with plots

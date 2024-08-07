@@ -189,9 +189,9 @@ class Retrieval:
                     stats,max_ln_L,ln_Z,ln_Z_err,nullcontext):
         #self.callback_label='live_' # label for plots
         self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
-        np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
+        #np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
         self.posterior = posterior[:,:-2] # remove last 2 columns
-        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
+        #np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
         figs.summary_plot(self)
      
@@ -245,10 +245,6 @@ class Retrieval:
             self.final_params['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
             self.final_params['lnZ']=self.lnZ # save lnZ of fiducial model
 
-        if save==True:
-            with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
-                pickle.dump(self.final_params,file)
-            
         self.final_spectrum=np.zeros_like(self.final_model)
         phi_ij=self.final_params['phi_ij']
         for order in range(self.n_orders):
@@ -258,7 +254,11 @@ class Retrieval:
         spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
         spectrum[:,0]=self.data_wave.flatten()
         spectrum[:,1]=self.final_spectrum.flatten()
-        np.savetxt(f'{self.output_dir}/{self.callback_label}spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux')
+
+        if save==True:
+            with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
+                pickle.dump(self.final_params,file)
+            np.savetxt(f'{self.output_dir}/{self.callback_label}spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
         return self.final_params,self.final_spectrum
 
@@ -421,13 +421,14 @@ class Retrieval:
         bayes_dict={}
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        old_parameters=copy.copy(self.parameters) # keep, self.params must be overwritten for other functions
+        #old_parameters=copy.copy(self.parameters) # keep, self.params must be overwritten for other functions
 
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            self.parameters=copy.copy(old_parameters)
+            original_prior=self.parameters.param_priors[molecule]
+            #self.parameters=copy.copy(old_parameters)
             self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude molecule from retrieval
             #self.parameters.params[f'log_{molecule}']=-12 # exclude molecule from retrieval
             #key=f'log_{molecule}'
@@ -450,6 +451,7 @@ class Retrieval:
             #self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
             #print('self.final_params=\n',self.final_params) 
             print('bayes_dict=',bayes_dict)  
+            self.parameters.param_priors[f'log_{molecule}']=original_prior # set back for next retrieval
         return bayes_dict
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):
@@ -493,6 +495,7 @@ class Retrieval:
             print('self.final_params.update(ccf_dict)=\n',self.final_params)
         if bayes_molecules!=None:
             bayes_dict=self.bayes_evidence(bayes_molecules)
+            bayes_dict.update(ccf_dict)
             self.final_params.update(bayes_dict)
             print('self.final_params.update(bayes_dict)=\n',self.final_params)
 
