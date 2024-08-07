@@ -485,15 +485,16 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
                     fig=fig)
-
-    # split title to avoid overlap with plots
+    
     titles2 = [axi.title.get_text() for axi in fig.axes]
-    for i,title in enumerate(titles):
-        if len(title) > 30: # change 30 to 1 if you want all titles to be split
-            title_split = title.split('=')
-            title_split2 = titles2[i].split('=')[1] # get only part with values
-            titles[i] = title_split[0]+'\n'+title_split[1]+'\n'+title_split2
-        fig.axes[i].title.set_text(titles[i])
+
+    if False:
+        for i,title in enumerate(titles):
+            if len(title) > 30: # change 30 to 1 if you want all titles to be split
+                title_split = title.split('=')
+                title_split2 = titles2[i].split('=')[1] # get only part with values
+                titles[i] = title_split[0]+'\n'+title_split[1]+'\n'+title_split2
+            fig.axes[i].title.set_text(titles[i])
 
     for i, axi in enumerate(fig.axes):
         fig.axes[i].title.set_visible(False) # remove original titles
@@ -504,7 +505,16 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
         
     for run,titles_list,color in zip([0,1],[titles,titles2],[retrieval_object1.color1,retrieval_object2.color1]):
         # add new titles
+        try:
+            print('len(titles_list)=',len(titles_list))
+        except:
+            print(titles_list)
+        try:
+            print('titles_list.shape=',titles_list.shape)
+        except:
+            print(titles_list)
         for j, title in enumerate(titles_list):
+            print(j)
             if title == '':
                 continue
             
@@ -517,6 +527,11 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
                                 color='k',
                                 weight='normal')
             # add parameter value with custom color and spacing
+            print(s[1])
+            try:
+                print('fig.axes.shape=',fig.axes.shape)
+            except:
+                print('len(fig.axes)=',len(fig.axes))
             fig.axes[j].text(0.5, 1.55-(0.25*(run+1)), s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
