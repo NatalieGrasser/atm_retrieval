@@ -341,7 +341,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
         x=0
         for i in range(len(compare)):
             titles[x] = titles[x]+'\n'+f'{compare[i]}'
-            fig.axes[x].title.set_text(titles[x],fontsize=fs)
+            fig.axes[x].title.set_text(titles[x])
             x+=len(labels)+1
 
     plt.subplots_adjust(wspace=0,hspace=0)
