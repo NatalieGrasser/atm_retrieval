@@ -502,9 +502,9 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
         fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
         fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
         
-    for run,title,color in zip([0,1],[titles,titles2],[retrieval_object1.color1,retrieval_object2.color1]):
+    for run,titles_list,color in zip([0,1],[titles,titles2],[retrieval_object1.color1,retrieval_object2.color1]):
         # add new titles
-        for j, title in enumerate(titles):
+        for j, title in enumerate(titles_list):
             if title == '':
                 continue
             
