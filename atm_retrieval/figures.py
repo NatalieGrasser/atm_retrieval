@@ -152,6 +152,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     cs_colors=['hotpink','fuchsia','crimson','plum']
     cs_colors=['forestgreen','limegreen','yellowgreen','tab:olive']
     cs_colors=['mediumseagreen','mediumaquamarine','lightseagreen','limegreen']
+    cs_colors=['gold','goldenrod','y','yellow']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
     for i,cs in enumerate(cloud_species):
@@ -162,7 +163,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         pi=np.where((P_cloud>min(retrieval_object.final_object.pressure))&(P_cloud<max(retrieval_object.final_object.pressure)))[0]
         ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
     # https://github.com/cphyc/matplotlib-label-lines
-    labelLines(ax.get_lines(),align=False,fontsize=fs*0.7,drop_label=True)
+    labelLines(ax.get_lines(),align=False,fontsize=fs*0.8,drop_label=True)
     
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     file=np.loadtxt('t1400g562nc_m0.0.dat')
@@ -176,9 +177,16 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         t_zhang=PT_Zhang[:,1]
         ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
 
+    if 'retrieval_object2' in kwargs: # if compare two retrievals, specify object name in legend
+        object_label=f'{retrieval_object.target.name} retrieval'
+        contr_label=f'{retrieval_object.target.name} contribution'
+    else:
+        object_label='This retrieval'
+        contr_label='Contribution'
+
     lines=[]
     # plot PT-profile + errors on retrieved temperatures
-    def plot_temperature(retr_obj,ax): 
+    def plot_temperature(retr_obj,ax,olabel): 
         if retr_obj.PT_type=='PTknot':
             ax.plot(retr_obj.final_object.temperature,
                 retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
@@ -197,7 +205,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             xmin=np.min(lower)-100
             xmax=np.max(upper)+100
             lines.append(Line2D([0],[0],marker='o',color=retrieval_object.color1,markerfacecolor=retrieval_object.color1,
-                    linewidth=2,linestyle='-',label=f'{retrieval_object.target.name} retrieval'))
+                    linewidth=2,linestyle='-',label=olabel))
 
         if retr_obj.PT_type=='PTgrad':
             dlnT_dlnP_knots=[]
@@ -222,29 +230,40 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             xmin=np.min((lower,upper))-100
             xmax=np.max((lower,upper))+100
             lines.append(Line2D([0], [0], color=retr_obj.color1,
-                                linewidth=2,linestyle='-',label=f'{retr_obj.target.name} retrieval'))
+                                linewidth=2,linestyle='-',label=object_label))
         return xmin,xmax
 
-    xmin,xmax=plot_temperature(retrieval_object,ax)
+    xmin,xmax=plot_temperature(retrieval_object,ax,object_label)
+       
+    if retrieval_object.target.name=='2M0355':
+        lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
     
     if 'retrieval_object2' in kwargs: # compare two retrievals
         retrieval_object2=kwargs.get('retrieval_object2')
-        xmin2,xmax2=plot_temperature(retrieval_object2,ax)
+        object_label2=f'{retrieval_object2.target.name} retrieval'
+        xmin2,xmax2=plot_temperature(retrieval_object2,ax,object_label2)
         #lines = lines[:1]+[lines[-1]]+lines[1:-1] # move object2 to second position in legend instead of last
         xmin=np.nanmin([xmin,xmin2])
         xmax=np.nanmax([xmax,xmax2])
+        summed_contr2=np.nanmean(retrieval_object2.final_object.contr_em_orders,axis=0) # average over all orders
+        contribution_plot2=summed_contr2/np.max(summed_contr2)*(xmax-xmin)+xmin
+        ax.plot(contribution_plot2,retrieval_object2.final_object.pressure,linestyle='dashed',
+                lw=1.5,alpha=0.8,color=retrieval_object2.color3)
+        lines.append(Line2D([0], [0], color=retrieval_object2.color3, alpha=0.8,linewidth=1.5, 
+                            linestyle='--',label=f'{retrieval_object2.target.name} contribution'))
         if retrieval_object2.target.name=='2M0355':
             lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
 
-    if retrieval_object.target.name=='2M0355':
-        lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
-    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
-    lines.append(Line2D([0], [0], color='gold', linewidth=1.5, linestyle='--',label='Contribution'))
-
     summed_contr=np.nanmean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-    ax.plot(contribution_plot,retrieval_object.final_object.pressure,linestyle='dashed',lw=1.5,color='gold')
+    ax.plot(contribution_plot,retrieval_object.final_object.pressure,linestyle='dashed',
+            lw=1.5,alpha=0.8,color=retrieval_object.color3)
+    lines.append(Line2D([0], [0], color=retrieval_object.color3, alpha=0.8,
+                        linewidth=1.5, linestyle='--',label=contr_label))
+    lines = lines[:1]+[lines[-1]]+lines[1:-1] # move to second position in legend instead of last
 
+    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
+    
     ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]',yscale='log',
         ylim=(np.nanmax(retrieval_object.final_object.pressure),
         np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
@@ -301,7 +320,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
     fig = corner.corner(plot_posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize':fs},
-                        label_kwargs={'fontsize':fs*0.7},
+                        label_kwargs={'fontsize':fs*0.8},
                         color=retrieval_object.color1,
                         linewidths=0.5,
                         fill_contours=True,
@@ -310,7 +329,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
                         show_titles=True,
                         hist_kwargs={'density': False,
                                 'fill': True,
-                                'alpha': 0.7,
+                                'alpha': 0.5,
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
                         fig=fig)
@@ -374,14 +393,14 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
 
 def summary_plot(retrieval_object):
 
-    fs=15
+    fs=14
     only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
                 'log_13CO','log_HF','log_H2(18)O','log_H2S']
-    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(16,16),fs=fs)
+    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(17,17),fs=fs)
     l, b, w, h = [0.37,0.84,0.6,0.15] # left, bottom, width, height
     ax_spec = fig.add_axes([l,b,w,h])
     ax_res = fig.add_axes([l,b-0.03,w,h-0.12])
-    plot_spectrum_inset(retrieval_object,ax=(ax_spec,ax_res),inset=False)
+    plot_spectrum_inset(retrieval_object,ax=(ax_spec,ax_res),inset=False,fs=fs)
 
     l, b, w, h = [0.68,0.47,0.29,0.29] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
@@ -414,7 +433,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
     plt.close()
 
-def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre cornerplot+PT of two retrievals
+def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare cornerplot+PT of two retrievals
 
     only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
                  'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
@@ -432,7 +451,8 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     fig = corner.corner(posterior1, 
                     labels=labels, 
-                    title_kwargs={'fontsize': 12},
+                    title_kwargs={'fontsize': fs},
+                    label_kwargs={'fontsize': fs*0.8},
                     color=retrieval_object1.color1,
                     linewidths=0.5,
                     fill_contours=True,
@@ -442,7 +462,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
                     plot_contours=True,
                     hist_kwargs={'density': False,
                                 'fill': True,
-                                'alpha': 0.7,
+                                'alpha': 0.5,
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
                     fig=fig)
@@ -452,6 +472,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
     corner.corner(posterior2, 
                     labels=labels, 
                     title_kwargs={'fontsize': 12},
+                    label_kwargs={'fontsize': fs*0.8},
                     color=retrieval_object2.color1,
                     linewidths=0.5,
                     fill_contours=True,
@@ -460,7 +481,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
                     show_titles=True,
                     hist_kwargs={'density': False,
                                 'fill': True,
-                                'alpha': 0.7,
+                                'alpha': 0.5,
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
                     fig=fig)
@@ -473,6 +494,34 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2): # comapre corne
             title_split2 = titles2[i].split('=')[1] # get only part with values
             titles[i] = title_split[0]+'\n'+title_split[1]+'\n'+title_split2
         fig.axes[i].title.set_text(titles[i])
+
+    for i, axi in enumerate(fig.axes):
+        fig.axes[i].title.set_visible(False) # remove original titles
+        fig.axes[i].xaxis.label.set_fontsize(fs)
+        fig.axes[i].yaxis.label.set_fontsize(fs)
+        fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
+        fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
+        
+    for run,title,color in zip([0,1],[titles,titles2],[retrieval_object1.color1,retrieval_object2.color1]):
+        # add new titles
+        for j, title in enumerate(titles):
+            if title == '':
+                continue
+            
+            # first only the name of the parameter
+            s = title.split('=')
+            if run == 0: # first retrieval, add parameter name
+                fig.axes[j].text(0.5, 1.55, s[0], fontsize=fs,
+                                ha='center', va='bottom',
+                                transform=fig.axes[j].transAxes,
+                                color='k',
+                                weight='normal')
+            # add parameter value with custom color and spacing
+            fig.axes[j].text(0.5, 1.55-(0.25*(run+1)), s[1], fontsize=fs,
+                            ha='center', va='bottom',
+                            transform=fig.axes[j].transAxes,
+                            color=color,
+                            weight='normal')
 
     plt.subplots_adjust(wspace=0, hspace=0)
 

@@ -93,11 +93,13 @@ class Retrieval:
         if self.target.name in ['2M0355','test']:
             self.color1='deepskyblue' # color of retrieval output
             self.color2='tab:blue' # color of residuals
+            self.color3='lightskyblue' 
         elif self.target.name=='2M1425':
             #self.color1='limegreen' # color of retrieval output
             #self.color2='forestgreen' # color of residuals
             self.color1='lightcoral' # color of retrieval output
             self.color2='indianred' # color of residuals
+            self.color3='lightpink'
 
     def get_species(self,param_dict): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
