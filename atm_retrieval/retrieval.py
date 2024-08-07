@@ -427,7 +427,7 @@ class Retrieval:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            original_prior=self.parameters.param_priors[molecule]
+            original_prior=self.parameters.param_priors[f'log_{molecule}']
             #self.parameters=copy.copy(old_parameters)
             self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude molecule from retrieval
             #self.parameters.params[f'log_{molecule}']=-12 # exclude molecule from retrieval
