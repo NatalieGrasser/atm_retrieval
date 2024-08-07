@@ -152,7 +152,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     cs_colors=['hotpink','fuchsia','crimson','plum']
     cs_colors=['forestgreen','limegreen','yellowgreen','tab:olive']
     cs_colors=['mediumseagreen','mediumaquamarine','lightseagreen','limegreen']
-    cs_colors=['gold','goldenrod','y','yellow']
+    cs_colors=['gold','goldenrod','peru','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
     for i,cs in enumerate(cloud_species):
@@ -393,7 +393,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
 
 def summary_plot(retrieval_object):
 
-    fs=14
+    fs=13
     only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
                 'log_13CO','log_HF','log_H2(18)O','log_H2S']
     fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(17,17),fs=fs)
@@ -447,7 +447,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
     posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
     labels=np.array([labels[i] for i in indices])
 
-    figsize=12
+    figsize=16
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     fig = corner.corner(posterior1, 
                     labels=labels, 
@@ -471,7 +471,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
     
     corner.corner(posterior2, 
                     labels=labels, 
-                    title_kwargs={'fontsize': 12},
+                    title_kwargs={'fontsize': fs},
                     label_kwargs={'fontsize': fs*0.8},
                     color=retrieval_object2.color1,
                     linewidths=0.5,
@@ -505,16 +505,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
         
     for run,titles_list,color in zip([0,1],[titles,titles2],[retrieval_object1.color1,retrieval_object2.color1]):
         # add new titles
-        try:
-            print('len(titles_list)=',len(titles_list))
-        except:
-            print(titles_list)
-        try:
-            print('titles_list.shape=',titles_list.shape)
-        except:
-            print(titles_list)
         for j, title in enumerate(titles_list):
-            print(j)
             if title == '':
                 continue
             
@@ -527,11 +518,6 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
                                 color='k',
                                 weight='normal')
             # add parameter value with custom color and spacing
-            print(s[1])
-            try:
-                print('fig.axes.shape=',fig.axes.shape)
-            except:
-                print('len(fig.axes)=',len(fig.axes))
             fig.axes[j].text(0.5, 1.55-(0.25*(run+1)), s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
@@ -540,7 +526,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
 
     plt.subplots_adjust(wspace=0, hspace=0)
 
-    l, b, w, h = [0.58,0.6,0.39,0.39] # left, bottom, width, height
+    l, b, w, h = [0.58,0.61,0.39,0.39] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
     plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,ax=ax_PT)
 
@@ -579,8 +565,8 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
         ax1.plot(RVs,ACF_norm2,color=retrieval_object2.color1,linestyle='dashed',alpha=0.5)
 
         lines = [Line2D([0], [0], color=retrieval_object1.color1,linewidth=2,label=f'{retrieval_object1.target.name}'),
-                 Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
                  Line2D([0], [0], color=retrieval_object2.color1,linewidth=2,label=f'{retrieval_object2.target.name}'),
+                 Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
                  Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
         ax1.legend(handles=lines,fontsize=9,loc='upper right')
         ax1.set_ylabel('S/N')
