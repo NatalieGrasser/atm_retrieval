@@ -19,7 +19,7 @@ import warnings
 import pathlib
 warnings.filterwarnings("ignore", category=UserWarning) 
 
-def plot_spectrum_inset(retrieval_object,inset=True,fs=12,**kwargs):
+def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
 
     wave=retrieval_object.data_wave
     flux=retrieval_object.data_flux
@@ -51,6 +51,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=12,**kwargs):
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
     ax[1].xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+    ax[0].tick_params(labelsize=fs)
+    ax[1].tick_params(labelsize=fs)
 
     if inset==True:
         ord=5 
@@ -65,8 +67,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=12,**kwargs):
         axins.set_xlim(x1, x2)
         box,lines=ax[0].indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
         axins.set_ylabel('Normalized Flux',fontsize=fs)
-        ax[0].tick_params(labelsize=fs)
-        ax[1].tick_params(labelsize=fs)
+        axins.tick_params(labelsize=fs)
         ax[1].set_facecolor('none') # to avoid hiding lines
         ax[0].set_xticks([])
         
@@ -78,6 +79,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=12,**kwargs):
         axins2.set_xlabel('Wavelength [nm]',fontsize=fs)
         tick_spacing=1
         axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
+        axins2.tick_params(labelsize=fs)
     else:
         ax[1].set_xlabel('Wavelength [nm]',fontsize=fs) # if no inset
 
@@ -150,9 +152,9 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
     cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
     cs_colors=['hotpink','fuchsia','crimson','plum']
-    cs_colors=['forestgreen','limegreen','yellowgreen','tab:olive']
-    cs_colors=['mediumseagreen','mediumaquamarine','lightseagreen','limegreen']
-    cs_colors=['gold','goldenrod','peru','sandybrown']
+    #cs_colors=['forestgreen','limegreen','yellowgreen','tab:olive']
+    #cs_colors=['mediumseagreen','mediumaquamarine','lightseagreen','limegreen']
+    #cs_colors=['gold','goldenrod','peru','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
     for i,cs in enumerate(cloud_species):
@@ -447,7 +449,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
     posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
     labels=np.array([labels[i] for i in indices])
 
-    figsize=16
+    figsize=15
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     fig = corner.corner(posterior1, 
                     labels=labels, 
@@ -512,13 +514,13 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
             # first only the name of the parameter
             s = title.split('=')
             if run == 0: # first retrieval, add parameter name
-                fig.axes[j].text(0.5, 1.55, s[0], fontsize=fs,
+                fig.axes[j].text(0.5, 1.5, s[0], fontsize=fs,
                                 ha='center', va='bottom',
                                 transform=fig.axes[j].transAxes,
                                 color='k',
                                 weight='normal')
             # add parameter value with custom color and spacing
-            fig.axes[j].text(0.5, 1.55-(0.25*(run+1)), s[1], fontsize=fs,
+            fig.axes[j].text(0.5, 1.5-(0.22*(run+1)), s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
                             color=color,

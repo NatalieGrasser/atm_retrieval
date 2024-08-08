@@ -34,7 +34,7 @@ if len(sys.argv)>1:
     brown_dwarf = sys.argv[1] # options: 2M0355 or 2M1425 or test
     chem = sys.argv[2] # options: freechem or equchem
     PT_type = sys.argv[3] # options: PTknot or PTgrad
-output=f'{brown_dwarf}_{chem}_{PT_type}' # output folder name
+output=f'{chem}_{PT_type}' # output folder name
 
 # option to change live points and evidence tolerance
 # example: config_run.py 2M0355 freechem PTgrad 200 5

@@ -21,12 +21,26 @@ class Target:
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
             self.fullname='2MASSJ03552337+1133437'    
             self.standard_star_temp=18700 # lamTau
+            self.color1='deepskyblue' # color of retrieval output
+            self.color2='tab:blue' # color of residuals
+            self.color3='lightskyblue' 
+            #self.color1='mediumturquoise' # color of retrieval output
+            #self.color2='lightseagreen' # color of residuals
+            #self.color3='aqua' 
         if self.name=='2M1425':
             self.ra="14h25m27.9845344257s"
             self.dec="-36d50m23.248617541s"
             self.JD=2459976.5        
             self.fullname='2MASSJ14252798-3650229'
             self.standard_star_temp=10980 # betHya
+            #self.color1='limegreen' # color of retrieval output
+            #self.color2='forestgreen' # color of residuals
+            self.color1='lightcoral' # color of retrieval output
+            self.color2='indianred' # color of residuals
+            self.color3='lightpink'
+            #self.color1='mediumpurple' # color of retrieval output
+            #self.color2='blueviolet' # color of residuals
+            #self.color3='mediumorchid'
 
     def load_spectrum(self):
         self.cwd = os.getcwd()
@@ -130,10 +144,10 @@ class Target:
         for order in range(self.n_orders):
             ax[order].plot(np.reshape(wl,(self.n_orders,self.n_dets*self.n_pixels))[order],
                            np.reshape(fl,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           lw=0.8,alpha=alph,label=label1)
+                           lw=0.8,alpha=1,label=label1,c=self.color1)
             ax[order].plot(np.reshape(wl2,(self.n_orders,self.n_dets*self.n_pixels))[order],
                            np.reshape(fl2,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           lw=0.8,alpha=alph,label=label2)
+                           lw=0.8,alpha=alph,label=label2,c='yellowgreen')
             ax[order].plot(np.reshape(wl3,(self.n_orders,self.n_dets*self.n_pixels))[order],
                            np.reshape(fl3,(self.n_orders,self.n_dets*self.n_pixels))[order],
                            lw=0.8,alpha=alph,label=label3,c='k')
@@ -163,11 +177,13 @@ class Target:
         tel_mask=np.where(flt/np.nanmedian(flt)<0.7)[0]
         fl[tel_mask]=np.nan
         err[tel_mask]=np.nan
+        fl0_masked=np.copy(fl0)
+        fl0_masked[tel_mask]=np.nan
 
         # blackbody of standard star is in continuum, multiply to bring it back
         bb=self.blackbody(wl,temp) 
-        fl/=flt/continuum*bb
-        err/=flt/continuum*bb
+        fl=fl/(flt*continuum/bb)
+        err=err/(flt*continuum/bb)
 
         # mask pixels at beginning and end of each detector
         pm=3 # plus/minus mask pixels on edge of each detector -> NECESSARY?
@@ -189,6 +205,7 @@ class Target:
         fl/=np.nanmedian(fl)
         err/=np.nanmedian(fl)
         flt/=np.nanmedian(flt)
+        fl0/=np.nanmedian(fl0_masked)
 
         if self.name=='2M1425': # manually mask weird outlier region
             mean=np.nanmean(fl[2,1])
@@ -196,7 +213,7 @@ class Target:
             bad_pixel=np.where(fl[2,1]>mean+5*std)[0][0] # 890
             fl[2,1][bad_pixel-2:bad_pixel+2]=np.nan
 
-        self.plot_orders3(wl,fl0/np.nanmedian(fl0),wl,flt,wl,fl,'Uncorrected','Telluric model','Corrected')
+        self.plot_orders3(wl,fl0,wl,flt,wl,fl,'Uncorrected','Telluric model','Corrected')
             
         if outfile!=None:
             spectrum=np.full(shape=(self.n_pixels*self.n_orders*self.n_dets,3),fill_value=np.nan)

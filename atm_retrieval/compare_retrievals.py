@@ -1,8 +1,9 @@
-# run this to make comparison plots of two retrievals
+# run this to make comparison plots of 2M0355 and 2M1425 retrievals (must have same settings)
 
 import getpass
 import os
 import numpy as np
+import sys
 
 if getpass.getuser() == "grasser": # when running from LEM
     os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
@@ -19,14 +20,27 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     from parameters import Parameters
     import figures as figs
 
-brown_dwarf = '2M0355' # options: 2M0355 or 2M1425
+# default
 chem = 'freechem' # options: freechem or equchem
 PT_type = 'PTgrad' # options: PTknot or PTgrad
 Nlive=400 # number of live points
-tol=0.3 # evidence tolerance
+tol=0.5 # evidence tolerance
 output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
 
-brown_dwarf = Target(brown_dwarf)
+# pass configuration as command line argument
+# example: compare_retrievals.py freechem PTgrad
+if len(sys.argv)>1:
+    chem = sys.argv[1] # options: 2M0355 or 2M1425 or test
+    PT_type = sys.argv[2] # options: freechem or equchem
+    output=f'{chem}_{PT_type}' # output folder name
+
+# option to change live points and evidence tolerance
+# example: compare_retrievals.py freechem PTgrad 200 5
+if len(sys.argv)>3:
+    Nlive=int(sys.argv[3])
+    tol=float(sys.argv[4])
+    output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
+
 cloud_mode='gray' # options: None, gray, or MgSiO3
 GP=True # options: True/False
 
