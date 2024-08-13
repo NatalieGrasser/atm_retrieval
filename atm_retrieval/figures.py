@@ -403,6 +403,9 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
 def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
     plot_spectrum_split(retrieval_object)
     plot_spectrum_inset(retrieval_object)
+    plot_pt(retrieval_object)
+    summary_plot(retrieval_object)
+    ratios_cornerplot(retrieval_object)
     if retrieval_object.chemistry=='freechem':
         if split_corner: # split corner plot to avoid massive files
             cornerplot(retrieval_object,only_abundances=True)
@@ -411,9 +414,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
             cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
     elif retrieval_object.chemistry=='equchem':
         cornerplot(retrieval_object,only_params=only_params)
-    plot_pt(retrieval_object)
-    ratios_cornerplot(retrieval_object)
-    summary_plot(retrieval_object)
+    
 
 def summary_plot(retrieval_object):
 
