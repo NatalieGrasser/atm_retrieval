@@ -151,10 +151,10 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
     cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
     cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
-    cs_colors=['hotpink','fuchsia','crimson','plum']
+    #cs_colors=['hotpink','fuchsia','crimson','plum']
     #cs_colors=['forestgreen','limegreen','yellowgreen','tab:olive']
     #cs_colors=['mediumseagreen','mediumaquamarine','lightseagreen','limegreen']
-    #cs_colors=['gold','goldenrod','peru','sandybrown']
+    cs_colors=['gold','goldenrod','peru','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
     for i,cs in enumerate(cloud_species):
@@ -219,18 +219,34 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             derr=np.array(derr) # gradient errors
             T0=retr_obj.final_params['T0']
             err=retr_obj.final_params['T0_err']
-            for x in range(4): # plot 1-3 sigma errors
-                if x==0:
-                    temperature=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots,T_base=T0)
-                    ax.plot(temperature,retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
-                else:   
-                    lower=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,0],
-                                                                T_base=T0+x*err[0])
-                    upper=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,1],
-                                                                T_base=T0+x*err[1])   
-                    ax.fill_betweenx(retr_obj.pressure,lower,upper,color=retr_obj.color1,alpha=0.15)
-            xmin=np.min((lower,upper))-100
-            xmax=np.max((lower,upper))+100
+            if False:
+                for x in range(4): # plot 1-3 sigma errors
+                    if x==0:
+                        temperature=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots,T_base=T0)
+                        ax.plot(temperature,retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
+                    else:   
+                        lower=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,0],
+                                                                    T_base=T0+x*err[0])
+                        upper=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,1],
+                                                                    T_base=T0+x*err[1])   
+                        ax.fill_betweenx(retr_obj.pressure,lower,upper,color=retr_obj.color1,alpha=0.15)
+            temperature=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots,T_base=T0)
+            ax.plot(temperature,retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
+            # get 1-2-3 sigma of temp_dist, has shape (samples, n_atm_layers)
+            quantiles = np.array([np.percentile(retr_obj.temp_dist[:,i], [0.2,2.3,15.9,50.0,84.1,97.7,99.8], axis=-1) for i in range(retr_obj.temp_dist.shape[1])])
+            ax.fill_betweenx(retr_obj.pressure,quantiles[:,0],quantiles[:,-1],color=retr_obj.color1,alpha=0.15)
+            ax.fill_betweenx(retr_obj.pressure,quantiles[:,1],quantiles[:,-2],color=retr_obj.color1,alpha=0.15)
+            ax.fill_betweenx(retr_obj.pressure,quantiles[:,2],quantiles[:,-3],color=retr_obj.color1,alpha=0.15)
+            #for x in [1,2,3]:
+                # temp_dist has shape (samples, n_atm_layers)
+                #medians,minus_err,plus_err=retr_obj.get_quantiles(retr_obj.temp_dist)
+                #lower=medians+x*minus_err
+                #upper=medians+x*plus_err
+                #ax.fill_betweenx(retr_obj.pressure,lower,upper,color=retr_obj.color1,alpha=0.15)
+            #xmin=np.min((lower,upper))-100
+            #xmax=np.max((lower,upper))+100
+            xmin=np.min((quantiles[:,0],quantiles[:,-1]))-100
+            xmax=np.max((quantiles[:,0],quantiles[:,-1]))+100
             lines.append(Line2D([0], [0], color=retr_obj.color1,
                                 linewidth=2,linestyle='-',label=object_label))
         return xmin,xmax
@@ -391,13 +407,18 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     else: # make cornerplot with all parameters, could be huge
         cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
     plot_pt(retrieval_object)
+    ratios_cornerplot(retrieval_object)
     summary_plot(retrieval_object)
 
 def summary_plot(retrieval_object):
 
     fs=13
-    only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
-                'log_13CO','log_HF','log_H2(18)O','log_H2S']
+    if retrieval_object.chemistry=='equchem':
+        only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
+                 'C13_12_ratio','O18_16_ratio','O17_16_ratio']
+    if retrieval_object.chemistry=='freechem':
+        only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
+                 'log_13CO','log_HF','log_H2(18)O','log_H2S']
     fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(17,17),fs=fs)
     l, b, w, h = [0.37,0.84,0.6,0.15] # left, bottom, width, height
     ax_spec = fig.add_axes([l,b,w,h])
@@ -514,13 +535,13 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
             # first only the name of the parameter
             s = title.split('=')
             if run == 0: # first retrieval, add parameter name
-                fig.axes[j].text(0.5, 1.5, s[0], fontsize=fs,
+                fig.axes[j].text(0.5, 1.45, s[0], fontsize=fs,
                                 ha='center', va='bottom',
                                 transform=fig.axes[j].transAxes,
                                 color='k',
                                 weight='normal')
             # add parameter value with custom color and spacing
-            fig.axes[j].text(0.5, 1.5-(0.22*(run+1)), s[1], fontsize=fs,
+            fig.axes[j].text(0.5, 1.45-(0.2*(run+1)), s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
                             color=color,
@@ -535,7 +556,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
     comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
 
-    filename=f'comparison_{retrieval_object1.target.name}_{retrieval_object2.target.name}.pdf'
+    filename=f'cornerplot_comparison.pdf'
     fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
     plt.close()
 
@@ -583,6 +604,97 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
         fig.tight_layout()
         plt.subplots_adjust(wspace=0, hspace=0)
 
-        filename=f'comparison_{molecule}_{retrieval_object1.target.name}_{retrieval_object2.target.name}.pdf'
+        filename=f'CCF_{molecule}_comparison.pdf'
         fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
         plt.close()
+
+def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
+    
+    labels=[r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',r'log $^{12}$CO/C$^{18}$O',
+            r'log H$_2^{16}$O/H$_2^{18}$O','C/O','C/H']
+    
+    plot_posterior=np.hstack([retrieval_object.ratios_posterior,retrieval_object.CO_CH_dist])
+    fig = plt.figure(figsize=(8,8)) # fix size to avoid memory issues
+    fig = corner.corner(plot_posterior,
+                        labels=labels, 
+                        title_kwargs={'fontsize':fs},
+                        label_kwargs={'fontsize':fs*0.8},
+                        color=retrieval_object.color1,
+                        linewidths=0.5,
+                        fill_contours=True,
+                        quantiles=[0.16,0.5,0.84],
+                        title_quantiles=[0.16,0.5,0.84],
+                        show_titles=True,
+                        hist_kwargs={'density': False,
+                                'fill': True,
+                                'alpha': 0.5,
+                                'edgecolor': 'k',
+                                'linewidth': 1.0},
+                        fig=fig)
+    titles = [axi.title.get_text() for axi in fig.axes]
+    
+    if 'retrieval_object2' in kwargs: # compare two retrievals
+        retrieval_object2=kwargs.get('retrieval_object2')
+        plot_posterior2=np.hstack([retrieval_object2.ratios_posterior,retrieval_object2.CO_CH_dist])
+        corner.corner(plot_posterior2, 
+                        labels=labels, 
+                        title_kwargs={'fontsize':fs},
+                        label_kwargs={'fontsize':fs*0.8},
+                        color=retrieval_object2.color1,
+                        linewidths=0.5,
+                        fill_contours=True,
+                        quantiles=[0.16,0.5,0.84],
+                        title_quantiles=[0.16,0.5,0.84],
+                        show_titles=True,
+                        hist_kwargs={'density': False,
+                                'fill': True,
+                                'alpha': 0.5,
+                                'edgecolor': 'k',
+                                'linewidth': 1.0},
+                        fig=fig)
+        titles2 = [axi.title.get_text() for axi in fig.axes]
+
+        for run,titles_list,color in zip([0,1],[titles,titles2],[retrieval_object.color1,retrieval_object2.color1]):
+            # add new titles
+            for j, title in enumerate(titles_list):
+                if title == '':
+                    continue
+                
+                # first only the name of the parameter
+                s = title.split('=')
+                if run == 0: # first retrieval, add parameter name
+                    fig.axes[j].text(0.5, 1.45, s[0], fontsize=fs,
+                                    ha='center', va='bottom',
+                                    transform=fig.axes[j].transAxes,
+                                    color='k',
+                                    weight='normal')
+                # add parameter value with custom color and spacing
+                fig.axes[j].text(0.5, 1.45-(0.2*(run+1)), s[1], fontsize=fs,
+                                ha='center', va='bottom',
+                                transform=fig.axes[j].transAxes,
+                                color=color,
+                                weight='normal')
+                
+        for i, axi in enumerate(fig.axes):
+            fig.axes[i].title.set_visible(False) # remove original titles   
+        comparison_dir=pathlib.Path(f'{retrieval_object.output_dir}/comparison') # store output in separate folder
+        comparison_dir.mkdir(parents=True, exist_ok=True)
+        filename=f'{comparison_dir}/ratios_comparison.pdf'
+
+    else:
+        for i, title in enumerate(titles):
+            if len(title) > 1: # change 30 to 1 if you want all titles to be split
+                title_split = title.split('=')
+                titles[i] = title_split[0] + '\n ' + title_split[1]
+            fig.axes[i].title.set_text(titles[i])
+        filename=f'{retrieval_object.output_dir}/ratios.pdf'
+
+    for i, axi in enumerate(fig.axes):
+        fig.axes[i].xaxis.label.set_fontsize(fs)
+        fig.axes[i].yaxis.label.set_fontsize(fs)
+        fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
+        fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
+
+    plt.subplots_adjust(wspace=0,hspace=0)
+    fig.savefig(filename,bbox_inches="tight",dpi=200)
+    plt.close()

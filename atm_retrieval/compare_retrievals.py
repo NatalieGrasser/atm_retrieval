@@ -28,14 +28,14 @@ tol=0.5 # evidence tolerance
 output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
 
 # pass configuration as command line argument
-# example: compare_retrievals.py freechem PTgrad
+# example: python3 compare_retrievals.py freechem PTgrad
 if len(sys.argv)>1:
     chem = sys.argv[1] # options: 2M0355 or 2M1425 or test
     PT_type = sys.argv[2] # options: freechem or equchem
     output=f'{chem}_{PT_type}' # output folder name
 
 # option to change live points and evidence tolerance
-# example: compare_retrievals.py freechem PTgrad 200 5
+# example: python3 compare_retrievals.py freechem PTgrad 300 0.5
 if len(sys.argv)>3:
     Nlive=int(sys.argv[3])
     tol=float(sys.argv[4])
@@ -124,8 +124,9 @@ retrieval2=Retrieval(target=Target('2M1425'),parameters=parameters,
 retrieval2.evaluate()
 
 figs.compare_two_retrievals(retrieval,retrieval2)
+figs.ratios_cornerplot(retrieval,retrieval_object2=retrieval2)
 
 molecules=['13CO','HF','H2S','H2(18)O']
-retrieval.cross_correlation(molecules) # gets CCFs and ACFs of each molecules
+retrieval.cross_correlation(molecules) # gets CCFs and ACFs of each molecule
 retrieval2.cross_correlation(molecules)
 figs.compare_two_CCFs(retrieval,retrieval2,molecules)

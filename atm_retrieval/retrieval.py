@@ -28,7 +28,8 @@ import copy
 class Retrieval:
 
     def __init__(self,target,parameters,output_name,chemistry='freechem',
-                 GP=True,cloud_mode='gray',PT_type='PTknot',redo=False):
+                 GP=True,cloud_mode='gray',PT_type='PTknot',redo=False,
+                 load_atmospheres=True):
 
         self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
                 [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
@@ -82,7 +83,9 @@ class Retrieval:
 
         # load atmosphere objects here and not in likelihood/pRT_model to make it faster
         # redo atmosphere objects when introdocuing new species or MgSiO3 clouds
-        self.atmosphere_objects=self.get_atmosphere_objects(redo=redo)
+        self.atmosphere_objects=None # remove after debugging!!!
+        if load_atmospheres==True: # for debugging on my laptop
+            self.atmosphere_objects=self.get_atmosphere_objects(redo=redo)
         self.callback_label='live_' # label for plots
         self.prefix='pmn_'
 
@@ -90,6 +93,8 @@ class Retrieval:
         self.bestfit_params=None 
         self.posterior = None
         self.final_params=None
+        self.calc_errors=False
+
         self.color1=target.color1
         self.color2=target.color2
         self.color3=target.color3
@@ -158,6 +163,11 @@ class Retrieval:
                                      chemistry=self.chemistry,
                                      cloud_mode=self.cloud_mode,
                                      PT_type=self.PT_type)
+        
+        # pass exit through a self.thing attibute and not kwarg, or pmn will be confused
+        if self.calc_errors==True: # only for calc errors on Fe/H, C/O, temperatures
+            return
+        
         self.model_flux=self.model_object.make_spectrum()
         for j in range(self.n_orders): # update covariance matrix
             for k in range(self.n_dets):
@@ -203,11 +213,17 @@ class Retrieval:
         else: # when doing exclusion retrievals
             self.lnZ_ex = stats['nested importance sampling global log-evidence']
 
-    def get_quantiles(self,posterior):
-        quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
-        medians=quantiles[:,1] # median of all params
-        plus_err=quantiles[:,2]-medians # +error
-        minus_err=quantiles[:,0]-medians # -error
+    def get_quantiles(self,posterior,flat=False):
+        if flat==False: # input entire posterior of all retrieved parameters
+            quantiles = np.array([np.percentile(posterior[:,i], [16.0,50.0,84.0], axis=-1) for i in range(posterior.shape[1])])
+            medians=quantiles[:,1] # median of all params
+            plus_err=quantiles[:,2]-medians # +error
+            minus_err=quantiles[:,0]-medians # -error
+        else: # input only one posterior
+            quantiles = np.array([np.percentile(posterior, [16.0,50.0,84.0])])
+            medians=quantiles[:,1] # median
+            plus_err=quantiles[:,2]-medians # +error
+            minus_err=quantiles[:,0]-medians # -error
         return medians,minus_err,plus_err
 
     def get_final_params_and_spectrum(self,contribution=True,save=False): 
@@ -228,9 +244,10 @@ class Retrieval:
                                        chemistry=self.chemistry,contribution=contribution,
                                        PT_type=self.PT_type)
         self.final_model=self.final_object.make_spectrum()
-
+        
         # get isotope and element ratios and save them in final params dict
         self.get_ratios()
+        #del self.atmosphere_objects # don't need it after this step, avoid it crashing my laptop
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
@@ -268,49 +285,48 @@ class Retrieval:
                 return C1213,O1618,O1617,FeH,CO
 
         if self.chemistry=='freechem':
-            log_12CO=self.final_params['log_12CO']
-            log_12CO_me=(self.final_params['log_12CO_err'][0]) # minus error
-            log_12CO_pe=(self.final_params['log_12CO_err'][1]) # plus error
+            #self.final_params['Fe/H']=self.final_object.FeH
+            #self.final_params['C/O']=self.final_object.CO
 
-            log_13CO=self.final_params['log_13CO']
-            log_13CO_me=(self.final_params['log_13CO_err'][0]) # minus error
-            log_13CO_pe=(self.final_params['log_13CO_err'][1]) # plus error
+            for m1,m2 in [['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]: # isotope ratios    
+                p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
+                p2=self.posterior[:,list(self.parameters.params).index(f'log_{m2}')]
+                log_ratio=p1-p2
+                median,minus_err,plus_err=self.get_quantiles(log_ratio,flat=True)
+                self.final_params[f'log_{m1}/{m2}']=median
+                self.final_params[f'log_{m1}/{m2}_err']=(minus_err,plus_err)
+                if 'ratios_posterior' in locals():
+                    ratios_posterior=np.vstack([ratios_posterior,log_ratio])
+                else:
+                    ratios_posterior=log_ratio
+            self.ratios_posterior=ratios_posterior.T
 
-            log_C17O=self.final_params['log_C17O']
-            log_C17O_me=(self.final_params['log_C17O_err'][0]) # minus error
-            log_C17O_pe=(self.final_params['log_C17O_err'][1]) # plus error
+            self.calc_errors=True
+            CO_distribution=np.full(self.posterior.shape[0],fill_value=0.0)
+            CH_distribution=np.full(self.posterior.shape[0],fill_value=0.0)
+            temperature_distribution=[] # for each of the n_atm_layers
+            x=0 # just for debugging
+            for j,sample in enumerate(self.posterior):
+                for i,key in enumerate(self.parameters.param_keys):
+                    self.parameters.params[key]=sample[i]
+                self.PMN_lnL()
+                CO_distribution[j]=self.model_object.CO
+                CH_distribution[j]=self.model_object.FeH
+                temperature_distribution.append(self.model_object.temperature)
+                #x+=1
+                #if x>100:
+                    #break
+            self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
+            self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
+            self.calc_errors=False # set back to False when finished
 
-            log_C18O=self.final_params['log_C18O']
-            log_C18O_me=(self.final_params['log_C18O_err'][0]) # minus error
-            log_C18O_pe=(self.final_params['log_C18O_err'][1]) # plus error
+            median,minus_err,plus_err=self.get_quantiles(CO_distribution,flat=True)
+            self.final_params['C/O']=median
+            self.final_params['C/O_err']=(minus_err,plus_err)
 
-            log_H2O=self.final_params['log_H2O']
-            log_H2O_me=(self.final_params['log_H2O_err'][0]) # minus error
-            log_H2O_pe=(self.final_params['log_H2O_err'][1]) # plus error
-
-            log_H218O=self.final_params['log_H2(18)O']
-            log_H218O_me=(self.final_params['log_H2(18)O_err'][0]) # minus error
-            log_H218O_pe=(self.final_params['log_H2(18)O_err'][1]) # plus error
-
-            def error_prop(f,A,Ame,Ape,B,Bme,Bpe):
-                fme=np.sqrt(f**2*((Ame/A)**2+(Bme/B)**2)) # minus error of f when f=A*B
-                fpe=np.sqrt(f**2*((Ape/A)**2+(Bpe/B)**2)) # plus error of f when f=A*B
-                return fme,fpe
-            
-            self.final_params['12CO/13CO']=10**(log_12CO-log_13CO)
-            self.final_params['12CO/13CO_err']=error_prop(log_12CO-log_13CO,log_12CO,log_12CO_me,log_12CO_pe,
-                                                          log_13CO,log_13CO_me,log_13CO_pe)
-            self.final_params['12CO/C18O']=10**(log_12CO-log_C18O)
-            self.final_params['12CO/C18O_err']=error_prop(log_12CO-log_C18O,log_12CO,log_12CO_me,log_12CO_pe,
-                                                          log_C18O,log_C18O_me,log_C18O_pe)
-            self.final_params['12CO/C17O']=10**(log_12CO-log_C17O)
-            self.final_params['12CO/C17O_err']=error_prop(log_12CO-log_C17O,log_12CO,log_12CO_me,log_12CO_pe,
-                                                          log_C17O,log_C17O_me,log_C17O_pe)
-            self.final_params['H2O/H2(18)O']=10**(log_H2O-log_H218O)
-            self.final_params['H2O/H2(18)O_err']=error_prop(log_H2O-log_H218O,log_H2O,log_H2O_me,log_H2O_pe,
-                                                          log_H218O,log_H218O_me,log_H218O_pe)
-            self.final_params['Fe/H']=self.final_object.FeH
-            self.final_params['C/O']=self.final_object.CO
+            median,minus_err,plus_err=self.get_quantiles(CH_distribution,flat=True)
+            self.final_params['C/H']=median
+            self.final_params['C/H_err']=(minus_err,plus_err)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',save=False):
@@ -318,10 +334,6 @@ class Retrieval:
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum(save=save) # all params: constant + free + scaling phi_ij + s2_ij
         if callback_label=='final_':
-            #figs.plot_spectrum_split(self)
-            #figs.plot_spectrum_inset(self)
-            #figs.plot_pt(self)
-            #figs.summary_plot(self)
             figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
         else:
             figs.summary_plot(self)
@@ -433,15 +445,25 @@ class Retrieval:
             self.prefix=f'pmn_wo{molecule}_' 
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
             self.callback_label=f'final_wo{molecule}_'
-            self.evaluate(callback_label=self.callback_label)
-            self.PMN_analyse() # gets self.lnZ_ex
+            self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
+            #self.PMN_analyse() 
+
+            ex_model=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,
+                                        target=self.target,species=self.species,
+                                        atmosphere_objects=self.atmosphere_objects,
+                                        chemistry=self.chemistry,contribution=True,
+                                        PT_type=self.PT_type).make_spectrum()      
+            chi2_ex = self.LogLike(ex_model, self.Cov).chi2_0_red # reduced chi^2
+
             print(f'lnZ=',self.lnZ)
             print(f'lnZ_{molecule}=',self.lnZ_ex)
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
             print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
+            print(f'chi2_{molecule}=',chi2_ex)
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
+            bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
             #self.final_params[f'lnBm_{molecule}']=lnB
             #self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
             #print('self.final_params=\n',self.final_params) 

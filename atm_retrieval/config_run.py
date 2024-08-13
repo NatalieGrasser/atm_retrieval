@@ -90,10 +90,7 @@ if chem=='freechem':
             'log_HCN':([-12,-1],r'log HCN'),
             'log_HF':([-12,-1],r'log HF'),
             'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
-            'log_H2S':([-12,-1],r'log H$_2$S'),
-            #'log_OH':([-12,-1],r'log OH'),
-            #'log_CO2':([-12,-1],r'log CO$_2$')
-            }
+            'log_H2S':([-12,-1],r'log H$_2$S')}
     
 if cloud_mode=='gray':
     cloud_props={'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'),  
