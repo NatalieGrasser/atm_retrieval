@@ -116,12 +116,12 @@ params=parameters.params
 retrieval=Retrieval(target=Target('2M0355'),parameters=parameters,
                     output_name=output,chemistry=chem,
                     cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
-retrieval.evaluate()
+retrieval.evaluate(makefigs=False)
 
 retrieval2=Retrieval(target=Target('2M1425'),parameters=parameters,
                     output_name=output,chemistry=chem,
                     cloud_mode=cloud_mode,GP=GP,PT_type=PT_type)
-retrieval2.evaluate()
+retrieval2.evaluate(makefigs=False)
 
 figs.compare_two_retrievals(retrieval,retrieval2)
 figs.ratios_cornerplot(retrieval,retrieval_object2=retrieval2)

@@ -373,6 +373,8 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
             label_i=test_mathtext[key_i]
             value_i=test_parameters[key_i]
             if label_i in labels:
+                #print(label_i)
+                #print(np.where(labels==label_i))
                 i=np.where(labels==label_i)[0][0]
                 compare[i]=value_i # add only those values that are used in cornerplot, in correct order
         x=0
@@ -401,11 +403,14 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
 def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split_corner=True):
     plot_spectrum_split(retrieval_object)
     plot_spectrum_inset(retrieval_object)
-    if split_corner: # split corner plot to avoid massive files
-        cornerplot(retrieval_object,only_abundances=True)
-        cornerplot(retrieval_object,not_abundances=True)
-    else: # make cornerplot with all parameters, could be huge
-        cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
+    if retrieval_object.chemistry=='freechem':
+        if split_corner: # split corner plot to avoid massive files
+            cornerplot(retrieval_object,only_abundances=True)
+            cornerplot(retrieval_object,not_abundances=True)
+        else: # make cornerplot with all parameters, could be huge
+            cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
+    elif retrieval_object.chemistry=='equchem':
+        cornerplot(retrieval_object,only_params=only_params)
     plot_pt(retrieval_object)
     ratios_cornerplot(retrieval_object)
     summary_plot(retrieval_object)
@@ -415,7 +420,7 @@ def summary_plot(retrieval_object):
     fs=13
     if retrieval_object.chemistry=='equchem':
         only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
-                 'C13_12_ratio','O18_16_ratio','O17_16_ratio']
+                 'log_C13_12_ratio','log_O18_16_ratio','log_O17_16_ratio']
     if retrieval_object.chemistry=='freechem':
         only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
                  'log_13CO','log_HF','log_H2(18)O','log_H2S']
@@ -687,7 +692,7 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
                 title_split = title.split('=')
                 titles[i] = title_split[0] + '\n ' + title_split[1]
             fig.axes[i].title.set_text(titles[i])
-        filename=f'{retrieval_object.output_dir}/ratios.pdf'
+        filename=f'{retrieval_object.output_dir}/{retrieval_object.callback_label}ratios.pdf'
 
     for i, axi in enumerate(fig.axes):
         fig.axes[i].xaxis.label.set_fontsize(fs)
@@ -700,6 +705,15 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
     plt.close()
 
 def VMR_plot(retrieval_object,fs=10,**kwargs):
+
+    read_species_info=retrieval_object.final_object.read_species_info
+
+    # convert mass fractions to VMR
+    mass_ratio_13CO_12CO = read_species_info('13CO','mass')/read_species_info('12CO','mass')
+    mass_ratio_C18O_C16O = read_species_info('C18O','mass')/read_species_info('12CO','mass')
+    mass_ratio_C17O_C16O = read_species_info('C17O','mass')/read_species_info('12CO','mass')
+    mass_ratio_H218O_H2O = read_species_info('H2(18)O','mass')/read_species_info('H2O','mass')
+    
     fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
 
     pressure=retrieval_object.final_object.pressure

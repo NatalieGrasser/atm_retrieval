@@ -134,9 +134,9 @@ class pRT_spectrum:
         mass_ratio_C18O_C16O = self.read_species_info('C18O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_C17O_C16O = self.read_species_info('C17O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_H218O_H2O = self.read_species_info('H2(18)O','mass')/self.read_species_info('H2O','mass')
-        self.C13_12_ratio = params.get('C13_12_ratio')
-        self.O18_16_ratio = params.get('O18_16_ratio')
-        self.O17_16_ratio = params.get('O17_16_ratio')
+        self.C13_12_ratio = 10**(params.get('log_C13_12_ratio'))
+        self.O18_16_ratio = 10**(params.get('log_O18_16_ratio'))
+        self.O17_16_ratio = 10**(params.get('log_O17_16_ratio'))
 
         # in case they are not defined, set to zero
         if self.C13_12_ratio is None:

@@ -105,7 +105,8 @@ class Retrieval:
             self.chem_species=[]
             for par in param_dict:
                 if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
-                    if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l']: # skip
+                    if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
+                               'log_C13_12_ratio','log_O18_16_ratio','log_O17_16_ratio']: # skip
                         pass
                     else:
                         self.chem_species.append(par)
@@ -198,7 +199,10 @@ class Retrieval:
         self.posterior = posterior[:,:-2] # remove last 2 columns
         #np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
-        figs.summary_plot(self)
+        try:
+            figs.summary_plot(self)
+        except Exception as error:
+            print("An error occurred:", type(error).__name__, "–", error)
      
     def PMN_analyse(self):
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
@@ -276,11 +280,26 @@ class Retrieval:
 
     def get_ratios(self,output=False): # can only be run after self.evaluate()
         if self.chemistry=='equchem':
-            C1213=1/self.final_params['C13_12_ratio']
-            O1618=1/self.final_params['O18_16_ratio']
-            O1617=1/self.final_params['O17_16_ratio']
+            C1213=1/self.final_params['log_C13_12_ratio']
+            O1618=1/self.final_params['log_O18_16_ratio']
+            O1617=1/self.final_params['log_O17_16_ratio']
             FeH=self.final_params['Fe/H']
             CO=self.final_params['C/O']
+
+            self.calc_errors=True
+            temperature_distribution=[] # for each of the n_atm_layers
+            x=0
+            for j,sample in enumerate(self.posterior):
+                for i,key in enumerate(self.parameters.param_keys):
+                    self.parameters.params[key]=sample[i]
+                self.PMN_lnL()
+                temperature_distribution.append(self.model_object.temperature)
+                x+=1
+                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop
+                    break
+            self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
+            self.calc_errors=False # set back to False when finished
+
             if output:
                 return C1213,O1618,O1617,FeH,CO
 
@@ -313,9 +332,9 @@ class Retrieval:
                 CO_distribution[j]=self.model_object.CO
                 CH_distribution[j]=self.model_object.FeH
                 temperature_distribution.append(self.model_object.temperature)
-                #x+=1
-                #if x>100:
-                    #break
+                x+=1
+                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop
+                    break
             self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
             self.calc_errors=False # set back to False when finished
@@ -329,14 +348,15 @@ class Retrieval:
             self.final_params['C/H_err']=(minus_err,plus_err)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
-                 callback_label='final_',save=False):
+                 callback_label='final_',save=False,makefigs=True):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum(save=save) # all params: constant + free + scaling phi_ij + s2_ij
-        if callback_label=='final_':
-            figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
-        else:
-            figs.summary_plot(self)
+        if makefigs:
+            if callback_label=='final_':
+                figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
+            else:
+                figs.summary_plot(self)
         
     def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
 

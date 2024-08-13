@@ -74,9 +74,9 @@ if PT_type=='PTgrad':
 if chem=='equchem':
     chemistry={'C/O':([0,1], r'C/O'), 
             'Fe/H': ([-1.5,1.5], r'[Fe/H]'), 
-            'C13_12_ratio': ([1e-10,1e-1], r'$\mathrm{^{13}C/^{12}C}$'), 
-            'O18_16_ratio': ([1e-10,1e-1], r'$\mathrm{^{18}O/^{16}O}$'), 
-            'O17_16_ratio': ([1e-10,1e-1], r'$\mathrm{^{17}O/^{12}O}$')}
+            'log_C13_12_ratio': ([-12,-1], r'log $\mathrm{^{13}C/^{12}C}$'), 
+            'log_O18_16_ratio': ([-12,-1], r'log $\mathrm{^{18}O/^{16}O}$'), 
+            'log_O17_16_ratio': ([-12,-1], r'log $\mathrm{^{17}O/^{12}O}$')}
     
 # if free chemistry, define VMRs
 if chem=='freechem': 
