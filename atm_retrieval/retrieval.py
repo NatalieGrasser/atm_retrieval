@@ -453,7 +453,8 @@ class Retrieval:
                                         atmosphere_objects=self.atmosphere_objects,
                                         chemistry=self.chemistry,contribution=True,
                                         PT_type=self.PT_type).make_spectrum()      
-            chi2_ex = self.LogLike(ex_model, self.Cov).chi2_0_red # reduced chi^2
+            lnL = self.LogLike(ex_model, self.Cov) # call function to generate chi2
+            chi2_ex = self.LogLike.chi2_0_red # reduced chi^2
 
             print(f'lnZ=',self.lnZ)
             print(f'lnZ_{molecule}=',self.lnZ_ex)

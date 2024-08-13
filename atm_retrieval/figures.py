@@ -698,3 +698,27 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
     plt.subplots_adjust(wspace=0,hspace=0)
     fig.savefig(filename,bbox_inches="tight",dpi=200)
     plt.close()
+
+def VMR_plot(retrieval_object,fs=10,**kwargs):
+    fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
+
+    pressure=retrieval_object.final_object.pressure
+
+    if retrieval_object.chemistry=='equchem':
+        mass_fractions=retrieval_object.final_object.mass_fractions
+
+        for species in ['H2','He','H2O','CO','CH4','HCN','NH3']:
+            ax.plot(mass_fractions[species], pressure, label = species)
+
+    ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
+        ylim=(np.max(pressure),np.min(pressure)),xlim=(1e-10,1e-1))
+    
+    #ax.legend(handles=lines,fontsize=fs)
+    ax.tick_params(labelsize=fs)
+    ax.set_xlabel('Temperature [K]', fontsize=fs)
+    ax.set_ylabel('Pressure [bar]', fontsize=fs)
+
+    fig.savefig(f'{retrieval_object.output_dir}/VMRs.pdf')
+    plt.close()
+
+    
