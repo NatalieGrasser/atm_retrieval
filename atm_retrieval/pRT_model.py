@@ -134,17 +134,9 @@ class pRT_spectrum:
         mass_ratio_C18O_C16O = self.read_species_info('C18O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_C17O_C16O = self.read_species_info('C17O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_H218O_H2O = self.read_species_info('H2(18)O','mass')/self.read_species_info('H2O','mass')
-        self.C13_12_ratio = 10**(params.get('log_C13_12_ratio'))
-        self.O18_16_ratio = 10**(params.get('log_O18_16_ratio'))
-        self.O17_16_ratio = 10**(params.get('log_O17_16_ratio'))
-
-        # in case they are not defined, set to zero
-        if self.C13_12_ratio is None:
-            self.C13_12_ratio = 0
-        if self.O18_16_ratio is None:
-            self.O18_16_ratio = 0
-        if self.O17_16_ratio is None:
-            self.O17_16_ratio = 0
+        self.C13_12_ratio = 10**(-params.get('log_C12_13_ratio',-12))
+        self.O18_16_ratio = 10**(-params.get('log_O16_18_ratio',-12))
+        self.O17_16_ratio = 10**(-params.get('log_O16_17_ratio',-12))
 
         for species_i in species:
             if (species_i=='CO_main_iso'): # 12CO mass fraction

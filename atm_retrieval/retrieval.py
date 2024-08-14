@@ -278,13 +278,16 @@ class Retrieval:
         
         return self.final_params,self.final_spectrum
 
-    def get_ratios(self,output=False): # can only be run after self.evaluate()
+    def get_ratios(self): # can only be run after self.evaluate()
         if self.chemistry=='equchem':
-            C1213=1/self.final_params['log_C13_12_ratio']
-            O1618=1/self.final_params['log_O18_16_ratio']
-            O1617=1/self.final_params['log_O17_16_ratio']
-            FeH=self.final_params['Fe/H']
-            CO=self.final_params['C/O']
+
+            for ratio in ['C/O','Fe/H','log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']:
+                p=self.posterior[:,list(self.parameters.params).index(f'{ratio}')]
+                if 'ratios_posterior' in locals():
+                    ratios_posterior=np.vstack([ratios_posterior,p])
+                else:
+                    ratios_posterior=p
+            self.ratios_posterior=ratios_posterior.T
 
             self.calc_errors=True
             temperature_distribution=[] # for each of the n_atm_layers
@@ -300,10 +303,7 @@ class Retrieval:
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
             self.calc_errors=False # set back to False when finished
 
-            if output:
-                return C1213,O1618,O1617,FeH,CO
-
-        if self.chemistry=='freechem':
+        elif self.chemistry=='freechem':
             #self.final_params['Fe/H']=self.final_object.FeH
             #self.final_params['C/O']=self.final_object.CO
 
@@ -337,6 +337,7 @@ class Retrieval:
                     break
             self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
+            self.ratios_posterior=np.hstack([self.ratios_posterior,self.CO_CH_dist])
             self.calc_errors=False # set back to False when finished
 
             median,minus_err,plus_err=self.get_quantiles(CO_distribution,flat=True)

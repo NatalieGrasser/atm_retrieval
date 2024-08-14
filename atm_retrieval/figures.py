@@ -411,7 +411,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
             cornerplot(retrieval_object,only_abundances=True)
             cornerplot(retrieval_object,not_abundances=True)
         else: # make cornerplot with all parameters, could be huge
-            cornerplot(retrieval_object,only_abundances=only_abundances,only_params=only_params)
+            cornerplot(retrieval_object,only_params=only_params)
     elif retrieval_object.chemistry=='equchem':
         cornerplot(retrieval_object,only_params=only_params)
     
@@ -421,7 +421,7 @@ def summary_plot(retrieval_object):
     fs=13
     if retrieval_object.chemistry=='equchem':
         only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
-                 'log_C13_12_ratio','log_O18_16_ratio','log_O17_16_ratio']
+                 'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
     if retrieval_object.chemistry=='freechem':
         only_params=['rv','vsini','log_g','T0','log_H2O','log_12CO',
                  'log_13CO','log_HF','log_H2(18)O','log_H2S']
@@ -615,13 +615,15 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
         plt.close()
 
 def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
+
+    if retrieval_object.chemistry=='equchem':
+        labels=['C/O','[Fe/H]',r'log $^{12}$C/$^{13}$C',r'log $^{16}$O/$^{18}$O',r'log $^{16}$O/$^{17}$O']
+    elif retrieval_object.chemistry=='freechem':
+        labels=[r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',r'log $^{12}$CO/C$^{18}$O',
+            r'log H$_2^{16}$O/H$_2^{18}$O','C/O','[Fe/H]']
     
-    labels=[r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',r'log $^{12}$CO/C$^{18}$O',
-            r'log H$_2^{16}$O/H$_2^{18}$O','C/O','C/H']
-    
-    plot_posterior=np.hstack([retrieval_object.ratios_posterior,retrieval_object.CO_CH_dist])
     fig = plt.figure(figsize=(8,8)) # fix size to avoid memory issues
-    fig = corner.corner(plot_posterior,
+    fig = corner.corner(retrieval_object.ratios_posterior,
                         labels=labels, 
                         title_kwargs={'fontsize':fs},
                         label_kwargs={'fontsize':fs*0.8},
@@ -641,8 +643,7 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
     
     if 'retrieval_object2' in kwargs: # compare two retrievals
         retrieval_object2=kwargs.get('retrieval_object2')
-        plot_posterior2=np.hstack([retrieval_object2.ratios_posterior,retrieval_object2.CO_CH_dist])
-        corner.corner(plot_posterior2, 
+        corner.corner(retrieval_object2.ratios_posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize':fs},
                         label_kwargs={'fontsize':fs*0.8},
