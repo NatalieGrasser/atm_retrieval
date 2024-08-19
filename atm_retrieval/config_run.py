@@ -119,9 +119,4 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
 
 retrieval=init_retrieval(brown_dwarf=brown_dwarf,PT_type=PT_type,chem=chem,Nlive=Nlive,tol=tol)
 molecules=['13CO','HF','H2S','H2(18)O']
-if bayes==True:
-    retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
-                            crosscorr_molecules=molecules,bayes_molecules=molecules)
-else:
-    retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
-                            crosscorr_molecules=molecules)
+retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,molecules=molecules,bayes=bayes)
