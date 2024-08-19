@@ -28,6 +28,7 @@ chem = sys.argv[2] # freechem / equchem / quequchem
 PT_type = sys.argv[3] # PTknot / PTgrad
 Nlive=int(sys.argv[4]) # number of live points (integer)
 tol=float(sys.argv[5]) # evidence tolerance (float)
+bayes=True if len(sys.argv)>6 else False # True / False (do bayes evidence retrievals)
 
 def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True):
 
@@ -118,5 +119,9 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
 
 retrieval=init_retrieval(brown_dwarf=brown_dwarf,PT_type=PT_type,chem=chem,Nlive=Nlive,tol=tol)
 molecules=['13CO','HF','H2S','H2(18)O']
-retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
-                        crosscorr_molecules=molecules,bayes_molecules=molecules)
+if bayes==True:
+    retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
+                            crosscorr_molecules=molecules,bayes_molecules=molecules)
+else:
+    retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,
+                            crosscorr_molecules=molecules)

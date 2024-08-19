@@ -516,8 +516,7 @@ class Retrieval:
         sigma = np.sqrt(2)*erfcinv(p)
         return ln_B*sign,sigma*sign
 
-    def run_retrieval(self,N_live_points=400,evidence_tolerance=0.5,
-                      crosscorr_molecules=None,bayes_molecules=None): 
+    def run_retrieval(self,N_live_points=400,evidence_tolerance=0.5,molecules=None,bayes=False): 
         self.N_live_points=N_live_points
         self.evidence_tolerance=evidence_tolerance
         retrieval_output_dir=self.output_dir # save end results here
@@ -532,12 +531,12 @@ class Retrieval:
             with open(final_dict,'rb') as file:
                 self.final_params=pickle.load(file) 
         self.evaluate(save=save)
-        if crosscorr_molecules!=None:
-            ccf_dict=self.cross_correlation(crosscorr_molecules)
+        if molecules!=None:
+            ccf_dict=self.cross_correlation(molecules)
             self.final_params.update(ccf_dict)
             print('self.final_params.update(ccf_dict)=\n',self.final_params)
-        if bayes_molecules!=None:
-            bayes_dict=self.bayes_evidence(bayes_molecules)
+        if bayes==True:
+            bayes_dict=self.bayes_evidence(molecules)
             bayes_dict.update(ccf_dict)
             self.final_params.update(bayes_dict)
             print('self.final_params.update(bayes_dict)=\n',self.final_params)

@@ -410,11 +410,20 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
         if split_corner: # split corner plot to avoid massive files
             cornerplot(retrieval_object,only_abundances=True)
             cornerplot(retrieval_object,not_abundances=True)
-        else: # make cornerplot with all parameters, could be huge
-            cornerplot(retrieval_object,only_params=only_params,only_abundances=False)
+        else: # make cornerplot with all parameters, could be huge, avoid this
+            cornerplot(retrieval_object,only_params=only_params)
     elif retrieval_object.chemistry in ['equchem','quequchem']:
-        cornerplot(retrieval_object,only_params=only_params)
         VMR_plot(retrieval_object)
+        if split_corner: # split corner plot to avoid massive files
+            only_params=['rv','vsini','log_g','C/O','Fe/H',
+                         'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
+            if retrieval_object.chemistry=='quequchem':
+                only_params.append(['log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN'])
+            cornerplot(retrieval_object,only_params=only_params)
+            only_params2=list(set(retrieval_object.parameters.param_keys)-set(only_params))
+            cornerplot(retrieval_object,only_params=only_params2)
+        else: # avoid this though
+            cornerplot(retrieval_object,only_params=only_params)
     
 def summary_plot(retrieval_object):
 
