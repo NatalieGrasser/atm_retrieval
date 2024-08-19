@@ -374,7 +374,15 @@ class Retrieval:
         for molecule in molecules:
             # create final model without opacity from a certain molecule
             exclusion_dict=self.final_params.copy()
-            exclusion_dict[f'log_{molecule}']=-12 # exclude molecule from model
+            if self.chemistry=='freechem':
+                exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
+            elif self.chemistry in ['equchem','quequchem']:
+                if molecule=='13CO':
+                    exclusion_dict['log_C12_13_ratio']=14 # exclude molecule from model
+                elif molecule=='H2(18)O':
+                    exclusion_dict['log_O16_18_ratio']=14 # exclude molecule from model
+                else:
+                    continue
 
             # necessary for cross-correlation:
             # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
@@ -441,8 +449,6 @@ class Retrieval:
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
-            #self.final_params[f'SNR_{molecule}']=SNR
-            #print('self.final_params=\n',self.final_params)   
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
         self.CCF_list=CCF_list
         self.ACF_list=ACF_list
@@ -453,25 +459,28 @@ class Retrieval:
         bayes_dict={}
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        #old_parameters=copy.copy(self.parameters) # keep, self.params must be overwritten for other functions
 
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            original_prior=self.parameters.param_priors[f'log_{molecule}']
-            #self.parameters=copy.copy(old_parameters)
-            self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude molecule from retrieval
-            #self.parameters.params[f'log_{molecule}']=-12 # exclude molecule from retrieval
-            #key=f'log_{molecule}'
-            #if key in self.parameters.params: del self.parameters.params[key]
-            #print('New parameter priors for exclusion retrieval:\n',self.parameters.params)
+            if self.chemistry=='freechem':
+                original_prior=self.parameters.param_priors[f'log_{molecule}']
+                self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude molecule from retrieval
+            elif self.chemistry in ['equchem','quequchem']:
+                if molecule=='13CO':
+                    original_prior=self.parameters.param_priors['log_C12_13_ratio']
+                    self.parameters.param_priors['log_C12_13_ratio']=[14,15] # exclude molecule from retrieval
+                elif molecule=='H2(18)O':
+                    original_prior=self.parameters.param_priors['log_O16_18_ratio']
+                    self.parameters.param_priors['log_O16_18_ratio']=[14,15] # exclude molecule from retrieval
+                else:
+                    continue
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
-            #self.PMN_analyse() 
 
             ex_model=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,
                                         target=self.target,species=self.species,

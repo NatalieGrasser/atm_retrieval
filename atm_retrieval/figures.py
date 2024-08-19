@@ -296,16 +296,16 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
         plt.close()
 
-def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
+def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,plot_label='',
             only_abundances=False,only_params=None,not_abundances=False):
     
     plot_posterior=retrieval_object.posterior # posterior that we plot here, might get clipped
     medians,_,_=retrieval_object.get_quantiles(retrieval_object.posterior)
     labels=list(retrieval_object.parameters.param_mathtext.values())
     indices=np.linspace(0,len(retrieval_object.parameters.params)-1,len(retrieval_object.parameters.params),dtype=int)
-    plot_label='all'
-
+    
     if only_abundances==True: # plot only abundances
+        plot_label='_abundances'
         indices=[]
         for key in retrieval_object.chem_species:
             idx=list(retrieval_object.parameters.params).index(key)
@@ -324,6 +324,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
         medians=np.array([medians[i] for i in indices])
 
     if not_abundances==True: # plot all except abundances
+        plot_label='_rest'
         abund_indices=[]
         for key in retrieval_object.chem_species:
             idx=list(retrieval_object.parameters.params).index(key)
@@ -385,15 +386,8 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,
 
     plt.subplots_adjust(wspace=0,hspace=0)
 
-    if only_abundances==True:
-        plot_label='abundances'
-    elif only_params is not None:
-        plot_label='short'
-    elif not_abundances==True:
-        plot_label='rest'
-        
     if getfig==False:
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot_{plot_label}.pdf',
+        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot{plot_label}.pdf',
                     bbox_inches="tight",dpi=200)
         plt.close()
     else:
@@ -420,9 +414,9 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
             if retrieval_object.chemistry=='quequchem':
                 for val in ['log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']:
                     only_params.append(val)
-            cornerplot(retrieval_object,only_params=only_params)
+            cornerplot(retrieval_object,only_params=only_params,plot_label='1')
             only_params2=list(set(retrieval_object.parameters.param_keys)-set(only_params))
-            cornerplot(retrieval_object,only_params=only_params2)
+            cornerplot(retrieval_object,only_params=only_params2,plot_label='2')
         else: # avoid this though
             cornerplot(retrieval_object,only_params=only_params)
     
