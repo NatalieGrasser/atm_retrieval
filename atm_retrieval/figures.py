@@ -454,7 +454,13 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     ax1.plot(RVs,ACF_norm,color=retrieval_object.color1,linestyle='dashed',alpha=0.5,label='ACF')
     ax1.set_ylabel('S/N')
     ax1.legend(loc='upper right')
-    molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+    if retrieval_object.chemistry=='freechem':
+        molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+    elif retrieval_object.chemistry in ['equchem','quequchem']:
+        if molecule=='13CO':
+            molecule_name=r'$^{13}$CO'
+        elif molecule=='H2(18)O':
+            molecule_name=r'log H$_2^{18}$O'
     molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
     #molecule_label=f'{molecule_name}'
     ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
