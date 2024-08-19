@@ -499,9 +499,6 @@ class Retrieval:
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
-            #self.final_params[f'lnBm_{molecule}']=lnB
-            #self.final_params[f'sigma_{molecule}']=sigma # save result in dict         
-            #print('self.final_params=\n',self.final_params) 
             print('bayes_dict=',bayes_dict)  
             self.parameters.param_priors[f'log_{molecule}']=original_prior # set back for next retrieval
         return bayes_dict
