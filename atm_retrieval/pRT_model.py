@@ -70,12 +70,12 @@ class pRT_spectrum:
             self.mass_fractions, self.CO, self.FeH = self.free_chemistry(self.species,self.params)
             self.MMW = self.mass_fractions['MMW']
 
-        if self.chemistry=='equchem': # use equilibium chemistry
-            abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
-            self.mass_fractions = self.get_abundance_dict(self.species,abunds)
+        if self.chemistry in ['equchem','quequchem']: # use equilibium chemistry
+            self.abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
+            self.mass_fractions = self.get_abundance_dict(self.species,self.abunds)
             # update mass_fractions with isotopologue ratios
             self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) 
-            self.MMW = abunds['MMW']
+            self.MMW = self.abunds['MMW']
 
         self.spectrum_orders=[]
         self.orders=7
@@ -84,6 +84,17 @@ class pRT_spectrum:
         COs = np.ones_like(press)*C_O
         fehs = np.ones_like(press)*feh
         mass_fractions = interpol_abundances(COs,fehs,temp,press)
+        if self.chemistry=='quequchem':
+            for species in ['CO','H2O','CH4']:
+                Pqu=10**self.params['log_Pqu_CO_CH4'] # is in log
+                idx=find_nearest(self.pressure,Pqu)
+                quenched_fraction=mass_fractions[species][idx]
+                mass_fractions[species][:idx]=quenched_fraction
+            for species in ['NH3','HCN']:    
+                Pqu=10**self.params[f'log_Pqu_{species}'] # is in log
+                idx=find_nearest(self.pressure,Pqu)
+                quenched_fraction=mass_fractions[species][idx]
+                mass_fractions[species][:idx]=quenched_fraction
         return mass_fractions
 
     def get_abundance_dict(self,species,abunds): # does not inlcude isotopes
@@ -238,7 +249,7 @@ class pRT_spectrum:
                 if self.chemistry=='freechem':
                     co=self.CO
                     feh=self.FeH
-                if self.chemistry=='equchem':
+                if self.chemistry in ['equchem','quequchem']:
                     feh=self.params['Fe/H']
                     co=self.params['C/O']
                 P_base_MgSiO3 = simple_cdf_MgSiO3(self.pressure,self.temperature,feh,co,np.nanmean(self.MMW))
@@ -371,3 +382,7 @@ class pRT_spectrum:
 
         return flux_LSF
 
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx 

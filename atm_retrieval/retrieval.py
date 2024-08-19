@@ -20,7 +20,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import astropy.constants as const
 from scipy.interpolate import interp1d
-import copy
 #import warnings
 #warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
 
@@ -44,7 +43,7 @@ class Retrieval:
         self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)
         self.separation,self.err_eff=target.prepare_for_covariance()
         self.parameters=parameters
-        self.chemistry=chemistry # freechem/equchem
+        self.chemistry=chemistry # freechem/equchem/quequchem
         self.species=self.get_species(param_dict=self.parameters.params)
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
@@ -106,14 +105,15 @@ class Retrieval:
             for par in param_dict:
                 if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
                     if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
-                               'log_C13_12_ratio','log_O18_16_ratio','log_O17_16_ratio']: # skip
+                               'log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio',
+                               'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']: # skip
                         pass
                     else:
                         self.chem_species.append(par)
             species=[]
             for chemspec in self.chem_species:
                 species.append(species_info.loc[chemspec[4:],'pRT_name'])
-        elif self.chemistry=='equchem':
+        elif self.chemistry in ['equchem','quequchem']:
             self.chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
                          'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
             species=[]
@@ -201,6 +201,8 @@ class Retrieval:
         self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
         try:
             figs.summary_plot(self)
+            if self.chemistry in ['equchem','quequchem']:
+                figs.VMR_plot(self)
         except Exception as error:
             print("An error occurred:", type(error).__name__, "–", error)
      
@@ -251,7 +253,8 @@ class Retrieval:
         
         # get isotope and element ratios and save them in final params dict
         self.get_ratios()
-        #del self.atmosphere_objects # don't need it after this step, avoid it crashing my laptop
+        if getpass.getuser()=="natalie":
+            del self.atmosphere_objects # don't need it after this step, avoid it crashing my laptop
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
@@ -279,7 +282,7 @@ class Retrieval:
         return self.final_params,self.final_spectrum
 
     def get_ratios(self): # can only be run after self.evaluate()
-        if self.chemistry=='equchem':
+        if self.chemistry in ['equchem','quequchem']:
 
             for ratio in ['C/O','Fe/H','log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']:
                 p=self.posterior[:,list(self.parameters.params).index(f'{ratio}')]
@@ -288,6 +291,7 @@ class Retrieval:
                 else:
                     ratios_posterior=p
             self.ratios_posterior=ratios_posterior.T
+            del ratios_posterior # or in locals() won't work when loading another retrieval
 
             self.calc_errors=True
             temperature_distribution=[] # for each of the n_atm_layers

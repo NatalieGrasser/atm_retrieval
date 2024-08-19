@@ -1,5 +1,4 @@
 import getpass
-from math import e
 import os
 if getpass.getuser() == "grasser": # when runnig from LEM
     os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
@@ -17,6 +16,7 @@ import matplotlib.patches as mpatches
 import matplotlib.ticker as ticker
 import warnings
 import pathlib
+import pandas as pd
 warnings.filterwarnings("ignore", category=UserWarning) 
 
 def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
@@ -138,7 +138,7 @@ def plot_spectrum_split(retrieval_object):
 
 def plot_pt(retrieval_object,fs=12,**kwargs):
 
-    if retrieval_object.chemistry=='equchem':
+    if retrieval_object.chemistry in ['equchem','quequchem']:
         C_O = retrieval_object.final_object.params['C/O']
         Fe_H = retrieval_object.final_object.params['Fe/H']
     if retrieval_object.chemistry=='freechem':
@@ -405,21 +405,21 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     plot_spectrum_inset(retrieval_object)
     plot_pt(retrieval_object)
     summary_plot(retrieval_object)
-    ratios_cornerplot(retrieval_object)
     if retrieval_object.chemistry=='freechem':
+        ratios_cornerplot(retrieval_object) # already in equchem cornerplot by default
         if split_corner: # split corner plot to avoid massive files
             cornerplot(retrieval_object,only_abundances=True)
             cornerplot(retrieval_object,not_abundances=True)
         else: # make cornerplot with all parameters, could be huge
-            cornerplot(retrieval_object,only_params=only_params)
-    elif retrieval_object.chemistry=='equchem':
+            cornerplot(retrieval_object,only_params=only_params,only_abundances=False)
+    elif retrieval_object.chemistry in ['equchem','quequchem']:
         cornerplot(retrieval_object,only_params=only_params)
+        VMR_plot(retrieval_object)
     
-
 def summary_plot(retrieval_object):
 
     fs=13
-    if retrieval_object.chemistry=='equchem':
+    if retrieval_object.chemistry in ['equchem','quequchem']:
         only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
                  'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
     if retrieval_object.chemistry=='freechem':
@@ -616,7 +616,7 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
 
 def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
 
-    if retrieval_object.chemistry=='equchem':
+    if retrieval_object.chemistry in ['equchem','quequchem']:
         labels=['C/O','[Fe/H]',r'log $^{12}$C/$^{13}$C',r'log $^{16}$O/$^{18}$O',r'log $^{16}$O/$^{17}$O']
     elif retrieval_object.chemistry=='freechem':
         labels=[r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',r'log $^{12}$CO/C$^{18}$O',
@@ -706,35 +706,67 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
     fig.savefig(filename,bbox_inches="tight",dpi=200)
     plt.close()
 
-def VMR_plot(retrieval_object,fs=10,**kwargs):
+def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
 
-    read_species_info=retrieval_object.final_object.read_species_info
-
-    # convert mass fractions to VMR
-    mass_ratio_13CO_12CO = read_species_info('13CO','mass')/read_species_info('12CO','mass')
-    mass_ratio_C18O_C16O = read_species_info('C18O','mass')/read_species_info('12CO','mass')
-    mass_ratio_C17O_C16O = read_species_info('C17O','mass')/read_species_info('12CO','mass')
-    mass_ratio_H218O_H2O = read_species_info('H2(18)O','mass')/read_species_info('H2O','mass')
-    
-    fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
+    fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
+    species_info = pd.read_csv(os.path.join('species_info.csv'))
+    molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','C18O','C17O','CH4','HCN','NH3']
+    alpha=0.6 if 'retrieval_object2' in kwargs else 1
+    def plot_VMRs(retr_obj,ax):
+        mass_fractions=retr_obj.final_object.mass_fractions
+        MMW=retr_obj.final_object.MMW
+        params=retrieval_object.parameters.params
+        for species in molecules:
+            name=species_info.loc[species_info["name"]==species]['pRT_name'].values[0]
+            mass=species_info.loc[species_info["name"]==species]['mass'].values[0]
+            label=species_info.loc[species_info["name"]==species]['mathtext_name'].values[0]
+            if retr_obj.chemistry=='freechem':
+                VMR=mass_fractions[name]*MMW/mass
+                ax.plot(VMR,pressure,label='_nolegend_',linestyle='dashed')
+            elif retr_obj.chemistry in ['equchem','quequchem']:
+                if species not in ['H2(18)O','13CO','C18O','C17O']:
+                    VMR=mass_fractions[name]*MMW/mass
+                    ax.plot(VMR,pressure,label=label,alpha=alpha)
+                else:  
+                    H2Oname=species_info.loc[species_info["name"]=='H2O']['pRT_name'].values[0]
+                    VMR_H2O=mass_fractions[H2Oname]*MMW/species_info.loc[species_info["name"]=='H2O']['mass'].values[0]
+                    COname=species_info.loc[species_info["name"]=='12CO']['pRT_name'].values[0]
+                    VMR_12CO=mass_fractions[COname]*MMW/species_info.loc[species_info["name"]=='12CO']['mass'].values[0]
+                    if species=='H2(18)O':                        
+                        VMR_H218O=10**(-params.get('log_O16_18_ratio',-12))*VMR_H2O
+                        ax.plot(VMR_H218O,pressure,label=r'H$_2^{18}$O',alpha=alpha)
+                    elif species=='13CO':
+                        VMR_13CO=10**(-params.get('log_C12_13_ratio',-12))*VMR_12CO
+                        ax.plot(VMR_13CO,pressure,label=r'$^{13}$CO',alpha=alpha)
+                    elif species=='C18O':
+                        VMR_C18O=10**(-params.get('log_O16_18_ratio',-12))*VMR_12CO
+                        ax.plot(VMR_C18O,pressure,label=r'C$^{18}$O',alpha=alpha)
+                    elif species=='C17O':
+                        VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
+                        ax.plot(VMR_C17O,pressure,label=r'C$^{17}$O',alpha=alpha)
 
     pressure=retrieval_object.final_object.pressure
+    plot_VMRs(retrieval_object,ax=ax)
 
-    if retrieval_object.chemistry=='equchem':
-        mass_fractions=retrieval_object.final_object.mass_fractions
+    if 'retrieval_object2' in kwargs: # compare two retrievals
+        retrieval_object2=kwargs.get('retrieval_object2')
+        plt.gca().set_prop_cycle(None) # reset color cycle
+        plot_VMRs(retrieval_object2,ax=ax)
 
-        for species in ['H2','He','H2O','CO','CH4','HCN','NH3']:
-            ax.plot(mass_fractions[species], pressure, label = species)
-
-    ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
-        ylim=(np.max(pressure),np.min(pressure)),xlim=(1e-10,1e-1))
+    leg=ax.legend(fontsize=fs*0.8)
+    for lh in leg.legend_handles:
+        lh.set_alpha(1)
     
-    #ax.legend(handles=lines,fontsize=fs)
+    ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
+        ylim=(np.max(pressure),np.min(pressure)),xlim=(1e-11,1.3))   
     ax.tick_params(labelsize=fs)
-    ax.set_xlabel('Temperature [K]', fontsize=fs)
+    ax.set_xlabel('VMR', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)
 
-    fig.savefig(f'{retrieval_object.output_dir}/VMRs.pdf')
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}VMRs.pdf')
     plt.close()
+
+
+
 
     
