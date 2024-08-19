@@ -418,7 +418,8 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
             only_params=['rv','vsini','log_g','C/O','Fe/H',
                          'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
             if retrieval_object.chemistry=='quequchem':
-                only_params.append(['log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN'])
+                for val in ['log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']:
+                    only_params.append(val)
             cornerplot(retrieval_object,only_params=only_params)
             only_params2=list(set(retrieval_object.parameters.param_keys)-set(only_params))
             cornerplot(retrieval_object,only_params=only_params2)
