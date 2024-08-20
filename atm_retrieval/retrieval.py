@@ -284,7 +284,7 @@ class Retrieval:
     def get_ratios(self): # can only be run after self.evaluate()
         if self.chemistry in ['equchem','quequchem']:
 
-            for ratio in ['C/O','Fe/H','log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']:
+            for ratio in ['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio']:
                 p=self.posterior[:,list(self.parameters.params).index(f'{ratio}')]
                 if 'ratios_posterior' in locals():
                     ratios_posterior=np.vstack([ratios_posterior,p])
@@ -341,7 +341,7 @@ class Retrieval:
                     break
             self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
-            self.ratios_posterior=np.hstack([self.ratios_posterior,self.CO_CH_dist])
+            self.ratios_posterior=np.hstack([self.CO_CH_dist,self.ratios_posterior])
             self.calc_errors=False # set back to False when finished
 
             median,minus_err,plus_err=self.get_quantiles(CO_distribution,flat=True)
@@ -464,18 +464,8 @@ class Retrieval:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            if self.chemistry=='freechem':
-                original_prior=self.parameters.param_priors[f'log_{molecule}']
-                self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude molecule from retrieval
-            elif self.chemistry in ['equchem','quequchem']:
-                if molecule=='13CO':
-                    original_prior=self.parameters.param_priors['log_C12_13_ratio']
-                    self.parameters.param_priors['log_C12_13_ratio']=[14,15] # exclude molecule from retrieval
-                elif molecule=='H2(18)O':
-                    original_prior=self.parameters.param_priors['log_O16_18_ratio']
-                    self.parameters.param_priors['log_O16_18_ratio']=[14,15] # exclude molecule from retrieval
-                else:
-                    continue
+            
+            
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)

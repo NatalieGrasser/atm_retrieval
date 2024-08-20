@@ -35,6 +35,15 @@ chem2 = sys.argv[7]
 PT2 = sys.argv[8]
 Nlive2=int(sys.argv[9])
 tol2=float(sys.argv[10])
+
+BD3=None
+# example: python3 compare_retrievals.py 2M0355 freechem PTgrad 300 0.5 2M0355 equchem PTgrad 50 10.0 2M0355 quequchem PTgrad 55 10.0
+if len(sys.argv)>11:
+    BD3=sys.argv[11]
+    chem3 = sys.argv[12]
+    PT3 = sys.argv[13]
+    Nlive3=int(sys.argv[14])
+    tol3=float(sys.argv[15])
     
 def init_retrieval(brown_dwarf='2M0355',PT_type='PTgrad',chem='freechem',Nlive=400,tol=0.5,cloud_mode='gray',GP=True):
 
@@ -118,17 +127,32 @@ retrieval=init_retrieval(brown_dwarf=Target(BD1),PT_type=PT1,chem=chem1,Nlive=Nl
 retrieval.evaluate(makefigs=False)
 
 retrieval2=init_retrieval(brown_dwarf=Target(BD2),PT_type=PT2,chem=chem2,Nlive=Nlive2,tol=tol2)
+if BD1==BD2:
+    # give it a different color
+    retrieval2.color1='mediumpurple' # color of retrieval output
+    retrieval2.color2='blueviolet' # color of residuals
+    retrieval2.color3='mediumorchid'
 retrieval2.evaluate(makefigs=False)
 
-figs.compare_two_retrievals(retrieval,retrieval2)
-figs.ratios_cornerplot(retrieval,retrieval_object2=retrieval2)
-
-if 'equchem' or 'quequchem' in [retrieval.chemistry,retrieval2.chemistry]:
+if BD3!=None: # compare freechem, equchem, quequchem of same object
+    retrieval3=init_retrieval(brown_dwarf=Target(BD2),PT_type=PT2,chem=chem2,Nlive=Nlive2,tol=tol2)
+    retrieval3.color1='limegreen' # color of retrieval output
+    retrieval3.color2='forestgreen' # color of residuals
+    retrieval3.color3='yellowgreen'
+    retrieval3.evaluate(makefigs=False)
+    figs.compare_retrievals(retrieval,retrieval2,retrieval3)
     molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
     figs.VMR_plot(retrieval,retrieval_object2=retrieval2,molecules=molecules)
 
-molecules=['13CO','HF','H2S','H2(18)O']
-retrieval.cross_correlation(molecules) # gets CCFs and ACFs of each molecule
-retrieval2.cross_correlation(molecules)
-figs.compare_two_CCFs(retrieval,retrieval2,molecules)
+else: # compare freechem, equchem of same object or freechem of two different objects
+    figs.compare_retrievals(retrieval,retrieval2)  
+    if 'equchem' or 'quequchem' in [retrieval.chemistry,retrieval2.chemistry]:
+        molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
+        figs.VMR_plot(retrieval,retrieval_object2=retrieval2,molecules=molecules)
+    else: # compare two freechem retrievals
+        figs.ratios_cornerplot(retrieval,retrieval_object2=retrieval2)
+        molecules=['13CO','HF','H2S','H2(18)O']
+        retrieval.cross_correlation(molecules) # gets CCFs and ACFs of each molecule
+        retrieval2.cross_correlation(molecules)
+        figs.compare_two_CCFs(retrieval,retrieval2,molecules)
 

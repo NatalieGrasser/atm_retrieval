@@ -269,8 +269,21 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
                 lw=1.5,alpha=0.8,color=retrieval_object2.color3)
         lines.append(Line2D([0], [0], color=retrieval_object2.color3, alpha=0.8,linewidth=1.5, 
                             linestyle='--',label=f'{retrieval_object2.target.name} contribution'))
-        if retrieval_object2.target.name=='2M0355':
-            lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
+        #if retrieval_object2.target.name=='2M0355':
+            #lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
+    
+    if 'retrieval_object3' in kwargs:
+        retrieval_object3=kwargs.get('retrieval_object3')
+        object_label3=f'{retrieval_object3.target.name} retrieval'
+        xmin3,xmax3=plot_temperature(retrieval_object3,ax,object_label3)
+        xmin=np.nanmin([xmin,xmin2,xmin3])
+        xmax=np.nanmax([xmax,xmax2,xmax3])
+        summed_contr3=np.nanmean(retrieval_object3.final_object.contr_em_orders,axis=0) # average over all orders
+        contribution_plot3=summed_contr3/np.max(summed_contr3)*(xmax-xmin)+xmin
+        ax.plot(contribution_plot3,retrieval_object3.final_object.pressure,linestyle='dashed',
+                lw=1.5,alpha=0.8,color=retrieval_object3.color3)
+        lines.append(Line2D([0], [0], color=retrieval_object3.color3, alpha=0.8,linewidth=1.5, 
+                            linestyle='--',label=f'{retrieval_object3.target.name} contribution'))
 
     summed_contr=np.nanmean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
@@ -472,68 +485,75 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     fig.savefig(f'{retrieval_object.output_dir}/CCF_{molecule}.pdf')
     plt.close()
 
-def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare cornerplot+PT of two retrievals
+def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # compare cornerplot+PT of two retrievals
 
-    only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
-                 'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
-    
-    labels=list(retrieval_object1.parameters.param_mathtext.values())
-    indices=[]
-    for key in only_params: # keys of specified parameters to plot
-        idx=list(retrieval_object1.parameters.params).index(key)
-        indices.append(idx)
-    posterior1=np.array([retrieval_object1.posterior[:,i] for i in indices]).T
-    posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
-    labels=np.array([labels[i] for i in indices])
+    # can only compare freechem+freechem or freechem+equchem/quequchem(+equchem/quequchem)
+    if retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry=='freechem':
+        only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
+                    'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
+        
+        labels=list(retrieval_object1.parameters.param_mathtext.values())
+        indices=[]
+        for key in only_params: # keys of specified parameters to plot
+            idx=list(retrieval_object1.parameters.params).index(key)
+            indices.append(idx)
+        posterior1=np.array([retrieval_object1.posterior[:,i] for i in indices]).T
+        posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
+        labels=np.array([labels[i] for i in indices])
+
+    elif retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry in ['equchem','quequchem']:
+
+        only_params=['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio']
+        # compare ratio posterios, must be in same order!!
+        posterior1=retrieval_object1.ratios_posterior
+        # add log_O16_18_ratio (last one) to equchem again, bc freechem has C18O and H218O ratios
+        posterior2=np.hstack([retrieval_object2.ratios_posterior,retrieval_object2.ratios_posterior[-1]])
+        labels=['C/O','[Fe/H]',r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',
+                r'log $^{12}$CO/C$^{18}$O',r'log H$_2^{16}$O/H$_2^{18}$O']
+
+        if 'retrieval_object3' in kwargs:
+            retrieval_object3=kwargs.get('retrieval_object3')
+            posterior3=np.hstack([retrieval_object3.ratios_posterior,retrieval_object3.ratios_posterior[-1]])
 
     figsize=15
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
-    fig = corner.corner(posterior1, 
-                    labels=labels, 
-                    title_kwargs={'fontsize': fs},
-                    label_kwargs={'fontsize': fs*0.8},
-                    color=retrieval_object1.color1,
-                    linewidths=0.5,
-                    fill_contours=True,
-                    quantiles=[0.16,0.5,0.84],
-                    title_quantiles=[0.16,0.5,0.84],
-                    show_titles=True,
-                    plot_contours=True,
-                    hist_kwargs={'density': False,
-                                'fill': True,
-                                'alpha': 0.5,
-                                'edgecolor': 'k',
-                                'linewidth': 1.0},
-                    fig=fig)
-    
-    titles = [axi.title.get_text() for axi in fig.axes]
-    
-    corner.corner(posterior2, 
-                    labels=labels, 
-                    title_kwargs={'fontsize': fs},
-                    label_kwargs={'fontsize': fs*0.8},
-                    color=retrieval_object2.color1,
-                    linewidths=0.5,
-                    fill_contours=True,
-                    quantiles=[0.16,0.5,0.84],
-                    title_quantiles=[0.16,0.5,0.84],
-                    show_titles=True,
-                    hist_kwargs={'density': False,
-                                'fill': True,
-                                'alpha': 0.5,
-                                'edgecolor': 'k',
-                                'linewidth': 1.0},
-                    fig=fig)
-    
-    titles2 = [axi.title.get_text() for axi in fig.axes]
 
-    if False:
-        for i,title in enumerate(titles):
-            if len(title) > 30: # change 30 to 1 if you want all titles to be split
-                title_split = title.split('=')
-                title_split2 = titles2[i].split('=')[1] # get only part with values
-                titles[i] = title_split[0]+'\n'+title_split[1]+'\n'+title_split2
-            fig.axes[i].title.set_text(titles[i])
+    def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
+        fig = corner.corner(posterior, 
+                        labels=labels, 
+                        title_kwargs={'fontsize': fs},
+                        label_kwargs={'fontsize': fs*0.8},
+                        color=retr_obj.color1,
+                        linewidths=0.5,
+                        fill_contours=True,
+                        quantiles=[0.16,0.5,0.84],
+                        title_quantiles=[0.16,0.5,0.84],
+                        show_titles=True,
+                        plot_contours=True,
+                        hist_kwargs={'density': False,
+                                    'fill': True,
+                                    'alpha': 0.5,
+                                    'edgecolor': 'k',
+                                    'linewidth': 1.0},
+                        fig=fig)
+        
+        titles = [axi.title.get_text() for axi in fig.axes]
+        if getfig:
+            return fig,titles
+        else:
+            return titles
+        
+    fig,titles1=plot_corner(posterior1,retrieval_object1,labels,fig,getfig=True)
+    titles2=plot_corner(posterior2,retrieval_object2,labels,fig)
+    enum=[0,1]
+    titles_list=[titles1,titles2]
+    colors_list=[retrieval_object1.color1,retrieval_object2.color1]
+
+    if 'retrieval_object3' in kwargs:
+        titles3=plot_corner(posterior3,retrieval_object3,labels,fig)
+        enum=[0,1,2]
+        titles_list.append(titles3)
+        colors_list.append(retrieval_object3.color1)
 
     for i, axi in enumerate(fig.axes):
         fig.axes[i].title.set_visible(False) # remove original titles
@@ -542,7 +562,7 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
         fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
         fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
         
-    for run,titles_list,color in zip([0,1],[titles,titles2],[retrieval_object1.color1,retrieval_object2.color1]):
+    for run,titles_list,color in zip(enum,titles_list,colors_list):
         # add new titles
         for j, title in enumerate(titles_list):
             if title == '':
@@ -557,7 +577,11 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
                                 color='k',
                                 weight='normal')
             # add parameter value with custom color and spacing
-            fig.axes[j].text(0.5, 1.45-(0.2*(run+1)), s[1], fontsize=fs,
+            if len(enum)==2:
+                y=1.45-(0.2*(run+1))
+            elif len(enum)==3:
+                y=1.6-(0.2*(run+1))
+            fig.axes[j].text(0.5, y, s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
                             color=color,
@@ -567,7 +591,12 @@ def compare_two_retrievals(retrieval_object1,retrieval_object2,fs=12): # compare
 
     l, b, w, h = [0.58,0.61,0.39,0.39] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
-    plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,ax=ax_PT)
+
+    if 'retrieval_object3' not in kwargs:
+        plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,ax=ax_PT)
+    else:
+        plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,
+                ax=ax_PT,retrieval_object3=retrieval_object3)
 
     comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
@@ -627,10 +656,10 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
 def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
 
     if retrieval_object.chemistry in ['equchem','quequchem']:
-        labels=['C/O','[Fe/H]',r'log $^{12}$C/$^{13}$C',r'log $^{16}$O/$^{18}$O',r'log $^{16}$O/$^{17}$O']
+        labels=['C/O','[Fe/H]',r'log $^{12}$C/$^{13}$C',r'log $^{16}$O/$^{17}$O',r'log $^{16}$O/$^{18}$O']
     elif retrieval_object.chemistry=='freechem':
-        labels=[r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',r'log $^{12}$CO/C$^{18}$O',
-            r'log H$_2^{16}$O/H$_2^{18}$O','C/O','[Fe/H]']
+        labels=['C/O','[C/H]',r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',
+                r'log $^{12}$CO/C$^{18}$O',r'log H$_2^{16}$O/H$_2^{18}$O']
     
     fig = plt.figure(figsize=(8,8)) # fix size to avoid memory issues
     fig = corner.corner(retrieval_object.ratios_posterior,
@@ -734,9 +763,13 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                 VMR=mass_fractions[name]*MMW/mass
                 ax.plot(VMR,pressure,label='_nolegend_',linestyle='dashed')
             elif retr_obj.chemistry in ['equchem','quequchem']:
+                if retr_obj.chemistry=='quequchem':
+                    linestyle='solid'
+                if retr_obj.chemistry=='quequchem':
+                    linestyle='dotted'
                 if species not in ['H2(18)O','13CO','C18O','C17O']:
                     VMR=mass_fractions[name]*MMW/mass
-                    ax.plot(VMR,pressure,label=label,alpha=alpha)
+                    ax.plot(VMR,pressure,label=label,alpha=alpha,linestyle=linestyle)
                 else:  
                     H2Oname=species_info.loc[species_info["name"]=='H2O']['pRT_name'].values[0]
                     VMR_H2O=mass_fractions[H2Oname]*MMW/species_info.loc[species_info["name"]=='H2O']['mass'].values[0]
@@ -744,16 +777,16 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                     VMR_12CO=mass_fractions[COname]*MMW/species_info.loc[species_info["name"]=='12CO']['mass'].values[0]
                     if species=='H2(18)O':                        
                         VMR_H218O=10**(-params.get('log_O16_18_ratio',-12))*VMR_H2O
-                        ax.plot(VMR_H218O,pressure,label=r'H$_2^{18}$O',alpha=alpha)
+                        ax.plot(VMR_H218O,pressure,label=r'H$_2^{18}$O',alpha=alpha,linestyle=linestyle)
                     elif species=='13CO':
                         VMR_13CO=10**(-params.get('log_C12_13_ratio',-12))*VMR_12CO
-                        ax.plot(VMR_13CO,pressure,label=r'$^{13}$CO',alpha=alpha)
+                        ax.plot(VMR_13CO,pressure,label=r'$^{13}$CO',alpha=alpha,linestyle=linestyle)
                     elif species=='C18O':
                         VMR_C18O=10**(-params.get('log_O16_18_ratio',-12))*VMR_12CO
-                        ax.plot(VMR_C18O,pressure,label=r'C$^{18}$O',alpha=alpha)
+                        ax.plot(VMR_C18O,pressure,label=r'C$^{18}$O',alpha=alpha,linestyle=linestyle)
                     elif species=='C17O':
                         VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
-                        ax.plot(VMR_C17O,pressure,label=r'C$^{17}$O',alpha=alpha)
+                        ax.plot(VMR_C17O,pressure,label=r'C$^{17}$O',alpha=alpha,linestyle=linestyle)
 
     pressure=retrieval_object.final_object.pressure
     plot_VMRs(retrieval_object,ax=ax)
@@ -762,6 +795,11 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
         retrieval_object2=kwargs.get('retrieval_object2')
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retrieval_object2,ax=ax)
+
+    if 'retrieval_object3' in kwargs: # compare three retrievals
+        retrieval_object3=kwargs.get('retrieval_object3')
+        plt.gca().set_prop_cycle(None) # reset color cycle
+        plot_VMRs(retrieval_object3,ax=ax)
 
     leg=ax.legend(fontsize=fs*0.8)
     for lh in leg.legend_handles:
