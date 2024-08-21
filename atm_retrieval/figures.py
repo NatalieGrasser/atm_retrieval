@@ -487,6 +487,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
 
 def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # compare cornerplot+PT of two retrievals
 
+    num=2 # number of retrievals
     # can only compare freechem+freechem or freechem+equchem/quequchem(+equchem/quequchem)
     if retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry=='freechem':
         only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
@@ -512,6 +513,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
                 r'log $^{12}$CO/C$^{18}$O',r'log H$_2^{16}$O/H$_2^{18}$O']
 
         if 'retrieval_object3' in kwargs:
+            num=3
             retrieval_object3=kwargs.get('retrieval_object3')
             posterior3=np.hstack([retrieval_object3.ratios_posterior,retrieval_object3.ratios_posterior[-1]])
 
@@ -601,8 +603,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
     comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
 
-    filename=f'cornerplot_comparison.pdf'
-    fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
+    fig.savefig(f'{comparison_dir}/cornerplot_{num}.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
 def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50):
@@ -649,7 +650,7 @@ def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50
         fig.tight_layout()
         plt.subplots_adjust(wspace=0, hspace=0)
 
-        filename=f'CCF_{molecule}_comparison.pdf'
+        filename=f'CCF_{molecule}_2.pdf'
         fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
         plt.close()
 
@@ -747,11 +748,13 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
 
 def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
 
+    prefix=retrieval_object.callback_label
     output_dir=retrieval_object.output_dir
     fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
     species_info = pd.read_csv(os.path.join('species_info.csv'))
     molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','C18O','C17O','CH4','HCN','NH3']
     alpha=0.6 if 'retrieval_object2' in kwargs else 1
+
     def plot_VMRs(retr_obj,ax):
         mass_fractions=retr_obj.final_object.mass_fractions
         MMW=retr_obj.final_object.MMW
@@ -793,6 +796,8 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     plot_VMRs(retrieval_object,ax=ax)
 
     if 'retrieval_object2' in kwargs: # compare two retrievals
+        prefix=''
+        suffix='_2'
         retrieval_object2=kwargs.get('retrieval_object2')
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retrieval_object2,ax=ax)
@@ -801,6 +806,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
         output_dir=comparison_dir
 
     if 'retrieval_object3' in kwargs: # compare three retrievals
+        suffix='_3'
         retrieval_object3=kwargs.get('retrieval_object3')
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retrieval_object3,ax=ax)
@@ -815,7 +821,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     ax.set_xlabel('VMR', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)
 
-    fig.savefig(f'{output_dir}/{retrieval_object.callback_label}VMRs.pdf')
+    fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
     plt.close()
 
 
