@@ -135,14 +135,14 @@ if BD1==BD2:
 retrieval2.evaluate(makefigs=False)
 
 if BD3!=None: # compare freechem, equchem, quequchem of same object
-    retrieval3=init_retrieval(brown_dwarf=Target(BD2),PT_type=PT2,chem=chem2,Nlive=Nlive2,tol=tol2)
+    retrieval3=init_retrieval(brown_dwarf=BD3,PT_type=PT3,chem=chem3,Nlive=Nlive3,tol=tol3)
     retrieval3.color1='limegreen' # color of retrieval output
     retrieval3.color2='forestgreen' # color of residuals
     retrieval3.color3='yellowgreen'
     retrieval3.evaluate(makefigs=False)
-    figs.compare_retrievals(retrieval,retrieval2,retrieval3)
+    figs.compare_retrievals(retrieval,retrieval2,retrieval_object3=retrieval3)
     molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
-    figs.VMR_plot(retrieval,retrieval_object2=retrieval2,molecules=molecules)
+    figs.VMR_plot(retrieval,retrieval_object2=retrieval2,retrieval_object3=retrieval3,molecules=molecules)
 
 else: # compare freechem, equchem of same object or freechem of two different objects
     figs.compare_retrievals(retrieval,retrieval2)  
