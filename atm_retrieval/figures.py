@@ -508,14 +508,16 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         # compare ratio posterios, must be in same order!!
         posterior1=retrieval_object1.ratios_posterior
         # add log_O16_18_ratio (last one) to equchem again, bc freechem has C18O and H218O ratios
-        posterior2=np.hstack([retrieval_object2.ratios_posterior,retrieval_object2.ratios_posterior[-1]])
+        reshaped=retrieval_object2.ratios_posterior[:,-1].reshape(len(retrieval_object2.ratios_posterior[:,-1]),1)
+        posterior2=np.hstack([retrieval_object2.ratios_posterior,reshaped])
         labels=['C/O','[Fe/H]',r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',
                 r'log $^{12}$CO/C$^{18}$O',r'log H$_2^{16}$O/H$_2^{18}$O']
 
         if 'retrieval_object3' in kwargs:
             num=3
             retrieval_object3=kwargs.get('retrieval_object3')
-            posterior3=np.hstack([retrieval_object3.ratios_posterior,retrieval_object3.ratios_posterior[-1]])
+            reshaped=retrieval_object3.ratios_posterior[:,-1].reshape(len(retrieval_object3.ratios_posterior[:,-1]),1)
+            posterior3=np.hstack([retrieval_object3.ratios_posterior,reshaped])
 
     figsize=15
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
@@ -749,6 +751,7 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
 def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
 
     prefix=retrieval_object.callback_label
+    suffix=''
     output_dir=retrieval_object.output_dir
     fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
     species_info = pd.read_csv(os.path.join('species_info.csv'))
