@@ -22,7 +22,7 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
 
 # pass configuration as command line argument
 # template: python3 compare_retrievals.py BD1 chem1 PT1 Nlive1 tol1 BD2 chem2 PT2 Nlive2 tol2
-# example: python3 compare_retrievals.py 2M0355 freechem PTgrad 300 0.5 2M0355 equchem PTgrad 50 10.0
+# example: python3 compare_retrievals.py 2M0355 freechem PTgrad 300 0.5 2M1425 freechem PTgrad 300 0.5
 # PT, Nlive, tol must be same for both
 BD1=sys.argv[1]
 chem1 = sys.argv[2]
@@ -123,10 +123,10 @@ def init_retrieval(brown_dwarf='2M0355',PT_type='PTgrad',chem='freechem',Nlive=4
 
     return retrieval
 
-retrieval=init_retrieval(brown_dwarf=Target(BD1),PT_type=PT1,chem=chem1,Nlive=Nlive1,tol=tol1)
+retrieval=init_retrieval(brown_dwarf=BD1,PT_type=PT1,chem=chem1,Nlive=Nlive1,tol=tol1)
 retrieval.evaluate(makefigs=False)
 
-retrieval2=init_retrieval(brown_dwarf=Target(BD2),PT_type=PT2,chem=chem2,Nlive=Nlive2,tol=tol2)
+retrieval2=init_retrieval(brown_dwarf=BD2,PT_type=PT2,chem=chem2,Nlive=Nlive2,tol=tol2)
 if BD1==BD2:
     # give it a different color
     retrieval2.color1='mediumpurple' # color of retrieval output
@@ -146,7 +146,8 @@ if BD3!=None: # compare freechem, equchem, quequchem of same object
 
 else: # compare freechem, equchem of same object or freechem of two different objects
     figs.compare_retrievals(retrieval,retrieval2)  
-    if 'equchem' or 'quequchem' in [retrieval.chemistry,retrieval2.chemistry]:
+    chems=[retrieval.chemistry,retrieval2.chemistry]
+    if 'equchem' in chems or 'quequchem' in chems:
         molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
         figs.VMR_plot(retrieval,retrieval_object2=retrieval2,molecules=molecules)
     else: # compare two freechem retrievals

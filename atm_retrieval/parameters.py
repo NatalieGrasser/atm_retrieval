@@ -2,9 +2,9 @@ import numpy as np
 
 class Parameters:
 
-    params = {} # all parameters + their values
-
     def __init__(self, free_params, constant_params):
+
+        self.params = {} # all parameters + their values
             
         # Separate the prior range from the mathtext label
         self.param_priors, self.param_mathtext = {}, {}

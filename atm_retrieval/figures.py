@@ -747,6 +747,7 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
 
 def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
 
+    output_dir=retrieval_object.output_dir
     fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
     species_info = pd.read_csv(os.path.join('species_info.csv'))
     molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','C18O','C17O','CH4','HCN','NH3']
@@ -763,7 +764,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                 VMR=mass_fractions[name]*MMW/mass
                 ax.plot(VMR,pressure,label='_nolegend_',linestyle='dashed')
             elif retr_obj.chemistry in ['equchem','quequchem']:
-                if retr_obj.chemistry=='quequchem':
+                if retr_obj.chemistry=='equchem':
                     linestyle='solid'
                 if retr_obj.chemistry=='quequchem':
                     linestyle='dotted'
@@ -795,6 +796,9 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
         retrieval_object2=kwargs.get('retrieval_object2')
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retrieval_object2,ax=ax)
+        comparison_dir=pathlib.Path(f'{retrieval_object.output_dir}/comparison') # store output in separate folder
+        comparison_dir.mkdir(parents=True, exist_ok=True)
+        output_dir=comparison_dir
 
     if 'retrieval_object3' in kwargs: # compare three retrievals
         retrieval_object3=kwargs.get('retrieval_object3')
@@ -811,7 +815,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     ax.set_xlabel('VMR', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)
 
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}VMRs.pdf')
+    fig.savefig(f'{output_dir}/{retrieval_object.callback_label}VMRs.pdf')
     plt.close()
 
 

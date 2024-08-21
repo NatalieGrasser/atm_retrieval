@@ -253,8 +253,8 @@ class Retrieval:
         
         # get isotope and element ratios and save them in final params dict
         self.get_ratios()
-        if getpass.getuser()=="natalie":
-            del self.atmosphere_objects # don't need it after this step, avoid it crashing my laptop
+        #if getpass.getuser()=="natalie":
+            #del self.atmosphere_objects # don't need it after this step, avoid it crashing my laptop
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
         self.log_likelihood = self.LogLike(self.final_model, self.Cov)
