@@ -138,6 +138,8 @@ def plot_spectrum_split(retrieval_object):
 
 def plot_pt(retrieval_object,fs=12,**kwargs):
 
+    legend_labels=kwargs.get('legend_labels',None)
+
     if retrieval_object.chemistry in ['equchem','quequchem']:
         C_O = retrieval_object.final_object.params['C/O']
         Fe_H = retrieval_object.final_object.params['Fe/H']
@@ -292,12 +294,20 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     lines.append(Line2D([0], [0], color=retrieval_object.color3, alpha=0.8,
                         linewidth=1.5, linestyle='--',label=contr_label))
     lines = lines[:1]+[lines[-1]]+lines[1:-1] # move to second position in legend instead of last
-
-    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
     
     ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]',yscale='log',
         ylim=(np.nanmax(retrieval_object.final_object.pressure),
         np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
+    
+    if legend_labels!=None:
+        lines=[]
+        retr_objects=[retrieval_object,retrieval_object2,retrieval_object3]
+        for r,l in zip(retr_objects,legend_labels):
+            lines.append(Line2D([0], [0], color=r.color1,linewidth=2,linestyle='-',label=l))
+            lines.append(Line2D([0], [0], color=r.color3, alpha=0.8,linewidth=1.5, 
+                            linestyle='--',label=f'{l} cont.'))
+            
+    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
     
     ax.legend(handles=lines,fontsize=fs)
     ax.tick_params(labelsize=fs)
@@ -487,6 +497,7 @@ def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
 
 def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # compare cornerplot+PT of two retrievals
 
+    legend_labels=kwargs.get('legend_labels',None)
     num=2 # number of retrievals
     # can only compare freechem+freechem or freechem+equchem/quequchem(+equchem/quequchem)
     if retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry=='freechem':
@@ -584,7 +595,8 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
             if len(enum)==2:
                 y=1.45-(0.2*(run+1))
             elif len(enum)==3:
-                y=1.6-(0.2*(run+1))
+                #y=1.6-(0.2*(run+1))
+                y=1.6-(0.3*(run+1))
             fig.axes[j].text(0.5, y, s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
@@ -600,7 +612,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,ax=ax_PT)
     else:
         plot_pt(retrieval_object1,retrieval_object2=retrieval_object2,
-                ax=ax_PT,retrieval_object3=retrieval_object3)
+                ax=ax_PT,retrieval_object3=retrieval_object3,legend_labels=legend_labels)
 
     comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
@@ -784,16 +796,20 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                     VMR_12CO=mass_fractions[COname]*MMW/species_info.loc[species_info["name"]=='12CO']['mass'].values[0]
                     if species=='H2(18)O':                        
                         VMR_H218O=10**(-params.get('log_O16_18_ratio',-12))*VMR_H2O
-                        ax.plot(VMR_H218O,pressure,label=r'H$_2^{18}$O',alpha=alpha,linestyle=linestyle)
+                        label=r'H$_2^{18}$O' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        ax.plot(VMR_H218O,pressure,label=label,alpha=alpha,linestyle=linestyle)
                     elif species=='13CO':
                         VMR_13CO=10**(-params.get('log_C12_13_ratio',-12))*VMR_12CO
-                        ax.plot(VMR_13CO,pressure,label=r'$^{13}$CO',alpha=alpha,linestyle=linestyle)
+                        label=r'$^{13}$CO' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        ax.plot(VMR_13CO,pressure,label=label,alpha=alpha,linestyle=linestyle)
                     elif species=='C18O':
                         VMR_C18O=10**(-params.get('log_O16_18_ratio',-12))*VMR_12CO
-                        ax.plot(VMR_C18O,pressure,label=r'C$^{18}$O',alpha=alpha,linestyle=linestyle)
+                        label=r'C$^{18}$O' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        ax.plot(VMR_C18O,pressure,label=label,alpha=alpha,linestyle=linestyle)
                     elif species=='C17O':
                         VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
-                        ax.plot(VMR_C17O,pressure,label=r'C$^{17}$O',alpha=alpha,linestyle=linestyle)
+                        label=r'C$^{17}$O' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle)
 
     pressure=retrieval_object.final_object.pressure
     plot_VMRs(retrieval_object,ax=ax)

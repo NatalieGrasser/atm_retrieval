@@ -150,7 +150,8 @@ if BD3!=None: # compare freechem, equchem, quequchem of same object
     retrieval3.color2='forestgreen' # color of residuals
     retrieval3.color3='yellowgreen'
     retrieval3.evaluate(makefigs=False)
-    figs.compare_retrievals(retrieval,retrieval2,retrieval_object3=retrieval3)
+    legend_labels=[retrieval.chemistry,retrieval2.chemistry,retrieval3.chemistry]
+    figs.compare_retrievals(retrieval,retrieval2,retrieval_object3=retrieval3,legend_labels=legend_labels)
     molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
     figs.VMR_plot(retrieval,retrieval_object2=retrieval2,retrieval_object3=retrieval3,molecules=molecules)
 
