@@ -464,8 +464,18 @@ class Retrieval:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
         for molecule in molecules: # exclude molecule from retrieval
-            
-            
+
+            if self.chemistry=='freechem':
+                original_prior=self.parameters.param_priors[f'log_{molecule}']
+                self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude from retrieval
+            elif self.chemistry in ['equchem','quequchem']:
+                if molecule=='13CO':
+                    key='log_C12_13_ratio'
+                elif molecule=='H2(18)O':
+                    key='log_O16_18_ratio'
+                original_prior=self.parameters.param_priors[key]
+                self.parameters.param_priors[key]=[14,15] # exclude from retrieval
+
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)

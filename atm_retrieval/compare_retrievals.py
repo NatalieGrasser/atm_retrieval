@@ -37,7 +37,7 @@ Nlive2=int(sys.argv[9])
 tol2=float(sys.argv[10])
 
 BD3=None
-# example: python3 compare_retrievals.py 2M0355 freechem PTgrad 300 0.5 2M0355 equchem PTgrad 50 10.0 2M0355 quequchem PTgrad 55 10.0
+# example: python3 compare_retrievals.py 2M0355 freechem PTgrad 400 0.5 2M0355 equchem PTgrad 400 0.5 2M0355 quequchem PTgrad 400 0.5
 if len(sys.argv)>11:
     BD3=sys.argv[11]
     chem3 = sys.argv[12]

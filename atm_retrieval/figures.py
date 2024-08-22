@@ -304,8 +304,8 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         retr_objects=[retrieval_object,retrieval_object2,retrieval_object3]
         for r,l in zip(retr_objects,legend_labels):
             lines.append(Line2D([0], [0], color=r.color1,linewidth=2,linestyle='-',label=l))
-            lines.append(Line2D([0], [0], color=r.color3, alpha=0.8,linewidth=1.5, 
-                            linestyle='--',label=f'{l} cont.'))
+            #lines.append(Line2D([0], [0], color=r.color3, alpha=0.8,linewidth=1.5, 
+                            #linestyle='--',label=f'{l} cont.'))
             
     lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
     
@@ -585,18 +585,20 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
             
             # first only the name of the parameter
             s = title.split('=')
+            if len(enum)==2:
+                y_title=1.45
+                y=y_title-(0.2*(run+1))
+            elif len(enum)==3:
+                #y=1.6-(0.2*(run+1))
+                y_title=1.47
+                y=y_title-0.12-(0.13*(run+0.2))
             if run == 0: # first retrieval, add parameter name
-                fig.axes[j].text(0.5, 1.45, s[0], fontsize=fs,
+                fig.axes[j].text(0.5, y_title, s[0], fontsize=fs,
                                 ha='center', va='bottom',
                                 transform=fig.axes[j].transAxes,
                                 color='k',
                                 weight='normal')
             # add parameter value with custom color and spacing
-            if len(enum)==2:
-                y=1.45-(0.2*(run+1))
-            elif len(enum)==3:
-                #y=1.6-(0.2*(run+1))
-                y=1.6-(0.3*(run+1))
             fig.axes[j].text(0.5, y, s[1], fontsize=fs,
                             ha='center', va='bottom',
                             transform=fig.axes[j].transAxes,
@@ -605,7 +607,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
 
     plt.subplots_adjust(wspace=0, hspace=0)
 
-    l, b, w, h = [0.58,0.61,0.39,0.39] # left, bottom, width, height
+    l, b, w, h = [0.58,0.65,0.39,0.39] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
 
     if 'retrieval_object3' not in kwargs:
@@ -740,7 +742,7 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
             fig.axes[i].title.set_visible(False) # remove original titles   
         comparison_dir=pathlib.Path(f'{retrieval_object.output_dir}/comparison') # store output in separate folder
         comparison_dir.mkdir(parents=True, exist_ok=True)
-        filename=f'{comparison_dir}/ratios_comparison.pdf'
+        filename=f'{comparison_dir}/ratios_2.pdf'
 
     else:
         for i, title in enumerate(titles):
@@ -769,6 +771,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     species_info = pd.read_csv(os.path.join('species_info.csv'))
     molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','C18O','C17O','CH4','HCN','NH3']
     alpha=0.6 if 'retrieval_object2' in kwargs else 1
+    legend_labels=0
 
     def plot_VMRs(retr_obj,ax):
         mass_fractions=retr_obj.final_object.mass_fractions
@@ -780,7 +783,8 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
             label=species_info.loc[species_info["name"]==species]['mathtext_name'].values[0]
             if retr_obj.chemistry=='freechem':
                 VMR=mass_fractions[name]*MMW/mass
-                ax.plot(VMR,pressure,label='_nolegend_',linestyle='dashed')
+                label=label if legend_labels==0 else '_nolegend_'
+                ax.plot(VMR,pressure,label=label,linestyle='dashed')
             elif retr_obj.chemistry in ['equchem','quequchem']:
                 if retr_obj.chemistry=='equchem':
                     linestyle='solid'
@@ -788,6 +792,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                     linestyle='dotted'
                 if species not in ['H2(18)O','13CO','C18O','C17O']:
                     VMR=mass_fractions[name]*MMW/mass
+                    label=label if legend_labels==0 else '_nolegend_'
                     ax.plot(VMR,pressure,label=label,alpha=alpha,linestyle=linestyle)
                 else:  
                     H2Oname=species_info.loc[species_info["name"]=='H2O']['pRT_name'].values[0]
@@ -796,23 +801,24 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                     VMR_12CO=mass_fractions[COname]*MMW/species_info.loc[species_info["name"]=='12CO']['mass'].values[0]
                     if species=='H2(18)O':                        
                         VMR_H218O=10**(-params.get('log_O16_18_ratio',-12))*VMR_H2O
-                        label=r'H$_2^{18}$O' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        label=r'H$_2^{18}$O' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_H218O,pressure,label=label,alpha=alpha,linestyle=linestyle)
                     elif species=='13CO':
                         VMR_13CO=10**(-params.get('log_C12_13_ratio',-12))*VMR_12CO
-                        label=r'$^{13}$CO' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        label=r'$^{13}$CO' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_13CO,pressure,label=label,alpha=alpha,linestyle=linestyle)
                     elif species=='C18O':
                         VMR_C18O=10**(-params.get('log_O16_18_ratio',-12))*VMR_12CO
-                        label=r'C$^{18}$O' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        label=r'C$^{18}$O' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_C18O,pressure,label=label,alpha=alpha,linestyle=linestyle)
                     elif species=='C17O':
                         VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
-                        label=r'C$^{17}$O' if retr_obj.chemistry=='equchem' else '_nolegend_'
+                        label=r'C$^{17}$O' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle)
 
     pressure=retrieval_object.final_object.pressure
     plot_VMRs(retrieval_object,ax=ax)
+    legend_labels=1 # only make legend labels once 
 
     if 'retrieval_object2' in kwargs: # compare two retrievals
         prefix=''
@@ -833,6 +839,8 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     leg=ax.legend(fontsize=fs*0.8)
     for lh in leg.legend_handles:
         lh.set_alpha(1)
+    for line in leg.get_lines():
+        line.set_linestyle('-')
     
     ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
         ylim=(np.max(pressure),np.min(pressure)),xlim=(1e-11,1.3))   
