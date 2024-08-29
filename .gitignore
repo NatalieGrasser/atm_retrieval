@@ -6,6 +6,8 @@
 !2M1425_spectrum.txt
 */test/*
 !test_spectrum.txt
+*/test_corr/*
+!test_corr_spectrum.txt
 prepare_spectrum*
 atmosphere_objects*
 atm_retrieval.egg*

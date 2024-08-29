@@ -390,7 +390,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,plot_label=''
         #corner.overplot_lines(fig,np.array([retrieval_object.bestfit_params[i] for i in indices]),color='b',lw=1.3,linestyle='solid')
 
     # add true values of test spectrum, plotting didn't work bc x-axis range so small, some didn't show up
-    if retrieval_object.target.name=='test':
+    if retrieval_object.target.name in ['test','test_corr']:
         from testspec import test_parameters,test_mathtext
         compare=np.full(len(labels),None) # =None for non-input values of test spectrum
         for key_i in test_parameters.keys():
@@ -772,8 +772,9 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','C18O','C17O','CH4','HCN','NH3']
     alpha=0.6 if 'retrieval_object2' in kwargs else 1
     legend_labels=0
+    xmin,xmax=1e-11,1.3
 
-    def plot_VMRs(retr_obj,ax):
+    def plot_VMRs(retr_obj,ax,ax2):
         mass_fractions=retr_obj.final_object.mass_fractions
         MMW=retr_obj.final_object.MMW
         params=retrieval_object.parameters.params
@@ -784,6 +785,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
             if retr_obj.chemistry=='freechem':
                 VMR=mass_fractions[name]*MMW/mass
                 label=label if legend_labels==0 else '_nolegend_'
+                linestyle='dashed'
                 ax.plot(VMR,pressure,label=label,linestyle='dashed')
             elif retr_obj.chemistry in ['equchem','quequchem']:
                 if retr_obj.chemistry=='equchem':
@@ -815,9 +817,16 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                         VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
                         label=r'C$^{17}$O' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle)
+        summed_contr=np.nanmean(retr_obj.final_object.contr_em_orders,axis=0) # average over all orders
+        contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
+        ax2.plot(contribution_plot,np.log10(retr_obj.final_object.pressure)[::-1],
+                    lw=1,alpha=0.5,color=retr_obj.color3,linestyle=linestyle)
+        ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
 
     pressure=retrieval_object.final_object.pressure
-    plot_VMRs(retrieval_object,ax=ax)
+    ax2 = ax.inset_axes([0,0,1,1]) #[x0, y0, width, height]
+
+    plot_VMRs(retrieval_object,ax=ax,ax2=ax2)
     legend_labels=1 # only make legend labels once 
 
     if 'retrieval_object2' in kwargs: # compare two retrievals
@@ -825,7 +834,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
         suffix='_2'
         retrieval_object2=kwargs.get('retrieval_object2')
         plt.gca().set_prop_cycle(None) # reset color cycle
-        plot_VMRs(retrieval_object2,ax=ax)
+        plot_VMRs(retrieval_object2,ax=ax,ax2=ax2)
         comparison_dir=pathlib.Path(f'{retrieval_object.output_dir}/comparison') # store output in separate folder
         comparison_dir.mkdir(parents=True, exist_ok=True)
         output_dir=comparison_dir
@@ -834,7 +843,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
         suffix='_3'
         retrieval_object3=kwargs.get('retrieval_object3')
         plt.gca().set_prop_cycle(None) # reset color cycle
-        plot_VMRs(retrieval_object3,ax=ax)
+        plot_VMRs(retrieval_object3,ax=ax,ax2=ax2)
 
     leg=ax.legend(fontsize=fs*0.8)
     for lh in leg.legend_handles:
@@ -842,8 +851,10 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     for line in leg.get_lines():
         line.set_linestyle('-')
     
+    ax2.axis('off')
+    ax2.set_facecolor('none')
     ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
-        ylim=(np.max(pressure),np.min(pressure)),xlim=(1e-11,1.3))   
+        ylim=(np.max(pressure),np.min(pressure)),xlim=(xmin,xmax))   
     ax.tick_params(labelsize=fs)
     ax.set_xlabel('VMR', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)

@@ -27,24 +27,17 @@ from scipy.interpolate import interp1d
 class Retrieval:
 
     def __init__(self,target,parameters,output_name,chemistry='freechem',
-                 GP=True,cloud_mode='gray',PT_type='PTknot',redo=False,
+                 GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False,
                  load_atmospheres=True):
-
-        self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
-                [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
-                [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
-                [[2143.087,2157.855], [2158.914,2173.020], [2173.983,2187.386]],
-                [[2228.786,2244.133], [2245.229,2259.888], [2260.904,2274.835]],
-                [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
-                [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
         
         self.target=target
         self.data_wave,self.data_flux,self.data_err=target.load_spectrum()
         self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)
         self.separation,self.err_eff=target.prepare_for_covariance()
+        self.K2166=target.K2166
         self.parameters=parameters
         self.chemistry=chemistry # freechem/equchem/quequchem
-        self.species=self.get_species(param_dict=self.parameters.params)
+        self.species=self.get_species(param_dict=self.parameters.params,chemistry=self.chemistry)
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
         self.n_params = len(parameters.free_params)
@@ -98,10 +91,11 @@ class Retrieval:
         self.color2=target.color2
         self.color3=target.color3
 
-    def get_species(self,param_dict): # get pRT species name from parameters dict
+    @staticmethod
+    def get_species(param_dict,chemistry): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
-        if self.chemistry=='freechem':
-            self.chem_species=[]
+        if chemistry=='freechem':
+            chem_species=[]
             for par in param_dict:
                 if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
                     if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
@@ -109,15 +103,15 @@ class Retrieval:
                                'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']: # skip
                         pass
                     else:
-                        self.chem_species.append(par)
+                        chem_species.append(par)
             species=[]
-            for chemspec in self.chem_species:
+            for chemspec in chem_species:
                 species.append(species_info.loc[chemspec[4:],'pRT_name'])
-        elif self.chemistry in ['equchem','quequchem']:
-            self.chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
+        elif chemistry in ['equchem','quequchem']:
+            chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
                          'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
             species=[]
-            for chemspec in self.chem_species:
+            for chemspec in chem_species:
                 species.append(species_info.loc[chemspec,'pRT_name'])
         return species
 
@@ -282,6 +276,13 @@ class Retrieval:
         return self.final_params,self.final_spectrum
 
     def get_ratios(self): # can only be run after self.evaluate()
+
+        bounds_array=[]
+        for key in self.parameters.param_keys:
+            bounds=self.parameters.param_priors[key]
+            bounds_array.append(bounds)
+        bounds_array=np.array(bounds_array)
+        
         if self.chemistry in ['equchem','quequchem']:
 
             for ratio in ['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio']:
@@ -296,13 +297,14 @@ class Retrieval:
             self.calc_errors=True
             temperature_distribution=[] # for each of the n_atm_layers
             x=0
-            for j,sample in enumerate(self.posterior):
-                for i,key in enumerate(self.parameters.param_keys):
-                    self.parameters.params[key]=sample[i]
+            for sample in self.posterior:
+                # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
+                cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
+                self.parameters(cube)
                 self.PMN_lnL()
                 temperature_distribution.append(self.model_object.temperature)
                 x+=1
-                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop
+                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop, or it takes too long (22min)
                     break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
             self.calc_errors=False # set back to False when finished
@@ -328,16 +330,17 @@ class Retrieval:
             CO_distribution=np.full(self.posterior.shape[0],fill_value=0.0)
             CH_distribution=np.full(self.posterior.shape[0],fill_value=0.0)
             temperature_distribution=[] # for each of the n_atm_layers
-            x=0 # just for debugging
+            x=0
             for j,sample in enumerate(self.posterior):
-                for i,key in enumerate(self.parameters.param_keys):
-                    self.parameters.params[key]=sample[i]
+                # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
+                cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
+                self.parameters(cube)
                 self.PMN_lnL()
                 CO_distribution[j]=self.model_object.CO
                 CH_distribution[j]=self.model_object.FeH
                 temperature_distribution.append(self.model_object.temperature)
                 x+=1
-                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop
+                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop, or it takes too long (22min)
                     break
             self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
@@ -500,7 +503,17 @@ class Retrieval:
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
             print('bayes_dict=',bayes_dict)  
-            self.parameters.param_priors[f'log_{molecule}']=original_prior # set back for next retrieval
+
+            # set back param priors for next retrieval
+            if self.chemistry=='freechem':
+                self.parameters.param_priors[f'log_{molecule}']=original_prior 
+            elif self.chemistry in ['equchem','quequchem']:
+                if molecule=='13CO':
+                    key='log_C12_13_ratio'
+                elif molecule=='H2(18)O':
+                    key='log_O16_18_ratio'
+                self.parameters.param_priors[key]=original_prior
+            
         return bayes_dict
 
     def compare_evidence(self,ln_Z_A,ln_Z_B):

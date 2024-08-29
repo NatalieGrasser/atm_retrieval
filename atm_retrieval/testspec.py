@@ -10,7 +10,9 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'log_CH4':(-6.0,r'log CH$_4$'),
             'log_HF':(-6.0,r'log HF'),
             'log_H2(18)O':(-6.0,r'log H$_2^{18}$O'),
-            'log_H2S':(-5.0,r'log H$_2$S')}
+            'log_H2S':(-5.0,r'log H$_2$S'),
+            'log_a':(2.5,r'$\log\ a$'),
+            'log_l':(-0.5,r'$\log\ l$')}
 
 test_parameters={}
 test_mathtext={}
@@ -26,11 +28,19 @@ if __name__ == "__main__":
    import pandas as pd
    import os
    import getpass
+   import sys
+   import pathlib
 
    if getpass.getuser() == "natalie": # when testing from my laptop
       os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
+      from spectrum import Spectrum, convolve_to_resolution
+      from target import Target
+      from covariance import *
    elif getpass.getuser() == "grasser": # when running from LEM
       os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
+      from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
+      from atm_retrieval.target import Target
+      from atm_retrieval.covariance import *
    
    from petitRADTRANS import Radtrans
    from PyAstronomy.pyasl import fastRotBroad, helcorr
@@ -40,43 +50,32 @@ if __name__ == "__main__":
    from spectrum import Spectrum, convolve_to_resolution
    from scipy.ndimage import gaussian_filter
 
-   def load_spectrum(target):
-      file=np.genfromtxt(f"{target}/{target}_spectrum.txt",skip_header=1,delimiter=' ')
-      wl=np.reshape(file[:,0],(7,3,2048))
-      fl=np.reshape(file[:,1],(7,3,2048))
-      err=np.reshape(file[:,2],(7,3,2048))
-      return wl,fl,err
+   # option to add correlated noise as command line argument
+   GP=True if len(sys.argv)>1 else False
+   print('Using correlated noise:',GP)
 
-   def get_species(param_dict): # get pRT species name from parameters dict
+   def get_species(param_dict,chemistry): # get pRT species name from parameters dict
       species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
-      chem_species=[]
-      for par in param_dict:
+      if chemistry=='freechem':
+         chem_species=[]
+         for par in param_dict:
             if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
-               if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l']: # skip
+               if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
+                            'log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio',
+                            'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']: # skip
                   pass
                else:
                   chem_species.append(par)
-      species=[]
-      for chemspec in chem_species:
+         species=[]
+         for chemspec in chem_species:
             species.append(species_info.loc[chemspec[4:],'pRT_name'])
+      elif chemistry in ['equchem','quequchem']:
+         chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
+                        'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
+         species=[]
+         for chemspec in chem_species:
+            species.append(species_info.loc[chemspec,'pRT_name'])
       return species
-
-   def read_species_info(species,info_key):
-      species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
-      if info_key == 'pRT_name':
-         return species_info.loc[species,info_key]
-      if info_key == 'pyfc_name':
-         return species_info.loc[species,'Hill_notation']
-      if info_key == 'mass':
-         return species_info.loc[species,info_key]
-      if info_key == 'COH':
-         return list(species_info.loc[species,['C','O','H']])
-      if info_key in ['C','O','H']:
-         return species_info.loc[species,info_key]
-      if info_key == 'c' or info_key == 'color':
-         return species_info.loc[species,'color']
-      if info_key == 'label':
-         return species_info.loc[species,'mathtext_name']
 
    def free_chemistry(line_species,params,n_atm_layers):
       species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -127,32 +126,44 @@ if __name__ == "__main__":
       FeH = np.nanmean(FeH)
 
       return mass_fractions, CO, FeH
-   
+
    def instr_broadening(wave, flux, out_res=1e6, in_res=1e6):
+      sigma_LSF = np.sqrt(1/out_res**2-1/in_res**2)/(2*np.sqrt(2*np.log(2)))
+      spacing = np.mean(2*np.diff(wave) / (wave[1:] + wave[:-1]))
+      sigma_LSF_gauss_filter = sigma_LSF / spacing
+      flux_LSF = gaussian_filter(flux, sigma=sigma_LSF_gauss_filter,mode='nearest')
+      return flux_LSF
 
-        # Delta lambda of resolution element is FWHM of the LSF's standard deviation
-        sigma_LSF = np.sqrt(1/out_res**2-1/in_res**2)/(2*np.sqrt(2*np.log(2)))
-        spacing = np.mean(2*np.diff(wave) / (wave[1:] + wave[:-1]))
-
-        # Calculate the sigma to be used in the gauss filter in pixels
-        sigma_LSF_gauss_filter = sigma_LSF / spacing
-        
-        # Apply gaussian filter to broaden with the spectral resolution
-        flux_LSF = gaussian_filter(flux, sigma=sigma_LSF_gauss_filter,mode='nearest')
-
-        return flux_LSF
-
-
-   K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
-                  [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
-                  [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
-                  [[2143.087,2157.855], [2158.914,2173.020], [2173.983,2187.386]],
-                  [[2228.786,2244.133], [2245.229,2259.888], [2260.904,2274.835]],
-                  [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
-                  [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
-
-   data_wave,data_flux,data_err=load_spectrum('2M0355') # test spectrum based on 2M0355
-   n_orders=7
+   def read_species_info(species,info_key):
+      species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+      if info_key == 'pRT_name':
+         return species_info.loc[species,info_key]
+      if info_key == 'pyfc_name':
+         return species_info.loc[species,'Hill_notation']
+      if info_key == 'mass':
+         return species_info.loc[species,info_key]
+      if info_key == 'COH':
+         return list(species_info.loc[species,['C','O','H']])
+      if info_key in ['C','O','H']:
+         return species_info.loc[species,info_key]
+      if info_key == 'c' or info_key == 'color':
+         return species_info.loc[species,'color']
+      if info_key == 'label':
+         return species_info.loc[species,'mathtext_name']
+      
+   def add_RBF_kernel(cov, a, l, separation, variance, trunc_dist=5):
+      w_ij = (separation < trunc_dist*l) # Hann window function to ensure sparsity
+      GP_amp = a**2 # GP amplitude
+      GP_amp *= variance**2
+      cov[w_ij] += GP_amp * np.exp(-(separation[w_ij])**2/(2*l**2)) # Gaussian radial-basis function kernel
+      return cov
+      
+   target=Target('2M0355') # test spectrum based on 2M0355
+   data_wave,data_flux,data_err=target.load_spectrum()
+   mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)
+   separation,err_eff=target.prepare_for_covariance()
+   K2166=target.K2166
+   n_orders,n_dets=target.n_orders,target.n_dets
    lbl_opacity_sampling=3
 
    # sonora bobcat P-T profile (T=1400K, logg=4.65, solar metallicity, solar C/O-ratio)
@@ -161,7 +172,7 @@ if __name__ == "__main__":
    temp=file[:,2] # K
    n_atm_layers=len(pres)
 
-   species=get_species(test_parameters)
+   species=get_species(param_dict=test_parameters,chemistry='freechem')
    mass_fractions, CO, FeH=free_chemistry(species,test_parameters,n_atm_layers)
    gravity = 10**test_parameters['log_g'] 
    coords = SkyCoord(ra="03h55m23.3735910810s", dec="+11d33m43.797034332s", frame='icrs') # use 2M0355
@@ -174,11 +185,11 @@ if __name__ == "__main__":
       wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
 
       atmosphere = Radtrans(line_species=species,
-                        rayleigh_species = ['H2', 'He'],
-                        continuum_opacities = ['H2-H2', 'H2-He'],
-                        wlen_bords_micron=wlen_range, 
-                        mode='lbl',
-                        lbl_opacity_sampling=lbl_opacity_sampling)
+                     rayleigh_species = ['H2', 'He'],
+                     continuum_opacities = ['H2-H2', 'H2-He'],
+                     wlen_bords_micron=wlen_range, 
+                     mode='lbl',
+                     lbl_opacity_sampling=lbl_opacity_sampling)
       
       atmosphere.setup_opa_structure(pres)
       atmosphere.calc_flux(temp,
@@ -189,11 +200,10 @@ if __name__ == "__main__":
       
       wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
       flux=atmosphere.flux
-      #flux = atmosphere.flux/np.nanmean(atmosphere.flux)
 
       # RV+bary shifting and rotational broadening
       v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
-                        ra2000=coords.ra.value,dec2000=coords.dec.value,jd=2459885.5)
+                     ra2000=coords.ra.value,dec2000=coords.dec.value,jd=2459885.5)
       wl_shifted= wl*(1.0+(test_parameters['rv']-v_bary)/const.c.to('km/s').value)
       spec = Spectrum(flux, wl_shifted)
       waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
@@ -217,23 +227,51 @@ if __name__ == "__main__":
    test_spectrum/=np.nanmedian(test_spectrum) # normalize in same way as data spectrum
    test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
 
-   # add Gaussian noise by using flux_err*s^2 (approximate mean of s^2)
-   test_spectrum_noisy=test_spectrum+np.random.normal(0,np.nanmean(data_err)*10,size=test_spectrum.shape)
+   # random noise depending on data points
+   random_noise=np.random.normal(0,np.nanmean(data_err)*10,size=test_spectrum.shape)
+   # white noise independent of data points
+   white_noise=np.random.normal(np.zeros_like(test_spectrum),data_err,size=test_spectrum.shape)
+   if GP==False:
+      # add Gaussian noise by using data_err
+      test_spectrum_noisy=test_spectrum+random_noise
+   else:
+      # add correlated noise
+      Cov = np.empty((n_orders,n_dets), dtype=object) # covariance matrix
+      test_spectrum_noisy=np.copy(test_spectrum)
+      err_new_array=np.full(shape=test_spectrum.shape,fill_value=np.nan)
+      for i in range(n_orders):
+         for j in range(n_dets):
+               mask_ij = mask_isfinite[i,j] # only finite pixels
+               if not mask_ij.any(): # skip empty order/detector pairs
+                  continue
+               maxval=10**(test_parameters['log_l'])*3 # 3*max value of prior of l
+               Cov[i,j] = CovGauss(err=white_noise[i,j,mask_ij],separation=separation[i,j], 
+                                       err_eff=err_eff[i,j],max_separation=maxval)
+               a = 10**(test_parameters.get('log_a'))
+               l = 10**(test_parameters.get('log_l'))
+               Cov[i,j].cov=add_RBF_kernel(Cov[i,j].cov, a, l, separation[i,j], err_eff[i,j])
+               err_new=np.sqrt(Cov[i,j].cov).dot(white_noise[i,j,mask_ij])
+               err_new_array[i,j,mask_ij]=err_new
+               test_spectrum_noisy[i,j,mask_ij]+=err_new
 
    spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
    spectrum[:,0]=data_wave.flatten()
    spectrum[:,1]=test_spectrum_noisy.flatten()
    spectrum[:,2]=data_err.flatten()
-   np.savetxt('test/test_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
+   suffix='' if GP==False else '_corr'
 
-   wl,fl,err=load_spectrum('2M0355')
-   wlm,flm,errm=load_spectrum('test')
-   fig,ax=plt.subplots(1,1,figsize=(9,2),dpi=200)
-   ax.plot(wl.flatten(),fl.flatten(),label='2M0355',lw=0.8)
-   ax.plot(wlm.flatten(),flm.flatten(),label='testspec',alpha=0.5,lw=0.8)
-   ax.plot(wlm.flatten(),test_spectrum.flatten(),label='noiseless testspec',alpha=0.2,color='k',lw=0.8)
-   ax.legend()
-   ax.set_xlabel('Wavelength [nm]')
-   fig.tight_layout(h_pad=0)
-   fig.savefig(f'test/test_spectrum.pdf')
-   plt.close()
+   output_dir = pathlib.Path(f'{os.getcwd()}/test{suffix}')
+   output_dir.mkdir(parents=True, exist_ok=True)
+   np.savetxt(f'test{suffix}/test{suffix}_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
+
+   if 0:
+      wl,fl,err=Target('2M0355').load_spectrum()
+      wlm,flm,errm=Target(f'test{suffix}').load_spectrum()
+      fig,ax=plt.subplots(1,1,figsize=(9,2),dpi=200)
+      ax.plot(wl.flatten(),fl.flatten(),label='2M0355',lw=0.8)
+      ax.plot(wlm.flatten(),flm.flatten(),label='testspec',alpha=0.5,lw=0.8)
+      ax.legend()
+      ax.set_xlabel('Wavelength [nm]')
+      fig.tight_layout(h_pad=0)
+      fig.savefig(f'test{suffix}/test{suffix}_spectrum.pdf')
+      plt.close()
