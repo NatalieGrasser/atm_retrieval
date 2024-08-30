@@ -11,7 +11,8 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'log_HF':(-6.0,r'log HF'),
             'log_H2(18)O':(-6.0,r'log H$_2^{18}$O'),
             'log_H2S':(-5.0,r'log H$_2$S'),
-            'log_a':(2.5,r'$\log\ a$'),
+            #'log_a':(2.5,r'$\log\ a$'),
+            'log_a':(0.8,r'$\log\ a$'),
             'log_l':(-0.5,r'$\log\ l$')}
 
 test_parameters={}
