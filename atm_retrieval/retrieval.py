@@ -91,7 +91,7 @@ class Retrieval:
         self.color2=target.color2
         self.color3=target.color3
 
-    def get_species(param_dict,chemistry): # get pRT species name from parameters dict
+    def get_species(self,param_dict,chemistry): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         if chemistry=='freechem':
             self.chem_species=[]
