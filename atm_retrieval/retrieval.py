@@ -91,11 +91,10 @@ class Retrieval:
         self.color2=target.color2
         self.color3=target.color3
 
-    @staticmethod
     def get_species(param_dict,chemistry): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         if chemistry=='freechem':
-            chem_species=[]
+            self.chem_species=[]
             for par in param_dict:
                 if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
                     if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
@@ -103,15 +102,15 @@ class Retrieval:
                                'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']: # skip
                         pass
                     else:
-                        chem_species.append(par)
+                        self.chem_species.append(par)
             species=[]
-            for chemspec in chem_species:
+            for chemspec in self.chem_species:
                 species.append(species_info.loc[chemspec[4:],'pRT_name'])
         elif chemistry in ['equchem','quequchem']:
-            chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
+            self.chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
                          'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
             species=[]
-            for chemspec in chem_species:
+            for chemspec in self.chem_species:
                 species.append(species_info.loc[chemspec,'pRT_name'])
         return species
 

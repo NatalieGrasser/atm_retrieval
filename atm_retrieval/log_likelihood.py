@@ -3,7 +3,7 @@ from scipy.special import loggamma # gamma function
 
 class LogLikelihood:
 
-    def __init__(self,retrieval_object,scale_flux=False,scale_err=False,alpha=2,N_phi=1):
+    def __init__(self,retrieval_object,scale_flux=True,scale_err=True,alpha=2,N_phi=1):
 
         self.d_flux = retrieval_object.data_flux
         self.d_mask = retrieval_object.mask_isfinite
