@@ -445,6 +445,7 @@ class Retrieval:
             CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
             ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
             noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
+            #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
             CCF_norm = CCF_sum/noise # get ccf map in S/N units
             ACF_norm = ACF_sum/noise
             SNR=CCF_norm[np.where(RVs==0)[0][0]]

@@ -39,7 +39,7 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
     free_params = {'rv': ([2,20],r'$v_{\rm rad}$'),
                 'vsini': ([0,40],r'$v$ sin$i$'),
                 'log_g':([3,5],r'log $g$'),
-                'epsilon_limb': [(0.2,1), r'$\epsilon_\mathrm{limb}$']} # limb-darkening coefficient (0-1)
+                'epsilon_limb': ([0.2,1], r'$\epsilon_\mathrm{limb}$')} # limb-darkening coefficient (0-1)
 
     if PT_type=='PTknot':
         pt_params={'T0' : ([1000,4000], r'$T_0$'), # bottom of the atmosphere (hotter)

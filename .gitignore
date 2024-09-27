@@ -7,6 +7,7 @@
 */test/*
 !test_spectrum.txt
 */test_corr/*
+*/SP0829/*
 !test_corr_spectrum.txt
 prepare_spectrum*
 atmosphere_objects*

@@ -29,7 +29,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     if 'ax' in kwargs:
         ax=kwargs.get('ax')
     else:
-        fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
+        #fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
+        fig,ax=plt.subplots(2,1,figsize=(9.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
     for order in range(7):
         for det in range(3):
@@ -530,7 +531,8 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
             reshaped=retrieval_object3.ratios_posterior[:,-1].reshape(len(retrieval_object3.ratios_posterior[:,-1]),1)
             posterior3=np.hstack([retrieval_object3.ratios_posterior,reshaped])
 
-    figsize=15
+    #figsize=15
+    figsize=14
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
 
     def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
@@ -563,6 +565,11 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
     enum=[0,1]
     titles_list=[titles1,titles2]
     colors_list=[retrieval_object1.color1,retrieval_object2.color1]
+
+    # overplot medians as solid lines
+    #corner.overplot_lines(fig,np.array([retrieval_object1.bestfit_params[i] for i in indices]),
+                          #color='b',lw=1.3,linestyle='solid')
+
 
     if 'retrieval_object3' in kwargs:
         titles3=plot_corner(posterior3,retrieval_object3,labels,fig)
