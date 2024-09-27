@@ -343,7 +343,7 @@ class Retrieval:
                     break
             self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
-            self.ratios_posterior=np.hstack([self.CO_CH_dist,self.ratios_posterior])
+            self.ratios_posterior=np.vstack([self.CO_CH_dist,self.ratios_posterior])
             self.calc_errors=False # set back to False when finished
 
             median,minus_err,plus_err=self.get_quantiles(CO_distribution,flat=True)
