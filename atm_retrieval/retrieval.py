@@ -552,15 +552,18 @@ class Retrieval:
         self.evaluate(save=save)
         if molecules!=None:
             ccf_dict=self.cross_correlation(molecules)
-            self.final_params.update(ccf_dict)
-            print('self.final_params.update(ccf_dict)=\n',self.final_params)
+            #self.final_params.update(ccf_dict)
+            print('ccf_dict=\n',ccf_dict)
         if bayes==True:
             bayes_dict=self.bayes_evidence(molecules)
             bayes_dict.update(ccf_dict)
-            self.final_params.update(bayes_dict)
-            print('self.final_params.update(bayes_dict)=\n',self.final_params)
+            #self.final_params.update(bayes_dict)
+            print('bayes_dict=\n',bayes_dict)
 
-        with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
-            pickle.dump(self.final_params,file)
+        #with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
+            #pickle.dump(self.final_params,file)
+
+        with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
+            pickle.dump(bayes_dict,file)
         
 
