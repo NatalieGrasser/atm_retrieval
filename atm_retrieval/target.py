@@ -220,7 +220,7 @@ class Target:
             std=np.nanstd(fl[2,1])
             bad_pixel=np.where(fl[2,1]>mean+5*std)[0][0] # 890
             fl[2,1][bad_pixel-2:bad_pixel+2]=np.nan
-            fl[0,2]=np.nan # too many tellurics
+            fl[0,:]=np.nan # too many tellurics
 
 
         self.plot_orders3(wl,fl0,wl,flt,wl,fl,'Uncorrected','Telluric model','Corrected')
