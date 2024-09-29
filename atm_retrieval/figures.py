@@ -119,7 +119,10 @@ def plot_spectrum_split(retrieval_object):
         min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
         max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
         ax1.set_ylim(min1,max1)
-        ax2.set_ylim(np.nanmin(residuals[order]),np.nanmax(residuals[order]))
+        try:
+            ax2.set_ylim(np.nanmin(residuals[order]),np.nanmax(residuals[order]))
+        except:# if empty order
+            ax2.set_ylim(-0.1,0.1)
         ax1.tick_params(labelbottom=False)  # don't put tick labels at bottom
         ax1.tick_params(axis="both")
         ax2.tick_params(axis="both")
