@@ -1,6 +1,9 @@
 import getpass
 import os
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore", message="Mean of empty slice") # ignore warning for empty orders
+warnings.filterwarnings("ignore", message="All-NaN slice encountered") # ignore warning for empty orders
 import sys
 os.environ['OMP_NUM_THREADS'] = '1' # to avoid using too many CPUs
 
