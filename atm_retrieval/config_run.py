@@ -107,7 +107,7 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
         
     if GP==True: # add uncertainty scaling
         GP_params={'log_a': ([-1,1], r'$\log\ a$'), # one is enough, will be multipled with order/det error
-                'log_l': ([-3,0], r'$\log\ l$')}
+                'log_l': ([-3,1], r'$\log\ l$')}
         free_params.update(GP_params)
 
     free_params.update(chemistry)

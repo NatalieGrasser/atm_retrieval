@@ -33,12 +33,17 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
         fig,ax=plt.subplots(2,1,figsize=(9.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
     for order in range(7):
+        # add error for scale
+        errmean=np.nanmean(err[order].flatten()*retrieval_object.final_params['s2_ij'][order].flatten())
+        ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
+
         for det in range(3):
             lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
             upper=flux[order,det]+err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
             ax[0].plot(wave[order,det],flux[order,det],lw=0.8,alpha=1,c='k',label='data')
             ax[0].fill_between(wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax[0].plot(wave[order,det],flux_m[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
+            
             ax[1].plot(wave[order,det],flux[order,det]-flux_m[order,det],lw=0.8,c=retrieval_object.color2,label='residuals')
             if order==0 and det==0:
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
@@ -46,9 +51,9 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
                         Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label='Bestfit'),
                         Line2D([0], [0], color=retrieval_object.color2, linewidth=2,label='Residuals')]
                 ax[0].legend(handles=lines,fontsize=fs,ncol=2) # to only have it once
-        ax[1].plot(wave[order].flatten(),np.zeros_like(wave[order].flatten()),lw=0.8,alpha=0.5,c='k')
-        # add error for scale
-        ax[1].fill_between(wave[order,det],lower-flux[order,det],upper-flux[order,det],color='k',alpha=0.15)
+        #ax[1].plot(wave[order].flatten(),np.zeros_like(wave[order].flatten()),lw=0.8,alpha=0.5,c='k')
+        ax[1].plot([np.min(wave[order]),np.max(wave[order])],[0,0],lw=0.8,alpha=0.5,c='k')
+        
     ax[0].set_ylabel('Normalized Flux',fontsize=fs)
     ax[0].set_xlim(np.min(wave)-10,np.max(wave)+10)
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
@@ -100,6 +105,12 @@ def plot_spectrum_split(retrieval_object):
     for order in range(7): 
         ax1=ax[x]
         ax2=ax[x+1]
+
+        # add error for scale
+        errmean=np.nanmean(retrieval.data_err[order].flatten()*retrieval.final_params['s2_ij'][order].flatten())
+        ax2.fill_between([np.min(retrieval.data_wave[order]),np.max(retrieval.data_wave[order])],
+                         -errmean,errmean,color='k',alpha=0.15)
+        
         if x!=18: # last ax cannot be spacer, or xlabel also invisible
             ax3=ax[x+2] #for spacing
         for det in range(3):
@@ -109,17 +120,22 @@ def plot_spectrum_split(retrieval_object):
             ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax1.plot(retrieval.data_wave[order,det],retrieval.final_spectrum[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
             ax1.set_xlim(np.nanmin(retrieval.data_wave[order]),np.nanmax(retrieval.data_wave[order]))
+            
+            
+            
             ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color2,label='residuals')
-            ax2.plot(retrieval.data_wave[order,det],np.zeros_like(retrieval.data_wave[order,det]),lw=0.8,alpha=0.5,c='k')
+            #ax2.plot(retrieval.data_wave[order,det],np.zeros_like(retrieval.data_wave[order,det]),lw=0.8,alpha=0.5,c='k')
             ax2.set_xlim(np.nanmin(retrieval.data_wave[order]),np.nanmax(retrieval.data_wave[order]))
-            # add error for scale
-            ax2.fill_between(retrieval.data_wave[order,det],lower-retrieval.data_flux[order,det],upper-retrieval.data_flux[order,det],color='k',alpha=0.15)
+            
             if x==0 and det==0:
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
                         mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
                         Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit'),
                         Line2D([0], [0], color=retrieval.color2, linewidth=2,label='Residuals')]
                 ax1.legend(handles=lines,fontsize=12,ncol=4,bbox_to_anchor=(0.5,1.4),loc='upper center')
+
+        ax2.plot([np.min(retrieval.data_wave[order]),np.max(retrieval.data_wave[order])],[0,0],lw=0.8,alpha=0.5,c='k')
+
         min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
         max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
         ax1.set_ylim(min1,max1)
