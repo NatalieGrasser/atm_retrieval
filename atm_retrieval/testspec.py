@@ -10,10 +10,10 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'log_CH4':(-6.0,r'log CH$_4$'),
             'log_HF':(-6.0,r'log HF'),
             'log_H2(18)O':(-6.0,r'log H$_2^{18}$O'),
-            'log_H2S':(-5.0,r'log H$_2$S'),
+            'log_H2S':(-5.0,r'log H$_2$S')}
             #'log_a':(2.5,r'$\log\ a$'),
-            'log_a':(0.8,r'$\log\ a$'),
-            'log_l':(-0.5,r'$\log\ l$')}
+            #'log_a':(0.8,r'$\log\ a$'),
+            #'log_l':(-0.5,r'$\log\ l$')}
 
 test_parameters={}
 test_mathtext={}
@@ -237,23 +237,34 @@ if __name__ == "__main__":
       test_spectrum_noisy=test_spectrum+random_noise
    else:
       # add correlated noise
-      Cov = np.empty((n_orders,n_dets), dtype=object) # covariance matrix
+      if False: # old version
+         Cov = np.empty((n_orders,n_dets), dtype=object) # covariance matrix
+         test_spectrum_noisy=np.copy(test_spectrum)
+         err_new_array=np.full(shape=test_spectrum.shape,fill_value=np.nan)
+         for i in range(n_orders):
+            for j in range(n_dets):
+                  mask_ij = mask_isfinite[i,j] # only finite pixels
+                  if not mask_ij.any(): # skip empty order/detector pairs
+                     continue
+                  maxval=10**(test_parameters['log_l'])*3 # 3*max value of prior of l
+                  Cov[i,j] = CovGauss(err=white_noise[i,j,mask_ij],separation=separation[i,j], 
+                                          err_eff=err_eff[i,j],max_separation=maxval)
+                  a = 10**(test_parameters.get('log_a'))
+                  l = 10**(test_parameters.get('log_l'))
+                  Cov[i,j].cov=add_RBF_kernel(Cov[i,j].cov, a, l, separation[i,j], err_eff[i,j])
+                  err_new=np.sqrt(Cov[i,j].cov).dot(white_noise[i,j,mask_ij])
+                  err_new_array[i,j,mask_ij]=err_new
+                  test_spectrum_noisy[i,j,mask_ij]+=err_new
+      white_noise=np.random.normal(np.zeros_like(test_spectrum),0.1,size=test_spectrum.shape)
       test_spectrum_noisy=np.copy(test_spectrum)
       err_new_array=np.full(shape=test_spectrum.shape,fill_value=np.nan)
       for i in range(n_orders):
          for j in range(n_dets):
-               mask_ij = mask_isfinite[i,j] # only finite pixels
-               if not mask_ij.any(): # skip empty order/detector pairs
-                  continue
-               maxval=10**(test_parameters['log_l'])*3 # 3*max value of prior of l
-               Cov[i,j] = CovGauss(err=white_noise[i,j,mask_ij],separation=separation[i,j], 
-                                       err_eff=err_eff[i,j],max_separation=maxval)
-               a = 10**(test_parameters.get('log_a'))
-               l = 10**(test_parameters.get('log_l'))
-               Cov[i,j].cov=add_RBF_kernel(Cov[i,j].cov, a, l, separation[i,j], err_eff[i,j])
-               err_new=np.sqrt(Cov[i,j].cov).dot(white_noise[i,j,mask_ij])
-               err_new_array[i,j,mask_ij]=err_new
-               test_spectrum_noisy[i,j,mask_ij]+=err_new
+            w=data_wave[i,j]
+            err_corr=0.1*np.sin((w-np.nanmean(w))*2)
+            err_new=white_noise[i,j]+err_corr
+            err_new_array[i,j]=err_new
+            test_spectrum_noisy[i,j]+=err_new
 
    spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
    spectrum[:,0]=data_wave.flatten()

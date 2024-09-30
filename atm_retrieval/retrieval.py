@@ -569,6 +569,8 @@ class Retrieval:
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
                 pickle.dump(bayes_dict,file)
 
+        print('----------------- Done ----------------')
+
         #with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
             #pickle.dump(self.final_params,file)
 
