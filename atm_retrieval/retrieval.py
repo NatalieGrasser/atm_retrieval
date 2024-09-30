@@ -468,6 +468,10 @@ class Retrieval:
 
         for molecule in molecules: # exclude molecule from retrieval
 
+            finish=pathlib.Path(f'{self.output_dir}/evidence_retrievals/final_wo{molecule}_posterior.npy')
+            if finish.exists():
+                continue # check if already exists and continue if yes
+
             if self.chemistry=='freechem':
                 original_prior=self.parameters.param_priors[f'log_{molecule}']
                 self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude from retrieval
@@ -481,7 +485,7 @@ class Retrieval:
 
             self.callback_label=f'live_wo{molecule}_'
             self.prefix=f'pmn_wo{molecule}_' 
-            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,resume=True)
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
 
@@ -554,16 +558,19 @@ class Retrieval:
             ccf_dict=self.cross_correlation(molecules)
             #self.final_params.update(ccf_dict)
             print('ccf_dict=\n',ccf_dict)
+            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
+                pickle.dump(ccf_dict,file)
         if bayes==True:
             bayes_dict=self.bayes_evidence(molecules)
             bayes_dict.update(ccf_dict)
             #self.final_params.update(bayes_dict)
             print('bayes_dict=\n',bayes_dict)
+            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
+                pickle.dump(bayes_dict,file)
 
         #with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
             #pickle.dump(self.final_params,file)
 
-        with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
-            pickle.dump(bayes_dict,file)
+        
         
 
