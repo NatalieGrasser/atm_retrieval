@@ -17,6 +17,7 @@ import matplotlib.ticker as ticker
 import warnings
 import pathlib
 import pandas as pd
+from petitRADTRANS import Radtrans
 warnings.filterwarnings("ignore", category=UserWarning) 
 
 def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
@@ -34,8 +35,11 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
 
     for order in range(7):
         # add error for scale
-        errmean=np.nanmean(err[order].flatten()*retrieval_object.final_params['s2_ij'][order].flatten())
-        ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
+        errmean=np.nanmean(err[order]*retrieval_object.final_params['s2_ij'][order].reshape(3,1))
+        if np.nansum(flux[order])!=0: # skip empty orders
+            #ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
+            ax[1].errorbar(np.min(wave[order])-5, 0, yerr=errmean, ecolor=retrieval_object.color1, 
+                           elinewidth=1, capsize=2)
 
         for det in range(3):
             lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
@@ -44,17 +48,18 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
             ax[0].fill_between(wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax[0].plot(wave[order,det],flux_m[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
             
-            ax[1].plot(wave[order,det],flux[order,det]-flux_m[order,det],lw=0.8,c=retrieval_object.color2,label='residuals')
+            ax[1].plot(wave[order,det],flux[order,det]-flux_m[order,det],lw=0.8,c=retrieval_object.color1,label='residuals')
             if order==0 and det==0:
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
                         mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
-                        Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label='Bestfit'),
-                        Line2D([0], [0], color=retrieval_object.color2, linewidth=2,label='Residuals')]
-                ax[0].legend(handles=lines,fontsize=fs,ncol=2) # to only have it once
+                        Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label='Bestfit')]
+                        #Line2D([0], [0], color=retrieval_object.color2, linewidth=2,label='Residuals')]
+                ax[0].legend(handles=lines,fontsize=fs) # to only have it once
         #ax[1].plot(wave[order].flatten(),np.zeros_like(wave[order].flatten()),lw=0.8,alpha=0.5,c='k')
-        ax[1].plot([np.min(wave[order]),np.max(wave[order])],[0,0],lw=0.8,alpha=0.5,c='k')
+        ax[1].plot([np.min(wave[order]),np.max(wave[order])],[0,0],lw=0.8,alpha=1,c='k')
         
     ax[0].set_ylabel('Normalized Flux',fontsize=fs)
+    ax[1].set_ylabel('Residuals',fontsize=fs)
     ax[0].set_xlim(np.min(wave)-10,np.max(wave)+10)
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
@@ -81,10 +86,11 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
         
         axins2 = axins.inset_axes([0,-0.3,1,0.3])
         for det in range(3):
-            axins2.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c=retrieval_object.color2)
-            axins2.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=0.5,c='k')
+            axins2.plot(wave[ord,det],flux[ord,det]-flux_m[ord,det],lw=0.8,c=retrieval_object.color1)
+            axins2.plot(wave[ord,det],np.zeros_like(wave[ord,det]),lw=0.8,alpha=1,c='k')
         axins2.set_xlim(x1, x2)
         axins2.set_xlabel('Wavelength [nm]',fontsize=fs)
+        axins2.set_ylabel('Res.',fontsize=fs)
         tick_spacing=1
         axins2.xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
         axins2.tick_params(labelsize=fs)
@@ -105,11 +111,6 @@ def plot_spectrum_split(retrieval_object):
     for order in range(7): 
         ax1=ax[x]
         ax2=ax[x+1]
-
-        # add error for scale
-        errmean=np.nanmean(retrieval.data_err[order].flatten()*retrieval.final_params['s2_ij'][order].flatten())
-        ax2.fill_between([np.min(retrieval.data_wave[order]),np.max(retrieval.data_wave[order])],
-                         -errmean,errmean,color='k',alpha=0.15)
         
         if x!=18: # last ax cannot be spacer, or xlabel also invisible
             ax3=ax[x+2] #for spacing
@@ -119,22 +120,30 @@ def plot_spectrum_split(retrieval_object):
             upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det]
             ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax1.plot(retrieval.data_wave[order,det],retrieval.final_spectrum[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
-            ax1.set_xlim(np.nanmin(retrieval.data_wave[order]),np.nanmax(retrieval.data_wave[order]))
+            ax1.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
             
-            
-            
-            ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color2,label='residuals')
+            ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color1,label='residuals')
             #ax2.plot(retrieval.data_wave[order,det],np.zeros_like(retrieval.data_wave[order,det]),lw=0.8,alpha=0.5,c='k')
-            ax2.set_xlim(np.nanmin(retrieval.data_wave[order]),np.nanmax(retrieval.data_wave[order]))
+            ax2.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
+
+            # add error for scale
+            errmean=np.nanmean(retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det])
+            #ax2.fill_between([np.min(retrieval.data_wave[order]),np.max(retrieval.data_wave[order])],
+                            #-errmean,errmean,color='k',alpha=0.15)
+            if np.nansum(retrieval.data_flux[order])!=0: # skip empty orders
+                #ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
+                ax2.errorbar(np.min(retrieval.data_wave[order,det])-0.3, 0, yerr=errmean, 
+                            ecolor=retrieval_object.color1, elinewidth=1, capsize=2)
             
             if x==0 and det==0:
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
                         mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
-                        Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit'),
-                        Line2D([0], [0], color=retrieval.color2, linewidth=2,label='Residuals')]
-                ax1.legend(handles=lines,fontsize=12,ncol=4,bbox_to_anchor=(0.5,1.4),loc='upper center')
+                        Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit')]
+                        #Line2D([0], [0], color=retrieval.color2, linewidth=2,label='Residuals')]
+                ax1.legend(handles=lines,fontsize=12,ncol=3,bbox_to_anchor=(0.47,1.4),loc='upper center')
+                #leg.get_frame().set_linewidth(0.0)
 
-        ax2.plot([np.min(retrieval.data_wave[order]),np.max(retrieval.data_wave[order])],[0,0],lw=0.8,alpha=0.5,c='k')
+            ax2.plot([np.min(retrieval.data_wave[order,det]),np.max(retrieval.data_wave[order,det])],[0,0],lw=0.8,c='k')
 
         min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
         max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
@@ -147,6 +156,7 @@ def plot_spectrum_split(retrieval_object):
         ax1.tick_params(axis="both")
         ax2.tick_params(axis="both")
         ax1.set_ylabel('Normalized Flux')
+        ax2.set_ylabel('Res.')
         ax1.tick_params(labelsize=9)
         ax2.tick_params(labelsize=9)
         tick_spacing=1
@@ -274,7 +284,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             xmin=np.min((quantiles[:,0],quantiles[:,-1]))-100
             xmax=np.max((quantiles[:,0],quantiles[:,-1]))+100
             lines.append(Line2D([0], [0], color=retr_obj.color1,
-                                linewidth=2,linestyle='-',label=object_label))
+                                linewidth=2,linestyle='-',label=olabel))
         return xmin,xmax
 
     xmin,xmax=plot_temperature(retrieval_object,ax,object_label)
@@ -446,6 +456,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     plot_spectrum_inset(retrieval_object)
     plot_pt(retrieval_object)
     summary_plot(retrieval_object)
+    opacity_plot(retrieval_object)
     if retrieval_object.chemistry=='freechem':
         ratios_cornerplot(retrieval_object) # already in equchem cornerplot by default
         if split_corner: # split corner plot to avoid massive files
@@ -486,6 +497,51 @@ def summary_plot(retrieval_object):
     ax_PT = fig.add_axes([l,b,w,h])
     plot_pt(retrieval_object,ax=ax_PT,fs=fs)
     fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}summary.pdf',
+                bbox_inches="tight",dpi=200)
+    plt.close()
+
+
+def opacity_plot(retrieval_object):
+    Kband=retrieval_object.target.K2166
+    molecules=['H2O_pokazatel_main_iso','H2O_181_HotWat78','CO_main_iso','CO_36','HF_main_iso','H2S_ExoMol_main_iso']
+    names=['H2O','H2(18)O','12CO','13CO','HF','H2S']
+    labels=['H$_2^{16}$O','H$_2^{18}$O','$^{12}$CO','$^{13}$CO','HF','H$_2$S']
+
+    wlen_range=np.array([np.min(Kband),np.max(Kband)])*1e-3 # nm to microns
+    atmosphere = Radtrans(line_species=molecules,
+                        rayleigh_species = ['H2', 'He'],
+                        continuum_opacities = ['H2-H2', 'H2-He'],
+                        wlen_bords_micron=wlen_range, 
+                        mode='lbl',
+                        lbl_opacity_sampling=10)
+    
+    T = np.array([1400]).reshape(1)
+    wave_cm, opas = atmosphere.get_opa(T)
+    wave_nm = wave_cm*1e7
+    ymin,ymax=5e-8,5e2
+
+    fig,ax=plt.subplots(1,1,figsize=(6,3),dpi=200)
+    lines=[]
+    for i,m in enumerate(molecules):
+        abund=10**retrieval_object.final_params[f'log_{names[i]}']
+        #print(names[i],abund)
+        spec,=plt.plot(wave_nm,opas[m]*abund,lw=0.5)
+        lines.append(Line2D([0],[0],color=spec.get_color(),
+                        linewidth=2,label=labels[i]))
+        
+    for order in range(7):
+        for det in range(3):
+            plt.fill_betweenx([ymin,ymax],Kband[order,det][0],Kband[order,det][1],color='k',alpha=0.07)
+    plt.yscale('log')
+    plt.ylabel('Opacity [cm$^2$/g]')
+    plt.xlabel("Wavelength [nm]")
+    plt.xlim(np.min(retrieval_object.target.K2166),np.max(retrieval_object.target.K2166))
+    plt.ylim(ymin,ymax)
+    legend=plt.legend(handles=lines,ncol=3,loc='upper center')
+    legend.get_frame().set_alpha(None)
+    legend.get_frame().set_facecolor((0, 0, 0, 0))
+    legend.get_frame().set_edgecolor((0, 0, 0, 0))
+    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}opacities.pdf',
                 bbox_inches="tight",dpi=200)
     plt.close()
 
