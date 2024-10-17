@@ -10,6 +10,8 @@ from astropy.coordinates import SkyCoord
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter
+import pickle
+import pathlib
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -36,7 +38,7 @@ class pRT_spectrum:
                  contribution=False, # only for plotting atmosphere.contr_em
                  chemistry='freechem',
                  PT_type='PTknot',
-                 interpolate=True): 
+                 interpolate=True):
         
         self.params=parameters
         self.data_wave=data_wave
@@ -313,6 +315,7 @@ class pRT_spectrum:
                 contr_em = atmosphere.contr_em # emission contribution
                 summed_contr = np.nansum(contr_em,axis=1) # sum over all wavelengths
                 self.contr_em_orders.append(summed_contr)
+            
 
         if self.interpolate==False:
             get_median=np.array([])
@@ -381,6 +384,51 @@ class pRT_spectrum:
         flux_LSF = gaussian_filter(flux, sigma=sigma_LSF_gauss_filter,mode='nearest')
 
         return flux_LSF
+    
+    def make_spectrum_continuous(self,ref_wave): # just for plotting
+
+        file=pathlib.Path(f'atmosphere_objects_continuous.pickle')
+        if file.exists():
+            with open(file,'rb') as file:
+                atmosphere=pickle.load(file)
+
+        if self.cloud_mode == 'gray': # Gray cloud opacity
+            self.wave_micron = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
+            self.give_absorption_opacity=self.gray_cloud_opacity() # fsed_gray only needed here, not in calc_flux
+
+        atmosphere.calc_flux(self.temperature,
+                        self.mass_fractions,
+                        self.gravity,
+                        self.MMW,
+                        Kzz=self.Kzz, # only for MgSiO3 clouds
+                        fsed = self.fsed, # only for MgSiO3 clouds 
+                        sigma_lnorm = self.sigma_lnorm, # only for MgSiO3 clouds
+                        add_cloud_scat_as_abs=self.add_cloud_scat_as_abs, # only for MgSiO3 clouds
+                        contribution =self.contribution,
+                        give_absorption_opacity=self.give_absorption_opacity)
+
+        wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
+        flux=atmosphere.flux
+
+        # RV+bary shifting and rotational broadening
+        v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
+                        ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
+        wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
+        spec = Spectrum(flux, wl_shifted)
+        waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
+        spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
+        spec = Spectrum(spec, waves_even)
+        spec = convolve_to_resolution(spec,self.spectral_resolution)
+
+        #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
+        self.resolution = int(1e6/self.lbl_opacity_sampling)
+        flux=self.instr_broadening(spec.wavelengths*1e3,spec,
+                                            out_res=self.resolution,in_res=50000)
+        
+        flux = np.interp(ref_wave, spec.wavelengths*1e3, flux) # pRT wavelengths from microns to nm
+        flux/=np.nanmedian(flux)
+
+        return flux
 
 def find_nearest(array, value):
     array = np.asarray(array)
