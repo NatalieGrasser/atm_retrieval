@@ -20,6 +20,11 @@ import pandas as pd
 from petitRADTRANS import Radtrans
 warnings.filterwarnings("ignore", category=UserWarning) 
 
+def scale_between(ymin,ymax,arr):
+    scale=(ymax-ymin)/(np.nanmax(arr)-np.nanmin(arr))
+    scaled_arr=scale*(arr-np.nanmin(arr))+ymin
+    return scaled_arr
+
 def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
 
     wave=retrieval_object.data_wave
@@ -103,7 +108,32 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
                     bbox_inches='tight')
         plt.close()
 
-def plot_spectrum_split(retrieval_object):
+def plot_spectrum_split(retrieval_object,overplot_species=None):
+
+    if overplot_species!=None: # overplot species onto residuals
+        opacities={}
+        for spec in overplot_species:
+            opa_orders=[]
+            wave_orders=[]
+            for order in range(7):
+                wl_pad=0#7 # wavelength padding because spectrum is not wavelength shifted yet
+                wlmin=np.min(retrieval_object.K2166[order])-wl_pad
+                wlmax=np.max(retrieval_object.K2166[order])+wl_pad
+                wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
+                atm = Radtrans(line_species=[spec],
+                                    rayleigh_species = [],
+                                    continuum_opacities = [],
+                                    wlen_bords_micron=wlen_range, 
+                                    mode='lbl',
+                                    lbl_opacity_sampling=3) # take every nth point (=3 in deRegt+2024)
+                
+                #atm.setup_opa_structure(pressure)
+                T = np.array([1400]).reshape(1)
+                wave_cm, opas = atm.get_opa(T)
+                wave_orders.append(wave_cm*1e7)
+                opa_orders.append(opas[spec].flatten())
+            opacities[spec]=opa_orders
+
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.final_spectrum)
     fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.57]*6+[2,0.9]})
@@ -144,6 +174,17 @@ def plot_spectrum_split(retrieval_object):
                 #leg.get_frame().set_linewidth(0.0)
 
             ax2.plot([np.min(retrieval.data_wave[order,det]),np.max(retrieval.data_wave[order,det])],[0,0],lw=0.8,c='k')
+
+        if overplot_species!=None:
+            wl_shifted=retrieval.final_object.wlshift_orders
+            for species in overplot_species:
+                opas=opacities[species]
+                ymax=np.nanmax(residuals[order])
+                ymin=np.nanmin(residuals[order])
+                opa=opas[order]
+                opa=scale_between(ymin,ymax,opa)
+                opa = np.interp(wl_shifted[order]*1e3, wave_orders[order], opa) 
+                ax2.plot(wl_shifted[order]*1e3,opa,lw=0.8)
 
         min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
         max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
@@ -503,9 +544,9 @@ def summary_plot(retrieval_object):
 
 def opacity_plot(retrieval_object):
     Kband=retrieval_object.target.K2166
-    molecules=['H2O_pokazatel_main_iso','H2O_181_HotWat78','CO_main_iso','CO_36','HF_main_iso','H2S_ExoMol_main_iso']
-    names=['H2O','H2(18)O','12CO','13CO','HF','H2S']
-    labels=['H$_2^{16}$O','H$_2^{18}$O','$^{12}$CO','$^{13}$CO','HF','H$_2$S']
+    molecules=['H2O_pokazatel_main_iso','H2O_181_HotWat78','CO_main_iso','CO_36','H2S_ExoMol_main_iso','HF_main_iso']
+    names=['H2O','H2(18)O','12CO','13CO','H2S','HF']
+    labels=['H$_2^{16}$O','H$_2^{18}$O','$^{12}$CO','$^{13}$CO','H$_2$S','HF']
 
     wlen_range=np.array([np.min(Kband),np.max(Kband)])*1e-3 # nm to microns
     atmosphere = Radtrans(line_species=molecules,

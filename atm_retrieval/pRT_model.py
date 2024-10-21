@@ -241,6 +241,7 @@ class pRT_spectrum:
     def make_spectrum(self):
 
         spectrum_orders=[]
+        self.wlshift_orders=[]
         waves_orders=[]
         self.contr_em_orders=[]
         for order in range(self.orders):
@@ -288,6 +289,7 @@ class pRT_spectrum:
             v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
                             ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
             wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
+            self.wlshift_orders.append(wl_shifted)
             spec = Spectrum(flux, wl_shifted)
             waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
             spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
@@ -418,13 +420,7 @@ class pRT_spectrum:
         waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
         spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
         spec = Spectrum(spec, waves_even)
-        spec = convolve_to_resolution(spec,self.spectral_resolution)
-
-        #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
-        self.resolution = int(1e6/self.lbl_opacity_sampling)
-        flux=self.instr_broadening(spec.wavelengths*1e3,spec,
-                                            out_res=self.resolution,in_res=50000)
-        
+        flux = convolve_to_resolution(spec,self.spectral_resolution)
         flux = np.interp(ref_wave, spec.wavelengths*1e3, flux) # pRT wavelengths from microns to nm
         flux/=np.nanmedian(flux)
 

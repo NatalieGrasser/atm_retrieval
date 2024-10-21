@@ -470,7 +470,7 @@ class Retrieval:
 
             finish=pathlib.Path(f'{self.output_dir}/evidence_retrievals/final_wo{molecule}_posterior.npy')
             if finish.exists():
-                print(f'evidence retrieval for {molecule} already done')
+                print(f'Evidence retrieval for {molecule} already done')
                 continue # check if already exists and continue if yes
 
             if self.chemistry=='freechem':
