@@ -457,9 +457,9 @@ class Retrieval:
         self.ACF_list=ACF_list
         return ccf_dict
 
-    def bayes_evidence(self,molecules):
+    def bayes_evidence(self,molecules,evidence_dict):
 
-        bayes_dict={}
+        bayes_dict=evidence_dict
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -470,8 +470,10 @@ class Retrieval:
 
             finish=pathlib.Path(f'{self.output_dir}/evidence_retrievals/final_wo{molecule}_posterior.npy')
             if finish.exists():
-                print(f'Evidence retrieval for {molecule} already done')
+                print(f'----------------- Evidence retrieval for {molecule} already done -----------------')
                 continue # check if already exists and continue if yes
+            else:
+                print(f'----------------- Starting evidence retrieval for {molecule} -----------------')
 
             if self.chemistry=='freechem':
                 original_prior=self.parameters.param_priors[f'log_{molecule}']
@@ -507,7 +509,7 @@ class Retrieval:
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
-            print('bayes_dict=',bayes_dict)  
+            print('----------------- Current bayes_dict= ----------------- \n',bayes_dict)  
 
             # set back param priors for next retrieval
             if self.chemistry=='freechem':
@@ -524,8 +526,7 @@ class Retrieval:
     def compare_evidence(self,ln_Z_A,ln_Z_B):
         '''
         Convert log-evidences of two models to a sigma confidence level
-        Originally from Benneke & Seager (2013)
-        Adapted from samderegt/retrieval_base
+        Originally from Benneke & Seager (2013), adapted from samderegt/retrieval_base
         '''
 
         from scipy.special import lambertw as W
@@ -548,6 +549,7 @@ class Retrieval:
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
         if final_dict.exists()==False:
+            print('----------------- Main retrieval exists. -----------------')
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
             save=True
         else:
@@ -557,15 +559,22 @@ class Retrieval:
         self.evaluate(save=save)
         if molecules!=None:
             ccf_dict=self.cross_correlation(molecules)
-            #self.final_params.update(ccf_dict)
-            print('ccf_dict=\n',ccf_dict)
-            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
-                pickle.dump(ccf_dict,file)
+            self.final_params.update(ccf_dict)
+            with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with added CCF SNR
+                pickle.dump(self.final_params,file)
+        
         if bayes==True:
-            bayes_dict=self.bayes_evidence(molecules)
-            bayes_dict.update(ccf_dict)
-            #self.final_params.update(bayes_dict)
-            print('bayes_dict=\n',bayes_dict)
+            evidence_dict=pathlib.Path(f'{retrieval_output_dir}/evidence_dict.pickle')
+            if evidence_dict.exists()==False: # to avoid overwriting sigmas from other evidence retrievals
+                print('----------------- Creating evidence dict -----------------')
+                self.evidence_dict={}
+            else:
+                print('----------------- Continuing exiting evidence dict -----------------')
+                with open(evidence_dict,'rb') as file:
+                    self.evidence_dict=pickle.load(file)
+
+            bayes_dict=self.bayes_evidence(molecules,evidence_dict=self.evidence_dict)
+            print('----------------- Final bayes_dict= ----------------- \n',bayes_dict)
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
                 pickle.dump(bayes_dict,file)
 

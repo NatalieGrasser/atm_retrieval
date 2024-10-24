@@ -176,15 +176,18 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
             ax2.plot([np.min(retrieval.data_wave[order,det]),np.max(retrieval.data_wave[order,det])],[0,0],lw=0.8,c='k')
 
         if overplot_species!=None:
+            colors=['b','r','g']
             wl_shifted=retrieval.final_object.wlshift_orders
-            for species in overplot_species:
+            for i,species in enumerate(overplot_species):
                 opas=opacities[species]
                 ymax=np.nanmax(residuals[order])
                 ymin=np.nanmin(residuals[order])
                 opa=opas[order]
                 opa=scale_between(ymin,ymax,opa)
-                opa = np.interp(wl_shifted[order]*1e3, wave_orders[order], opa) 
-                ax2.plot(wl_shifted[order]*1e3,opa,lw=0.8)
+                ax2.plot(wave_orders[order],opa,lw=0.8,c=colors[i])
+                #opa = np.interp(wl_shifted[order]*1e3, wave_orders[order], opa) 
+                #ax2.plot(wl_shifted[order]*1e3,opa,lw=0.8,c=colors[i])
+                
 
         min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
         max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
