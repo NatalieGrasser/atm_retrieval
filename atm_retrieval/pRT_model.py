@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 from scipy.interpolate import CubicSpline
 from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
@@ -15,52 +14,41 @@ import pathlib
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
-    import atm_retrieval.cloud_cond as cloud_cond
     from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-    from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
-    import cloud_cond as cloud_cond
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-    from spectrum import Spectrum, convolve_to_resolution
 
 class pRT_spectrum:
 
     def __init__(self,
-                 parameters,
-                 data_wave, # shape (orders,detectors,pixels)
-                 target,
-                 species,
-                 atmosphere_objects,
+                 retrieval_object,
                  spectral_resolution=100_000,  
-                 cloud_mode=None,
                  contribution=False, # only for plotting atmosphere.contr_em
-                 chemistry='freechem',
-                 PT_type='PTknot',
                  interpolate=True):
         
-        self.params=parameters
-        self.data_wave=data_wave
-        self.target=target
-        self.coords = SkyCoord(ra=target.ra, dec=target.dec, frame='icrs')
-        self.species=species
+        self.params=retrieval_object.parameters.params
+        self.data_wave=retrieval_object.data_wave
+        self.target=retrieval_object.target
+        self.coords = SkyCoord(ra=self.target.ra, dec=self.target.dec, frame='icrs')
+        self.species=retrieval_object.species
         self.spectral_resolution=spectral_resolution
-        self.chemistry=chemistry
-        self.atmosphere_objects=atmosphere_objects
-        self.lbl_opacity_sampling=3
+        self.chemistry=retrieval_object.chemistry
+        self.atmosphere_objects=retrieval_object.atmosphere_objects
+        self.lbl_opacity_sampling=retrieval_object.lbl_opacity_sampling
         self.interpolate=interpolate
 
-        self.n_atm_layers=50
-        self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
-        self.PT_type=PT_type
+        self.n_atm_layers=retrieval_object.n_atm_layers
+        self.pressure = retrieval_object.pressure
+        self.PT_type=retrieval_object.PT_type
         self.temperature = self.make_pt() #P-T profile
 
         self.give_absorption_opacity=None
         self.int_opa_cloud = np.zeros_like(self.pressure)
         self.gravity = 10**self.params['log_g'] 
         self.contribution=contribution
-        self.cloud_mode=cloud_mode
+        self.cloud_mode=retrieval_object.cloud_mode
 
         # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
@@ -80,7 +68,7 @@ class pRT_spectrum:
             self.MMW = self.abunds['MMW']
 
         self.spectrum_orders=[]
-        self.orders=7
+        self.n_orders=retrieval_object.n_orders
 
     def abundances(self,press, temp, feh, C_O):
         COs = np.ones_like(press)*C_O
@@ -244,7 +232,7 @@ class pRT_spectrum:
         self.wlshift_orders=[]
         waves_orders=[]
         self.contr_em_orders=[]
-        for order in range(self.orders):
+        for order in range(self.n_orders):
             atmosphere=self.atmosphere_objects[order]
 
             # MgSiO3 cloud model like in Sam's code
@@ -318,7 +306,6 @@ class pRT_spectrum:
                 summed_contr = np.nansum(contr_em,axis=1) # sum over all wavelengths
                 self.contr_em_orders.append(summed_contr)
             
-
         if self.interpolate==False:
             get_median=np.array([])
             for order in range(7): # append value by value because not all the same size
@@ -387,7 +374,7 @@ class pRT_spectrum:
 
         return flux_LSF
     
-    def make_spectrum_continuous(self,ref_wave): # just for plotting
+    def make_spectrum_continuous(self,ref_wave): # just for plotting, not needed for retrieval
 
         file=pathlib.Path(f'atmosphere_objects_continuous.pickle')
         if file.exists():
@@ -429,4 +416,4 @@ class pRT_spectrum:
 def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
-    return idx 
+    return idx

@@ -4,12 +4,11 @@ import numpy as np
 import warnings
 warnings.filterwarnings("ignore", message="Mean of empty slice") # ignore warning for empty orders
 warnings.filterwarnings("ignore", message="All-NaN slice encountered") # ignore warning for empty orders
-import sys
-os.environ['OMP_NUM_THREADS'] = '1' # to avoid using too many CPUs
+import sys 
+os.environ['OMP_NUM_THREADS'] = '1' # to avoid using too many CPUs, important for MPI
 
 if getpass.getuser() == "grasser": # when running from LEM
     os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
-    os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     from mpi4py import MPI 
     comm = MPI.COMM_WORLD # important for MPI
     rank = comm.Get_rank() # important for MPI

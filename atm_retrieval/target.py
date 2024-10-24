@@ -30,25 +30,15 @@ class Target:
             self.fullname='2MASSJ03552337+1133437'    
             self.standard_star_temp=18700 # lamTau
             self.color1='deepskyblue' # color of retrieval output
-            self.color2='tab:blue' # color of residuals
-            self.color3='lightskyblue' 
-            #self.color1='mediumturquoise' # color of retrieval output
-            #self.color2='lightseagreen' # color of residuals
-            #self.color3='aqua' 
+            self.color2='lightskyblue' 
         if self.name=='2M1425':
             self.ra="14h25m27.9845344257s"
             self.dec="-36d50m23.248617541s"
             self.JD=2459976.5        
             self.fullname='2MASSJ14252798-3650229'
             self.standard_star_temp=10980 # betHya
-            #self.color1='limegreen' # color of retrieval output
-            #self.color2='forestgreen' # color of residuals
             self.color1='lightcoral' # color of retrieval output
-            self.color2='indianred' # color of residuals
-            self.color3='lightpink'
-            #self.color1='mediumpurple' # color of retrieval output
-            #self.color2='blueviolet' # color of residuals
-            #self.color3='mediumorchid'
+            self.color2='lightpink'
 
     def load_spectrum(self):
         self.cwd = os.getcwd()

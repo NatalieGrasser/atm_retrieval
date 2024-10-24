@@ -17,7 +17,6 @@ import pathlib
 import pickle
 from petitRADTRANS import Radtrans
 import pandas as pd
-import matplotlib.pyplot as plt
 import astropy.constants as const
 from scipy.interpolate import interp1d
 #import warnings
@@ -27,8 +26,7 @@ from scipy.interpolate import interp1d
 class Retrieval:
 
     def __init__(self,target,parameters,output_name,chemistry='freechem',
-                 GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False,
-                 load_atmospheres=True):
+                 GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False):
         
         self.target=target
         self.data_wave,self.data_flux,self.data_err=target.load_spectrum()
@@ -75,21 +73,18 @@ class Retrieval:
 
         # load atmosphere objects here and not in likelihood/pRT_model to make it faster
         # redo atmosphere objects when introdocuing new species or MgSiO3 clouds
-        self.atmosphere_objects=None # remove after debugging!!!
-        if load_atmospheres==True: # for debugging on my laptop
-            self.atmosphere_objects=self.get_atmosphere_objects(redo=redo)
+        self.atmosphere_objects=self.get_atmosphere_objects(redo=redo)
         self.callback_label='live_' # label for plots
         self.prefix='pmn_'
 
         # will be updated, but needed as None until then
         self.bestfit_params=None 
         self.posterior = None
-        self.final_params=None
+        self.params_dict=None
         self.calc_errors=False
 
         self.color1=target.color1
         self.color2=target.color2
-        self.color3=target.color3
 
     def get_species(self,param_dict,chemistry): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -149,14 +144,7 @@ class Retrieval:
             return atmosphere_objects
 
     def PMN_lnL(self,cube=None,ndim=None,nparams=None):
-        self.model_object=pRT_spectrum(parameters=self.parameters.params,
-                                     data_wave=self.data_wave,
-                                     target=self.target,
-                                     atmosphere_objects=self.atmosphere_objects,
-                                     species=self.species,
-                                     chemistry=self.chemistry,
-                                     cloud_mode=self.cloud_mode,
-                                     PT_type=self.PT_type)
+        self.model_object=pRT_spectrum(self)
         
         # pass exit through a self.thing attibute and not kwarg, or pmn will be confused
         if self.calc_errors==True: # only for calc errors on Fe/H, C/O, temperatures
@@ -168,11 +156,6 @@ class Retrieval:
                 if not self.mask_isfinite[j,k].any(): # skip empty order/detector
                     continue
                 self.Cov[j,k](self.parameters.params)
-        if False: # debugging
-            ord=4
-            det=2
-            plt.plot(self.data_wave[ord,det],self.data_flux[ord,det],lw=0.8)
-            plt.plot(self.data_wave[ord,det],self.model_flux[ord,det],alpha=0.7,lw=0.8)
         ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
         return ln_L
 
@@ -186,18 +169,12 @@ class Retrieval:
 
     def PMN_callback(self,n_samples,n_live,n_params,live_points,posterior, 
                     stats,max_ln_L,ln_Z,ln_Z_err,nullcontext):
-        #self.callback_label='live_' # label for plots
         self.bestfit_params = posterior[np.argmax(posterior[:,-2]),:-2] # parameters of best-fitting model
-        #np.save(f'{self.output_dir}/{self.callback_label}bestfit_params.npy',self.bestfit_params)
         self.posterior = posterior[:,:-2] # remove last 2 columns
-        #np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
-        self.final_params,self.final_spectrum=self.get_final_params_and_spectrum()
-        try:
-            figs.summary_plot(self)
-            if self.chemistry in ['equchem','quequchem']:
-                figs.VMR_plot(self)
-        except Exception as error:
-            print("An error occurred:", type(error).__name__, "–", error)
+        self.params_dict,self.model_flux=self.get_params_and_spectrum()
+        figs.summary_plot(self)
+        if self.chemistry in ['equchem','quequchem']:
+            figs.VMR_plot(self)
      
     def PMN_analyse(self):
         analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
@@ -225,54 +202,48 @@ class Retrieval:
             minus_err=quantiles[:,0]-medians # -error
         return medians,minus_err,plus_err
 
-    def get_final_params_and_spectrum(self,contribution=True,save=False): 
+    def get_params_and_spectrum(self,save=False): 
         
         # make dict of constant params + evaluated params + their errors
-        self.final_params=self.parameters.constant_params.copy() # initialize dict with constant params
+        self.params_dict=self.parameters.constant_params.copy() # initialize dict with constant params
         medians,minus_err,plus_err=self.get_quantiles(self.posterior)
 
         for i,key in enumerate(self.parameters.param_keys):
-            self.final_params[key]=medians[i] # add median of evaluated params (more robust)
-            self.final_params[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
-            self.final_params[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
+            self.params_dict[key]=medians[i] # add median of evaluated params (more robust)
+            self.params_dict[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
+            self.params_dict[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
 
         # create final spectrum
-        self.final_object=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,
-                                       target=self.target,species=self.species,
-                                       atmosphere_objects=self.atmosphere_objects,
-                                       chemistry=self.chemistry,contribution=contribution,
-                                       PT_type=self.PT_type)
-        self.final_model=self.final_object.make_spectrum()
+        self.model_object=pRT_spectrum(self)
+        model_flux0=self.model_object.make_spectrum()
         
         # get isotope and element ratios and save them in final params dict
         self.get_ratios()
-        #if getpass.getuser()=="natalie":
-            #del self.atmosphere_objects # don't need it after this step, avoid it crashing my laptop
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
-        self.log_likelihood = self.LogLike(self.final_model, self.Cov)
-        self.final_params['phi_ij']=self.LogLike.phi
-        self.final_params['s2_ij']=self.LogLike.s2
+        self.log_likelihood = self.LogLike(self.model_flux, self.Cov)
+        self.params_dict['phi_ij']=self.LogLike.phi
+        self.params_dict['s2_ij']=self.LogLike.s2
         if self.callback_label=='final_':
-            self.final_params['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
-            self.final_params['lnZ']=self.lnZ # save lnZ of fiducial model
+            self.params_dict['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
+            self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
 
-        self.final_spectrum=np.zeros_like(self.final_model)
-        phi_ij=self.final_params['phi_ij']
+        self.model_flux=np.zeros_like(model_flux0)
+        phi_ij=self.params_dict['phi_ij']
         for order in range(self.n_orders):
             for det in range(self.n_dets):
-                self.final_spectrum[order,det]=phi_ij[order,det]*self.final_model[order,det] # scale model accordingly
+                self.model_flux[order,det]=phi_ij[order,det]*model_flux0[order,det] # scale model accordingly
         
         spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
         spectrum[:,0]=self.data_wave.flatten()
-        spectrum[:,1]=self.final_spectrum.flatten()
+        spectrum[:,1]=self.model_flux.flatten()
 
         if save==True:
             with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
-                pickle.dump(self.final_params,file)
+                pickle.dump(self.params_dict,file)
             np.savetxt(f'{self.output_dir}/{self.callback_label}spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
-        return self.final_params,self.final_spectrum
+        return self.params_dict,self.model_flux
 
     def get_ratios(self): # can only be run after self.evaluate()
 
@@ -309,16 +280,13 @@ class Retrieval:
             self.calc_errors=False # set back to False when finished
 
         elif self.chemistry=='freechem':
-            #self.final_params['Fe/H']=self.final_object.FeH
-            #self.final_params['C/O']=self.final_object.CO
-
             for m1,m2 in [['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]: # isotope ratios    
                 p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
                 p2=self.posterior[:,list(self.parameters.params).index(f'log_{m2}')]
                 log_ratio=p1-p2
                 median,minus_err,plus_err=self.get_quantiles(log_ratio,flat=True)
-                self.final_params[f'log_{m1}/{m2}']=median
-                self.final_params[f'log_{m1}/{m2}_err']=(minus_err,plus_err)
+                self.params_dict[f'log_{m1}/{m2}']=median
+                self.params_dict[f'log_{m1}/{m2}_err']=(minus_err,plus_err)
                 if 'ratios_posterior' in locals():
                     ratios_posterior=np.vstack([ratios_posterior,log_ratio])
                 else:
@@ -347,18 +315,18 @@ class Retrieval:
             self.calc_errors=False # set back to False when finished
 
             median,minus_err,plus_err=self.get_quantiles(CO_distribution,flat=True)
-            self.final_params['C/O']=median
-            self.final_params['C/O_err']=(minus_err,plus_err)
+            self.params_dict['C/O']=median
+            self.params_dict['C/O_err']=(minus_err,plus_err)
 
             median,minus_err,plus_err=self.get_quantiles(CH_distribution,flat=True)
-            self.final_params['C/H']=median
-            self.final_params['C/H_err']=(minus_err,plus_err)
+            self.params_dict['C/H']=median
+            self.params_dict['C/H_err']=(minus_err,plus_err)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',save=False,makefigs=True):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
-        self.final_params,self.final_spectrum=self.get_final_params_and_spectrum(save=save) # all params: constant + free + scaling phi_ij + s2_ij
+        self.params_dict,self.model_flux=self.get_params_and_spectrum(save=save) # all params: constant + free + scaling phi_ij + s2_ij
         if makefigs:
             if callback_label=='final_':
                 figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
@@ -375,7 +343,7 @@ class Retrieval:
 
         for molecule in molecules:
             # create final model without opacity from a certain molecule
-            exclusion_dict=self.final_params.copy()
+            exclusion_dict=self.params_dict.copy()
             if self.chemistry=='freechem':
                 exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
             elif self.chemistry in ['equchem','quequchem']:
@@ -390,19 +358,9 @@ class Retrieval:
             # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
             # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
             # must still be shaped correctly and interpolated
-            exclusion_model,exclusion_model_wl=pRT_spectrum(parameters=exclusion_dict,
-                                        data_wave=self.data_wave,
-                                        target=self.target,species=self.species,
-                                        atmosphere_objects=self.atmosphere_objects,
-                                        chemistry=self.chemistry,PT_type=self.PT_type,
-                                        interpolate=False).make_spectrum()
+            exclusion_model,exclusion_model_wl=pRT_spectrum(self,interpolate=False).make_spectrum()
             
-            final_model_broad,_=pRT_spectrum(parameters=self.final_params,
-                                        data_wave=self.data_wave,
-                                        target=self.target,species=self.species,
-                                        atmosphere_objects=self.atmosphere_objects,
-                                        chemistry=self.chemistry,PT_type=self.PT_type,
-                                        interpolate=False).make_spectrum()
+            model_flux_broad,_=pRT_spectrum(self,interpolate=False).make_spectrum()
 
             RVs=np.arange(-500,500,1) # km/s
             beta=1.0-RVs/const.c.to('km/s').value
@@ -420,8 +378,8 @@ class Retrieval:
                         fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
                         
                         wl_excl=exclusion_model_wl[order]
-                        fl_excl=exclusion_model[order]*self.final_params['phi_ij'][order,det]
-                        fl_final=final_model_broad[order]*self.final_params['phi_ij'][order,det]
+                        fl_excl=exclusion_model[order]*self.params_dict['phi_ij'][order,det]
+                        fl_final=model_flux_broad[order]*self.params_dict['phi_ij'][order,det]
 
                         # data minus model without certain molecule
                         fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
@@ -470,10 +428,10 @@ class Retrieval:
 
             finish=pathlib.Path(f'{self.output_dir}/evidence_retrievals/final_wo{molecule}_posterior.npy')
             if finish.exists():
-                print(f'----------------- Evidence retrieval for {molecule} already done -----------------')
+                print(f'\n ----------------- Evidence retrieval for {molecule} already done ----------------- \n')
                 continue # check if already exists and continue if yes
             else:
-                print(f'----------------- Starting evidence retrieval for {molecule} -----------------')
+                print(f'\n ----------------- Starting evidence retrieval for {molecule} ----------------- \n')
 
             if self.chemistry=='freechem':
                 original_prior=self.parameters.param_priors[f'log_{molecule}']
@@ -492,11 +450,7 @@ class Retrieval:
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
 
-            ex_model=pRT_spectrum(parameters=self.final_params,data_wave=self.data_wave,
-                                        target=self.target,species=self.species,
-                                        atmosphere_objects=self.atmosphere_objects,
-                                        chemistry=self.chemistry,contribution=True,
-                                        PT_type=self.PT_type).make_spectrum()      
+            ex_model=pRT_spectrum(self).make_spectrum()      
             lnL = self.LogLike(ex_model, self.Cov) # call function to generate chi2
             chi2_ex = self.LogLike.chi2_0_red # reduced chi^2
 
@@ -509,7 +463,7 @@ class Retrieval:
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
-            print('----------------- Current bayes_dict= ----------------- \n',bayes_dict)  
+            print('\n ----------------- Current bayes_dict= ----------------- \n',bayes_dict)  
 
             # set back param priors for next retrieval
             if self.chemistry=='freechem':
@@ -546,43 +500,46 @@ class Retrieval:
         self.evidence_tolerance=evidence_tolerance
         retrieval_output_dir=self.output_dir # save end results here
 
+        print(f'\n ---- {self.target.name} - chemistry: {self.chemistry} - PT type: {self.PT_type} - Nlive: {self.N_live_points} - ev: {self.evidence_tolerance} \n ----')
+
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
-        final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
+        final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')
         if final_dict.exists()==False:
-            print('----------------- Starting main retrieval. -----------------')
+            print('\n ----------------- Starting main retrieval. ----------------- \n')
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
             save=True
         else:
-            print('----------------- Main retrieval exists. -----------------')
+            print('\n ----------------- Main retrieval exists. ----------------- \n')
             save=False
             with open(final_dict,'rb') as file:
-                self.final_params=pickle.load(file) 
+                self.params_dict=pickle.load(file) 
         self.evaluate(save=save)
         if molecules!=None:
             ccf_dict=self.cross_correlation(molecules)
-            self.final_params.update(ccf_dict)
-            with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with added CCF SNR
-                pickle.dump(self.final_params,file)
+            self.params_dict.update(ccf_dict)
+            with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
+                pickle.dump(self.params_dict,file)
         
         if bayes==True:
             evidence_dict=pathlib.Path(f'{retrieval_output_dir}/evidence_dict.pickle')
             if evidence_dict.exists()==False: # to avoid overwriting sigmas from other evidence retrievals
-                print('----------------- Creating evidence dict -----------------')
+                print('\n ----------------- Creating evidence dict ----------------- \n')
                 self.evidence_dict={}
             else:
-                print('----------------- Continuing exiting evidence dict -----------------')
+                print('\n ----------------- Continuing exiting evidence dict ----------------- \n')
                 with open(evidence_dict,'rb') as file:
                     self.evidence_dict=pickle.load(file)
 
             bayes_dict=self.bayes_evidence(molecules,evidence_dict=self.evidence_dict)
-            print('----------------- Final bayes_dict= ----------------- \n',bayes_dict)
+            print('\n ----------------- Final bayes_dict= ----------------- \n',bayes_dict)
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
                 pickle.dump(bayes_dict,file)
 
-        print('----------------- Done ----------------')
+        output_file=pathlib.Path('retrieval.out')
+        if output_file.exists():
+            os.system(f"mv {output_file} {retrieval_output_dir}")
 
-        #with open(f'{retrieval_output_dir}/final_params_dict.pickle','wb') as file: # overwrite with new results
-            #pickle.dump(self.final_params,file)
+        print('\n ----------------- Done ---------------- \n')
 
         
         

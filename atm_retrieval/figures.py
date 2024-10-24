@@ -1,11 +1,12 @@
 import getpass
 import os
 if getpass.getuser() == "grasser": # when runnig from LEM
-    os.environ['OMP_NUM_THREADS'] = '1' # important for MPI
     import atm_retrieval.cloud_cond as cloud_cond
+    from atm_retrieval.pRT_model import pRT_spectrum
 elif getpass.getuser() == "natalie": # when testing from my laptop
     import cloud_cond as cloud_cond
-
+    from pRT_model import pRT_spectrum
+  
 import numpy as np
 import corner
 import matplotlib.pyplot as plt
@@ -30,7 +31,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     wave=retrieval_object.data_wave
     flux=retrieval_object.data_flux
     err=retrieval_object.data_err
-    flux_m=retrieval_object.final_spectrum
+    flux_m=retrieval_object.model_flux
 
     if 'ax' in kwargs:
         ax=kwargs.get('ax')
@@ -40,15 +41,15 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
 
     for order in range(7):
         # add error for scale
-        errmean=np.nanmean(err[order]*retrieval_object.final_params['s2_ij'][order].reshape(3,1))
+        errmean=np.nanmean(err[order]*retrieval_object.params_dict['s2_ij'][order].reshape(3,1))
         if np.nansum(flux[order])!=0: # skip empty orders
             #ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
             ax[1].errorbar(np.min(wave[order])-5, 0, yerr=errmean, ecolor=retrieval_object.color1, 
                            elinewidth=1, capsize=2)
 
         for det in range(3):
-            lower=flux[order,det]-err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
-            upper=flux[order,det]+err[order,det]*retrieval_object.final_params['s2_ij'][order,det]
+            lower=flux[order,det]-err[order,det]*retrieval_object.params_dict['s2_ij'][order,det]
+            upper=flux[order,det]+err[order,det]*retrieval_object.params_dict['s2_ij'][order,det]
             ax[0].plot(wave[order,det],flux[order,det],lw=0.8,alpha=1,c='k',label='data')
             ax[0].fill_between(wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax[0].plot(wave[order,det],flux_m[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
@@ -76,8 +77,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
         ord=5 
         axins = ax[0].inset_axes([0,-1.3,1,0.8])
         for det in range(3):
-            lower=flux[ord,det]-err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
-            upper=flux[ord,det]+err[ord,det]*retrieval_object.final_params['s2_ij'][ord,det]
+            lower=flux[ord,det]-err[ord,det]*retrieval_object.params_dict['s2_ij'][ord,det]
+            upper=flux[ord,det]+err[ord,det]*retrieval_object.params_dict['s2_ij'][ord,det]
             axins.fill_between(wave[ord,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             axins.plot(wave[ord,det],flux[ord,det],lw=0.8,c='k')
             axins.plot(wave[ord,det],flux_m[ord,det],lw=0.8,c=retrieval_object.color1,alpha=0.8)
@@ -104,7 +105,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
 
     plt.subplots_adjust(wspace=0, hspace=0)
     if 'ax' not in kwargs:
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum_inset.pdf',
+        name = 'bestfit_spectrum_inset' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}bestfit_spectrum_inset'
+        fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf',
                     bbox_inches='tight')
         plt.close()
 
@@ -127,7 +129,6 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
                                     mode='lbl',
                                     lbl_opacity_sampling=3) # take every nth point (=3 in deRegt+2024)
                 
-                #atm.setup_opa_structure(pressure)
                 T = np.array([1400]).reshape(1)
                 wave_cm, opas = atm.get_opa(T)
                 wave_orders.append(wave_cm*1e7)
@@ -135,7 +136,7 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
             opacities[spec]=opa_orders
 
     retrieval=retrieval_object
-    residuals=(retrieval.data_flux-retrieval.final_spectrum)
+    residuals=(retrieval.data_flux-retrieval.model_flux)
     fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.57]*6+[2,0.9]})
     x=0
     for order in range(7): 
@@ -146,22 +147,18 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
             ax3=ax[x+2] #for spacing
         for det in range(3):
             ax1.plot(retrieval.data_wave[order,det],retrieval.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det]
-            upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det]
+            lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
+            upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
             ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
-            ax1.plot(retrieval.data_wave[order,det],retrieval.final_spectrum[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
+            ax1.plot(retrieval.data_wave[order,det],retrieval.model_flux[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
             ax1.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
             
             ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color1,label='residuals')
-            #ax2.plot(retrieval.data_wave[order,det],np.zeros_like(retrieval.data_wave[order,det]),lw=0.8,alpha=0.5,c='k')
             ax2.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
 
             # add error for scale
-            errmean=np.nanmean(retrieval.data_err[order,det]*retrieval.final_params['s2_ij'][order,det])
-            #ax2.fill_between([np.min(retrieval.data_wave[order]),np.max(retrieval.data_wave[order])],
-                            #-errmean,errmean,color='k',alpha=0.15)
+            errmean=np.nanmean(retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det])
             if np.nansum(retrieval.data_flux[order])!=0: # skip empty orders
-                #ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
                 ax2.errorbar(np.min(retrieval.data_wave[order,det])-0.3, 0, yerr=errmean, 
                             ecolor=retrieval_object.color1, elinewidth=1, capsize=2)
             
@@ -169,7 +166,6 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
                         mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
                         Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit')]
-                        #Line2D([0], [0], color=retrieval.color2, linewidth=2,label='Residuals')]
                 ax1.legend(handles=lines,fontsize=12,ncol=3,bbox_to_anchor=(0.47,1.4),loc='upper center')
                 #leg.get_frame().set_linewidth(0.0)
 
@@ -177,7 +173,7 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
 
         if overplot_species!=None:
             colors=['b','r','g']
-            wl_shifted=retrieval.final_object.wlshift_orders
+            wl_shifted=retrieval.model_object.wlshift_orders
             for i,species in enumerate(overplot_species):
                 opas=opacities[species]
                 ymax=np.nanmax(residuals[order])
@@ -185,12 +181,9 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
                 opa=opas[order]
                 opa=scale_between(ymin,ymax,opa)
                 ax2.plot(wave_orders[order],opa,lw=0.8,c=colors[i])
-                #opa = np.interp(wl_shifted[order]*1e3, wave_orders[order], opa) 
-                #ax2.plot(wl_shifted[order]*1e3,opa,lw=0.8,c=colors[i])
-                
 
-        min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.final_spectrum[order]]))
-        max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.final_spectrum[order]]))
+        min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.model_flux[order]]))
+        max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.model_flux[order]]))
         ax1.set_ylim(min1,max1)
         if np.nansum(residuals[order])!=0:
             ax2.set_ylim(np.nanmin(residuals[order]),np.nanmax(residuals[order]))
@@ -211,7 +204,8 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
     ax[19].set_xlabel('Wavelength [nm]')
     fig.tight_layout()
     plt.subplots_adjust(wspace=0,hspace=0)
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}bestfit_spectrum.pdf')
+    name = 'bestfit_spectrum' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}bestfit_spectrum'
+    fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf')
     plt.close()
 
 def plot_pt(retrieval_object,fs=12,**kwargs):
@@ -219,11 +213,11 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     legend_labels=kwargs.get('legend_labels',None)
 
     if retrieval_object.chemistry in ['equchem','quequchem']:
-        C_O = retrieval_object.final_object.params['C/O']
-        Fe_H = retrieval_object.final_object.params['Fe/H']
+        C_O = retrieval_object.model_object.params['C/O']
+        Fe_H = retrieval_object.model_object.params['Fe/H']
     if retrieval_object.chemistry=='freechem':
-        C_O = retrieval_object.final_object.CO
-        Fe_H = retrieval_object.final_object.FeH   
+        C_O = retrieval_object.model_object.CO
+        Fe_H = retrieval_object.model_object.FeH   
 
     if 'ax' in kwargs:
         ax=kwargs.get('ax')
@@ -231,9 +225,6 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
     cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
     cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
-    #cs_colors=['hotpink','fuchsia','crimson','plum']
-    #cs_colors=['forestgreen','limegreen','yellowgreen','tab:olive']
-    #cs_colors=['mediumseagreen','mediumaquamarine','lightseagreen','limegreen']
     cs_colors=['gold','goldenrod','peru','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
@@ -242,7 +233,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         if cs_key == 'KCl':
             cs_key = cs_key.upper()
         P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
-        pi=np.where((P_cloud>min(retrieval_object.final_object.pressure))&(P_cloud<max(retrieval_object.final_object.pressure)))[0]
+        pi=np.where((P_cloud>min(retrieval_object.model_object.pressure))&(P_cloud<max(retrieval_object.model_object.pressure)))[0]
         ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
     # https://github.com/cphyc/matplotlib-label-lines
     labelLines(ax.get_lines(),align=False,fontsize=fs*0.8,drop_label=True)
@@ -270,20 +261,20 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     # plot PT-profile + errors on retrieved temperatures
     def plot_temperature(retr_obj,ax,olabel): 
         if retr_obj.PT_type=='PTknot':
-            ax.plot(retr_obj.final_object.temperature,
-                retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
+            ax.plot(retr_obj.model_object.temperature,
+                retr_obj.model_object.pressure,color=retr_obj.color1,lw=2) 
             medians=[]
             errs=[]
-            log_P_knots=retr_obj.final_object.log_P_knots
+            log_P_knots=retr_obj.model_object.log_P_knots
             for key in ['T4','T3','T2','T1','T0']: # order T4,T3,T2,T1,T0 like log_P_knots
-                medians.append(retr_obj.final_params[key])
-                errs.append(retr_obj.final_params[f'{key}_err'])
+                medians.append(retr_obj.params_dict[key])
+                errs.append(retr_obj.params_dict[f'{key}_err'])
             errs=np.array(errs)
             for x in [1,2,3]: # plot 1-3 sigma errors
                 lower = CubicSpline(log_P_knots,medians+x*errs[:,0])(np.log10(retr_obj.pressure))
                 upper = CubicSpline(log_P_knots,medians+x*errs[:,1])(np.log10(retr_obj.pressure))
                 ax.fill_betweenx(retr_obj.pressure,lower,upper,color=retr_obj.color1,alpha=0.15)
-            ax.scatter(medians,10**retr_obj.final_object.log_P_knots,color=retr_obj.color1)
+            ax.scatter(medians,10**retr_obj.model_object.log_P_knots,color=retr_obj.color1)
             xmin=np.min(lower)-100
             xmax=np.max(upper)+100
             lines.append(Line2D([0],[0],marker='o',color=retrieval_object.color1,markerfacecolor=retrieval_object.color1,
@@ -294,37 +285,18 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             derr=[]
             for i in range(5):
                 key=f'dlnT_dlnP_{i}'
-                dlnT_dlnP_knots.append(retr_obj.final_params[key]) # gradient median values
-                derr.append(retr_obj.final_params[f'{key}_err']) # -/+ errors
+                dlnT_dlnP_knots.append(retr_obj.params_dict[key]) # gradient median values
+                derr.append(retr_obj.params_dict[f'{key}_err']) # -/+ errors
             derr=np.array(derr) # gradient errors
-            T0=retr_obj.final_params['T0']
-            err=retr_obj.final_params['T0_err']
-            if False:
-                for x in range(4): # plot 1-3 sigma errors
-                    if x==0:
-                        temperature=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots,T_base=T0)
-                        ax.plot(temperature,retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
-                    else:   
-                        lower=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,0],
-                                                                    T_base=T0+x*err[0])
-                        upper=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots+x*derr[:,1],
-                                                                    T_base=T0+x*err[1])   
-                        ax.fill_betweenx(retr_obj.pressure,lower,upper,color=retr_obj.color1,alpha=0.15)
-            temperature=retr_obj.final_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots,T_base=T0)
-            ax.plot(temperature,retr_obj.final_object.pressure,color=retr_obj.color1,lw=2) 
+            T0=retr_obj.params_dict['T0']
+            err=retr_obj.params_dict['T0_err']
+            temperature=retr_obj.model_object.make_pt(dlnT_dlnP_knots=dlnT_dlnP_knots,T_base=T0)
+            ax.plot(temperature,retr_obj.model_object.pressure,color=retr_obj.color1,lw=2) 
             # get 1-2-3 sigma of temp_dist, has shape (samples, n_atm_layers)
             quantiles = np.array([np.percentile(retr_obj.temp_dist[:,i], [0.2,2.3,15.9,50.0,84.1,97.7,99.8], axis=-1) for i in range(retr_obj.temp_dist.shape[1])])
             ax.fill_betweenx(retr_obj.pressure,quantiles[:,0],quantiles[:,-1],color=retr_obj.color1,alpha=0.15)
             ax.fill_betweenx(retr_obj.pressure,quantiles[:,1],quantiles[:,-2],color=retr_obj.color1,alpha=0.15)
             ax.fill_betweenx(retr_obj.pressure,quantiles[:,2],quantiles[:,-3],color=retr_obj.color1,alpha=0.15)
-            #for x in [1,2,3]:
-                # temp_dist has shape (samples, n_atm_layers)
-                #medians,minus_err,plus_err=retr_obj.get_quantiles(retr_obj.temp_dist)
-                #lower=medians+x*minus_err
-                #upper=medians+x*plus_err
-                #ax.fill_betweenx(retr_obj.pressure,lower,upper,color=retr_obj.color1,alpha=0.15)
-            #xmin=np.min((lower,upper))-100
-            #xmax=np.max((lower,upper))+100
             xmin=np.min((quantiles[:,0],quantiles[:,-1]))-100
             xmax=np.max((quantiles[:,0],quantiles[:,-1]))+100
             lines.append(Line2D([0], [0], color=retr_obj.color1,
@@ -343,11 +315,13 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         #lines = lines[:1]+[lines[-1]]+lines[1:-1] # move object2 to second position in legend instead of last
         xmin=np.nanmin([xmin,xmin2])
         xmax=np.nanmax([xmax,xmax2])
-        summed_contr2=np.nanmean(retrieval_object2.final_object.contr_em_orders,axis=0) # average over all orders
+        model_object2=pRT_spectrum(retrieval_object2,contribution=True)
+        model_object2.make_spectrum()
+        summed_contr2=np.nanmean(model_object2.contr_em_orders,axis=0) # average over all orders
         contribution_plot2=summed_contr2/np.max(summed_contr2)*(xmax-xmin)+xmin
-        ax.plot(contribution_plot2,retrieval_object2.final_object.pressure,linestyle='dashed',
-                lw=1.5,alpha=0.8,color=retrieval_object2.color3)
-        lines.append(Line2D([0], [0], color=retrieval_object2.color3, alpha=0.8,linewidth=1.5, 
+        ax.plot(contribution_plot2,retrieval_object2.model_object.pressure,linestyle='dashed',
+                lw=1.5,alpha=0.8,color=retrieval_object2.color2)
+        lines.append(Line2D([0], [0], color=retrieval_object2.color2, alpha=0.8,linewidth=1.5, 
                             linestyle='--',label=f'{retrieval_object2.target.name} contribution'))
         #if retrieval_object2.target.name=='2M0355':
             #lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
@@ -358,31 +332,35 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         xmin3,xmax3=plot_temperature(retrieval_object3,ax,object_label3)
         xmin=np.nanmin([xmin,xmin2,xmin3])
         xmax=np.nanmax([xmax,xmax2,xmax3])
-        summed_contr3=np.nanmean(retrieval_object3.final_object.contr_em_orders,axis=0) # average over all orders
+        model_object3=pRT_spectrum(retrieval_object3,contribution=True)
+        model_object3.make_spectrum()
+        summed_contr3=np.nanmean(model_object3.contr_em_orders,axis=0) # average over all orders
         contribution_plot3=summed_contr3/np.max(summed_contr3)*(xmax-xmin)+xmin
-        ax.plot(contribution_plot3,retrieval_object3.final_object.pressure,linestyle='dashed',
-                lw=1.5,alpha=0.8,color=retrieval_object3.color3)
-        lines.append(Line2D([0], [0], color=retrieval_object3.color3, alpha=0.8,linewidth=1.5, 
+        ax.plot(contribution_plot3,retrieval_object3.model_object.pressure,linestyle='dashed',
+                lw=1.5,alpha=0.8,color=retrieval_object3.color2)
+        lines.append(Line2D([0], [0], color=retrieval_object3.color2, alpha=0.8,linewidth=1.5, 
                             linestyle='--',label=f'{retrieval_object3.target.name} contribution'))
 
-    summed_contr=np.nanmean(retrieval_object.final_object.contr_em_orders,axis=0) # average over all orders
+    model_object=pRT_spectrum(retrieval_object,contribution=True)
+    model_object.make_spectrum()
+    summed_contr=np.nanmean(model_object.contr_em_orders,axis=0) # average over all orders
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-    ax.plot(contribution_plot,retrieval_object.final_object.pressure,linestyle='dashed',
-            lw=1.5,alpha=0.8,color=retrieval_object.color3)
-    lines.append(Line2D([0], [0], color=retrieval_object.color3, alpha=0.8,
+    ax.plot(contribution_plot,retrieval_object.model_object.pressure,linestyle='dashed',
+            lw=1.5,alpha=0.8,color=retrieval_object.color2)
+    lines.append(Line2D([0], [0], color=retrieval_object.color2, alpha=0.8,
                         linewidth=1.5, linestyle='--',label=contr_label))
     lines = lines[:1]+[lines[-1]]+lines[1:-1] # move to second position in legend instead of last
     
     ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]',yscale='log',
-        ylim=(np.nanmax(retrieval_object.final_object.pressure),
-        np.nanmin(retrieval_object.final_object.pressure)),xlim=(xmin,xmax))
+        ylim=(np.nanmax(retrieval_object.model_object.pressure),
+        np.nanmin(retrieval_object.model_object.pressure)),xlim=(xmin,xmax))
     
     if legend_labels!=None:
         lines=[]
         retr_objects=[retrieval_object,retrieval_object2,retrieval_object3]
         for r,l in zip(retr_objects,legend_labels):
             lines.append(Line2D([0], [0], color=r.color1,linewidth=2,linestyle='-',label=l))
-            #lines.append(Line2D([0], [0], color=r.color3, alpha=0.8,linewidth=1.5, 
+            #lines.append(Line2D([0], [0], color=r.color2, alpha=0.8,linewidth=1.5, 
                             #linestyle='--',label=f'{l} cont.'))
             
     lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
@@ -394,7 +372,8 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
 
     if 'ax' not in kwargs: # save as separate plot
         fig.tight_layout()
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}PT_profile.pdf')
+        name = 'PT_profile' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}PT_profile'
+        fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf')
         plt.close()
 
 def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,plot_label='',
@@ -488,7 +467,8 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,plot_label=''
     plt.subplots_adjust(wspace=0,hspace=0)
 
     if getfig==False:
-        fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}cornerplot{plot_label}.pdf',
+        name= f'cornerplot{plot_label}' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}cornerplot{plot_label}'
+        fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf',
                     bbox_inches="tight",dpi=200)
         plt.close()
     else:
@@ -540,7 +520,8 @@ def summary_plot(retrieval_object):
     l, b, w, h = [0.68,0.47,0.29,0.29] # left, bottom, width, height
     ax_PT = fig.add_axes([l,b,w,h])
     plot_pt(retrieval_object,ax=ax_PT,fs=fs)
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}summary.pdf',
+    name = 'summary' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}summary'
+    fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf',
                 bbox_inches="tight",dpi=200)
     plt.close()
 
@@ -567,7 +548,7 @@ def opacity_plot(retrieval_object):
     fig,ax=plt.subplots(1,1,figsize=(6,3),dpi=200)
     lines=[]
     for i,m in enumerate(molecules):
-        abund=10**retrieval_object.final_params[f'log_{names[i]}']
+        abund=10**retrieval_object.params_dict[f'log_{names[i]}']
         #print(names[i],abund)
         spec,=plt.plot(wave_nm,opas[m]*abund,lw=0.5)
         lines.append(Line2D([0],[0],color=spec.get_color(),
@@ -585,7 +566,8 @@ def opacity_plot(retrieval_object):
     legend.get_frame().set_alpha(None)
     legend.get_frame().set_facecolor((0, 0, 0, 0))
     legend.get_frame().set_edgecolor((0, 0, 0, 0))
-    fig.savefig(f'{retrieval_object.output_dir}/{retrieval_object.callback_label}opacities.pdf',
+    name = 'opacities' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}opacities'
+    fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf',
                 bbox_inches="tight",dpi=200)
     plt.close()
 
@@ -880,7 +862,9 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
                 title_split = title.split('=')
                 titles[i] = title_split[0] + '\n ' + title_split[1]
             fig.axes[i].title.set_text(titles[i])
-        filename=f'{retrieval_object.output_dir}/{retrieval_object.callback_label}ratios.pdf'
+        name1=f'{retrieval_object.output_dir}/ratios.pdf'
+        name2=f'{retrieval_object.output_dir}/{retrieval_object.callback_label}ratios.pdf'
+        filename = name1 if retrieval_object.callback_label=='final_' else name2
 
     for i, axi in enumerate(fig.axes):
         fig.axes[i].xaxis.label.set_fontsize(fs)
@@ -894,7 +878,7 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
 
 def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
 
-    prefix=retrieval_object.callback_label
+    prefix=retrieval_object.callback_label if retrieval_object.callback_label=='final_' else ''
     suffix=''
     output_dir=retrieval_object.output_dir
     fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
@@ -905,8 +889,8 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     xmin,xmax=1e-11,1.3
 
     def plot_VMRs(retr_obj,ax,ax2):
-        mass_fractions=retr_obj.final_object.mass_fractions
-        MMW=retr_obj.final_object.MMW
+        mass_fractions=retr_obj.model_object.mass_fractions
+        MMW=retr_obj.model_object.MMW
         params=retrieval_object.parameters.params
         for species in molecules:
             name=species_info.loc[species_info["name"]==species]['pRT_name'].values[0]
@@ -947,13 +931,16 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                         VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
                         label=r'C$^{17}$O' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle)
-        summed_contr=np.nanmean(retr_obj.final_object.contr_em_orders,axis=0) # average over all orders
+
+        model_object=pRT_spectrum(retr_obj,contribution=True)
+        model_object.make_spectrum()
+        summed_contr=np.nanmean(model_object.contr_em_orders,axis=0) # average over all orders
         contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-        ax2.plot(contribution_plot,np.log10(retr_obj.final_object.pressure)[::-1],
-                    lw=1,alpha=0.5,color=retr_obj.color3,linestyle=linestyle)
+        ax2.plot(contribution_plot,np.log10(retr_obj.model_object.pressure)[::-1],
+                    lw=1,alpha=0.5,color=retr_obj.color2,linestyle=linestyle)
         ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
 
-    pressure=retrieval_object.final_object.pressure
+    pressure=retrieval_object.model_object.pressure
     ax2 = ax.inset_axes([0,0,1,1]) #[x0, y0, width, height]
 
     plot_VMRs(retrieval_object,ax=ax,ax2=ax2)
