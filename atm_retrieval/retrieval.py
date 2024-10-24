@@ -549,10 +549,11 @@ class Retrieval:
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/final_params_dict.pickle')
         if final_dict.exists()==False:
-            print('----------------- Main retrieval exists. -----------------')
+            print('----------------- Starting main retrieval. -----------------')
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
             save=True
         else:
+            print('----------------- Main retrieval exists. -----------------')
             save=False
             with open(final_dict,'rb') as file:
                 self.final_params=pickle.load(file) 
