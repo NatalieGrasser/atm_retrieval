@@ -1,6 +1,5 @@
 import numpy as np
 import astropy.units as u
-import astropy.constants as const
 
 class Spectrum(np.ndarray):    
     def __new__(cls, arr, wavelengths,err=None):

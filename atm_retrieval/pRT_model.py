@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 from scipy.interpolate import CubicSpline
 from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
@@ -15,10 +16,12 @@ import pathlib
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
     from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+    from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+    from spectrum import Spectrum, convolve_to_resolution
 
 class pRT_spectrum:
 
