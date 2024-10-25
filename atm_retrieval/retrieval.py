@@ -239,9 +239,9 @@ class Retrieval:
         spectrum[:,1]=self.model_flux.flatten()
 
         if save==True:
-            with open(f'{self.output_dir}/{self.callback_label}params_dict.pickle','wb') as file:
+            with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
                 pickle.dump(self.params_dict,file)
-            np.savetxt(f'{self.output_dir}/{self.callback_label}spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
+            np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
         return self.params_dict,self.model_flux
 
