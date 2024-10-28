@@ -404,8 +404,13 @@ class Retrieval:
             ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
             noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
             #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-            CCF_norm = CCF_sum/noise # get ccf map in S/N units
-            ACF_norm = ACF_sum/noise
+            try:
+                CCF_norm = CCF_sum/noise # get ccf map in S/N units
+                ACF_norm = ACF_sum/noise
+            except:
+                CCF_norm = CCF_sum
+                ACF_norm = ACF_sum
+                print(f'\n Error with {molecule}, noise =\n',noise)
             SNR=CCF_norm[np.where(RVs==0)[0][0]]
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
