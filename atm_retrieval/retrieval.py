@@ -415,7 +415,7 @@ class Retrieval:
         self.ACF_list=ACF_list
         return ccf_dict
 
-    def bayes_evidence(self,molecules,evidence_dict):
+    def bayes_evidence(self,molecules,evidence_dict,retrieval_output_dir):
 
         bayes_dict=evidence_dict
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
@@ -438,7 +438,7 @@ class Retrieval:
                 self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude from retrieval
             elif self.chemistry in ['equchem','quequchem']:
                 if molecule=='13CO':
-                    key='log_C12_13_ratio'
+                    key='log_C12_1S3_ratio'
                 elif molecule=='H2(18)O':
                     key='log_O16_18_ratio'
                 original_prior=self.parameters.param_priors[key]
@@ -464,6 +464,8 @@ class Retrieval:
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
             print('\n ----------------- Current bayes_dict= ----------------- \n',bayes_dict)  
+            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
+                pickle.dump(bayes_dict,file)
 
             # set back param priors for next retrieval
             if self.chemistry=='freechem':
@@ -530,7 +532,7 @@ class Retrieval:
                 with open(evidence_dict,'rb') as file:
                     self.evidence_dict=pickle.load(file)
 
-            bayes_dict=self.bayes_evidence(molecules,evidence_dict=self.evidence_dict)
+            bayes_dict=self.bayes_evidence(molecules,evidence_dict=self.evidence_dict,retrieval_output_dir=retrieval_output_dir)
             print('\n ----------------- Final bayes_dict= ----------------- \n',bayes_dict)
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
                 pickle.dump(bayes_dict,file)
