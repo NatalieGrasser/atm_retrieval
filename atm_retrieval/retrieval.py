@@ -404,10 +404,11 @@ class Retrieval:
             ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
             noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
             #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-            try:
+            print(f'\n -------- {molecule}, noise = ------------\n',noise)
+            if np.nansum(noise)!=0:
                 CCF_norm = CCF_sum/noise # get ccf map in S/N units
                 ACF_norm = ACF_sum/noise
-            except:
+            else:
                 CCF_norm = CCF_sum
                 ACF_norm = ACF_sum
                 print(f'\n Error with {molecule}, noise =\n',noise)
@@ -507,7 +508,7 @@ class Retrieval:
         self.evidence_tolerance=evidence_tolerance
         retrieval_output_dir=self.output_dir # save end results here
 
-        print(f'\n ---- {self.target.name} - chemistry: {self.chemistry} - PT type: {self.PT_type} - Nlive: {self.N_live_points} - ev: {self.evidence_tolerance} \n ----')
+        print(f'\n ----- {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.N_live_points} - ev: {self.evidence_tolerance} \n ------')
 
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')
