@@ -221,7 +221,7 @@ class Retrieval:
         self.get_ratios()
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
-        self.log_likelihood = self.LogLike(self.model_flux, self.Cov)
+        self.log_likelihood = self.LogLike(model_flux0, self.Cov)
         self.params_dict['phi_ij']=self.LogLike.phi
         self.params_dict['s2_ij']=self.LogLike.s2
         if self.callback_label=='final_':
