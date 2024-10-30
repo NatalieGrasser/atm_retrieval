@@ -28,7 +28,7 @@ class Target:
             self.dec = "+11d33m43.797034332s"
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
             self.fullname='2MASSJ03552337+1133437'    
-            self.standard_star_temp=18700 # lamTau
+            self.standard_star_temp=15536 # lamTau
             self.color1='deepskyblue' # color of retrieval output
             self.color2='lightskyblue' 
         if self.name=='2M1425':

@@ -338,6 +338,7 @@ class Retrieval:
         ccf_dict={}
         CCF_list=[]
         ACF_list=[]
+        orig_params_dict=self.params_dict
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
@@ -358,8 +359,10 @@ class Retrieval:
             # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
             # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
             # must still be shaped correctly and interpolated
+            self.parameters.params=exclusion_dict
             exclusion_model,exclusion_model_wl=pRT_spectrum(self,interpolate=False).make_spectrum()
-            
+
+            self.parameters.params=orig_params_dict        
             model_flux_broad,_=pRT_spectrum(self,interpolate=False).make_spectrum()
 
             RVs=np.arange(-500,500,1) # km/s
@@ -404,19 +407,14 @@ class Retrieval:
             ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
             noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
             #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-            print(f'\n -------- {molecule}, noise = ------------\n',noise)
-            if np.nansum(noise)!=0:
-                CCF_norm = CCF_sum/noise # get ccf map in S/N units
-                ACF_norm = ACF_sum/noise
-            else:
-                CCF_norm = CCF_sum
-                ACF_norm = ACF_sum
-                print(f'\n Error with {molecule}, noise =\n',noise)
+            CCF_norm = CCF_sum/noise # get ccf map in S/N units
+            ACF_norm = ACF_sum/noise
             SNR=CCF_norm[np.where(RVs==0)[0][0]]
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
+            self.parameters.params=orig_params_dict
         self.CCF_list=CCF_list
         self.ACF_list=ACF_list
         return ccf_dict
@@ -470,7 +468,7 @@ class Retrieval:
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
             print('\n ----------------- Current bayes_dict= ----------------- \n',bayes_dict)  
-            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
+            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save results at each step
                 pickle.dump(bayes_dict,file)
 
             # set back param priors for next retrieval
@@ -521,7 +519,9 @@ class Retrieval:
             save=False
             with open(final_dict,'rb') as file:
                 self.params_dict=pickle.load(file) 
+        print(self.params_dict)
         self.evaluate(save=save)
+        print(self.params_dict)
         if molecules!=None:
             ccf_dict=self.cross_correlation(molecules)
             self.params_dict.update(ccf_dict)
@@ -534,7 +534,7 @@ class Retrieval:
                 print('\n ----------------- Creating evidence dict ----------------- \n')
                 self.evidence_dict={}
             else:
-                print('\n ----------------- Continuing exiting evidence dict ----------------- \n')
+                print('\n ----------------- Continuing existing evidence dict ----------------- \n')
                 with open(evidence_dict,'rb') as file:
                     self.evidence_dict=pickle.load(file)
 
