@@ -430,7 +430,8 @@ class Retrieval:
 
         for molecule in molecules: # exclude molecule from retrieval
 
-            finish=pathlib.Path(f'{self.output_dir}/evidence_retrievals/final_wo{molecule}_posterior.npy')
+            finish=pathlib.Path(f'{self.output_dir}/final_wo{molecule}_posterior.npy')
+            print(finish)
             if finish.exists():
                 print(f'\n ----------------- Evidence retrieval for {molecule} already done ----------------- \n')
                 continue # check if already exists and continue if yes
@@ -519,15 +520,14 @@ class Retrieval:
             save=False
             with open(final_dict,'rb') as file:
                 self.params_dict=pickle.load(file) 
-        print(self.params_dict)
         self.evaluate(save=save)
-        print(self.params_dict)
         if molecules!=None:
             ccf_dict=self.cross_correlation(molecules)
             self.params_dict.update(ccf_dict)
             with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
                 pickle.dump(self.params_dict,file)
         
+        print(self.params_dict)
         if bayes==True:
             evidence_dict=pathlib.Path(f'{retrieval_output_dir}/evidence_dict.pickle')
             if evidence_dict.exists()==False: # to avoid overwriting sigmas from other evidence retrievals
