@@ -431,7 +431,8 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,plot_label=''
                                 'alpha': 0.5,
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
-                        fig=fig)
+                        fig=fig,
+                        quiet=True)
     
     # split title to avoid overlap with plots
     titles = [axi.title.get_text() for axi in fig.axes]
@@ -657,7 +658,8 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
                                     'alpha': 0.5,
                                     'edgecolor': 'k',
                                     'linewidth': 1.0},
-                        fig=fig)
+                        fig=fig,
+                        quiet=True)
         
         titles = [axi.title.get_text() for axi in fig.axes]
         if getfig:
@@ -806,7 +808,8 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
                                 'alpha': 0.5,
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
-                        fig=fig)
+                        fig=fig,
+                        quiet=True)
     titles = [axi.title.get_text() for axi in fig.axes]
     
     if 'retrieval_object2' in kwargs: # compare two retrievals
@@ -826,7 +829,8 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
                                 'alpha': 0.5,
                                 'edgecolor': 'k',
                                 'linewidth': 1.0},
-                        fig=fig)
+                        fig=fig,
+                        quiet=True)
         titles2 = [axi.title.get_text() for axi in fig.axes]
 
         for run,titles_list,color in zip([0,1],[titles,titles2],[retrieval_object.color1,retrieval_object2.color1]):

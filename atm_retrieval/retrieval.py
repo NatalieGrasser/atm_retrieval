@@ -19,7 +19,8 @@ from petitRADTRANS import Radtrans
 import pandas as pd
 import astropy.constants as const
 from scipy.interpolate import interp1d
-#import warnings
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning) # pRT warning
 #warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
 
 
@@ -424,6 +425,7 @@ class Retrieval:
         bayes_dict=evidence_dict
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        print('\n ----------------- Current bayes_dict= ----------------- \n',bayes_dict)
 
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
@@ -467,8 +469,7 @@ class Retrieval:
             print(f'chi2_{molecule}=',chi2_ex)
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
-            bayes_dict[f'chi2_wo_{molecule}']=chi2_ex
-            print('\n ----------------- Current bayes_dict= ----------------- \n',bayes_dict)  
+            bayes_dict[f'chi2_wo_{molecule}']=chi2_ex  
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save results at each step
                 pickle.dump(bayes_dict,file)
 
