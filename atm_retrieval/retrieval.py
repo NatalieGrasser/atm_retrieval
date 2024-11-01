@@ -440,6 +440,7 @@ class Retrieval:
 
         for molecule in molecules: # exclude molecule from retrieval
 
+            self.prefix=f'pmn_wo{molecule}_' 
             finish=pathlib.Path(f'{self.output_dir}/final_wo{molecule}_posterior.npy')
             print(finish)
             if finish.exists():
@@ -461,7 +462,6 @@ class Retrieval:
                     self.parameters.param_priors[key]=[14,15] # exclude from retrieval
 
                 self.callback_label=f'live_wo{molecule}_'
-                self.prefix=f'pmn_wo{molecule}_' 
                 self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,resume=True)
             
             self.callback_label=f'final_wo{molecule}_'
