@@ -203,16 +203,19 @@ class Retrieval:
             minus_err=quantiles[:,0]-medians # -error
         return medians,minus_err,plus_err
 
-    def get_params_and_spectrum(self,save=False): 
+    def get_params_and_spectrum(self): 
         
         # make dict of constant params + evaluated params + their errors
         self.params_dict=self.parameters.constant_params.copy() # initialize dict with constant params
         medians,minus_err,plus_err=self.get_quantiles(self.posterior)
 
         for i,key in enumerate(self.parameters.param_keys):
-            self.params_dict[key]=medians[i] # add median of evaluated params (more robust)
+            self.params_dict[key]=medians[i] # add median of evaluated params (more robust than bestfit)
+            
+        # add errors in a different loop to avoid messing up order of params (needed later for indexing)
+        for i,key in enumerate(self.parameters.param_keys):
             self.params_dict[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
-            self.params_dict[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
+            #self.params_dict[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
 
         # create final spectrum
         self.model_object=pRT_spectrum(self)
@@ -239,7 +242,7 @@ class Retrieval:
         spectrum[:,0]=self.data_wave.flatten()
         spectrum[:,1]=self.model_flux.flatten()
 
-        if save==True:
+        if self.callback_label=='final_':
             with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
                 pickle.dump(self.params_dict,file)
             np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
@@ -329,10 +332,10 @@ class Retrieval:
             self.params_dict['C/H_err']=(minus_err,plus_err)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
-                 callback_label='final_',save=False,makefigs=True):
+                 callback_label='final_',makefigs=True):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
-        self.params_dict,self.model_flux=self.get_params_and_spectrum(save=save) # all params: constant + free + scaling phi_ij + s2_ij
+        self.params_dict,self.model_flux=self.get_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
         if makefigs:
             if callback_label=='final_':
                 figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
@@ -441,37 +444,37 @@ class Retrieval:
             print(finish)
             if finish.exists():
                 print(f'\n ----------------- Evidence retrieval for {molecule} already done ----------------- \n')
-                continue # check if already exists and continue if yes
+                setback_prior=False
+                #continue # check if already exists and continue if yes
             else:
                 print(f'\n ----------------- Starting evidence retrieval for {molecule} ----------------- \n')
+                setback_prior=True
+                if self.chemistry=='freechem':
+                    original_prior=self.parameters.param_priors[f'log_{molecule}']
+                    self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude from retrieval
+                elif self.chemistry in ['equchem','quequchem']:
+                    if molecule=='13CO':
+                        key='log_C12_1S3_ratio'
+                    elif molecule=='H2(18)O':
+                        key='log_O16_18_ratio'
+                    original_prior=self.parameters.param_priors[key]
+                    self.parameters.param_priors[key]=[14,15] # exclude from retrieval
 
-            if self.chemistry=='freechem':
-                original_prior=self.parameters.param_priors[f'log_{molecule}']
-                self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude from retrieval
-            elif self.chemistry in ['equchem','quequchem']:
-                if molecule=='13CO':
-                    key='log_C12_1S3_ratio'
-                elif molecule=='H2(18)O':
-                    key='log_O16_18_ratio'
-                original_prior=self.parameters.param_priors[key]
-                self.parameters.param_priors[key]=[14,15] # exclude from retrieval
-
-            self.callback_label=f'live_wo{molecule}_'
-            self.prefix=f'pmn_wo{molecule}_' 
-            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,resume=True)
+                self.callback_label=f'live_wo{molecule}_'
+                self.prefix=f'pmn_wo{molecule}_' 
+                self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,resume=True)
+            
             self.callback_label=f'final_wo{molecule}_'
             self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
-
             ex_model=pRT_spectrum(self).make_spectrum()      
             lnL = self.LogLike(ex_model, self.Cov) # call function to generate chi2
             chi2_ex = self.LogLike.chi2_0_red # reduced chi^2
-
-            print(f'lnZ=',self.lnZ)
-            print(f'lnZ_{molecule}=',self.lnZ_ex)
+            #print(f'lnZ=',self.lnZ)
+            #print(f'lnZ_{molecule}=',self.lnZ_ex)
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
-            print(f'lnBm_{molecule}=',lnB)
+            #print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
-            print(f'chi2_{molecule}=',chi2_ex)
+            #print(f'chi2_{molecule}=',chi2_ex)
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex  
@@ -479,14 +482,15 @@ class Retrieval:
                 pickle.dump(bayes_dict,file)
 
             # set back param priors for next retrieval
-            if self.chemistry=='freechem':
-                self.parameters.param_priors[f'log_{molecule}']=original_prior 
-            elif self.chemistry in ['equchem','quequchem']:
-                if molecule=='13CO':
-                    key='log_C12_13_ratio'
-                elif molecule=='H2(18)O':
-                    key='log_O16_18_ratio'
-                self.parameters.param_priors[key]=original_prior
+            if setback_prior==True:
+                if self.chemistry=='freechem':
+                    self.parameters.param_priors[f'log_{molecule}']=original_prior 
+                elif self.chemistry in ['equchem','quequchem']:
+                    if molecule=='13CO':
+                        key='log_C12_13_ratio'
+                    elif molecule=='H2(18)O':
+                        key='log_O16_18_ratio'
+                    self.parameters.param_priors[key]=original_prior
             
         return bayes_dict
 
@@ -520,13 +524,9 @@ class Retrieval:
         if final_dict.exists()==False:
             print('\n ----------------- Starting main retrieval. ----------------- \n')
             self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
-            save=True
         else:
             print('\n ----------------- Main retrieval exists. ----------------- \n')
-            save=False
-            with open(final_dict,'rb') as file:
-                self.params_dict=pickle.load(file) 
-        self.evaluate(save=save)
+        self.evaluate() # created and saves self.params_dict
         if molecules!=None:
             ccf_dict=self.cross_correlation(molecules)
             self.params_dict.update(ccf_dict)
