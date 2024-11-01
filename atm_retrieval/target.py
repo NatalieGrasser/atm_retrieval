@@ -6,6 +6,7 @@ import os
 from numpy.polynomial import polynomial as Poly
 from scipy import signal, optimize
 from scipy.interpolate import interp1d
+from matplotlib.lines import Line2D
 import warnings
 
 class Target:
@@ -140,19 +141,14 @@ class Target:
         fig,ax=plt.subplots(self.n_orders,1,figsize=(9,9),dpi=200)
         alph=0.7
         for order in range(self.n_orders):
-            ax[order].plot(np.reshape(wl,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           np.reshape(fl,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           lw=0.8,alpha=1,label=label1,c=self.color1)
-            ax[order].plot(np.reshape(wl2,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           np.reshape(fl2,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           lw=0.8,alpha=alph,label=label2,c='yellowgreen')
-            ax[order].plot(np.reshape(wl3,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           np.reshape(fl3,(self.n_orders,self.n_dets*self.n_pixels))[order],
-                           lw=0.8,alpha=alph,label=label3,c='k')
-            ax[order].set_xlim(np.min(np.reshape(wl,(self.n_orders,self.n_dets*self.n_pixels))[order]),
-                               np.max(np.reshape(wl,(self.n_orders,self.n_dets*self.n_pixels))[order]))
+            for det in range(self.n_dets):
+                ax[order].plot(wl[order,det],fl[order,det],lw=0.8,alpha=1,label=label1,c=self.color1)
+                ax[order].plot(wl2[order,det],fl2[order,det],lw=0.8,alpha=alph,label=label2,c='yellowgreen')
+                ax[order].plot(wl3[order,det],fl3[order,det],lw=0.8,alpha=alph,label=label3,c='k')
+                if order==0 and det==0:
+                    ax[0].legend(fontsize=11,ncol=3,bbox_to_anchor=(0.5,1.4),loc='upper center')
+            ax[order].set_xlim(np.min(wl[order]),np.max(wl[order]))
             ax[order].tick_params(labelsize=8)
-        ax[0].legend(fontsize=11,ncol=3,bbox_to_anchor=(0.5,1.4),loc='upper center')
         ax[6].set_xlabel('Wavelength [nm]')
         ax[3].set_ylabel('Normalized Flux')
         fig.tight_layout(h_pad=0.05)
@@ -185,7 +181,10 @@ class Target:
 
         # mask pixels at beginning and end of each detector
         pm=3 # plus/minus mask pixels on edge of each detector -> NECESSARY?
+        wl=np.reshape(wl,(self.n_orders,self.n_dets,2048))
+        fl0=np.reshape(fl0,(self.n_orders,self.n_dets,2048))
         fl=np.reshape(fl,(self.n_orders,self.n_dets,2048))
+        flt=np.reshape(flt,(self.n_orders,self.n_dets,2048))
         err=np.reshape(err,(self.n_orders,self.n_dets,2048))
         for order in range(self.n_orders):
             for det in range(self.n_dets):
@@ -212,8 +211,8 @@ class Target:
             fl[2,1][bad_pixel-2:bad_pixel+2]=np.nan
             fl[0,:]=np.nan # too many tellurics
 
-
         self.plot_orders3(wl,fl0,wl,flt,wl,fl,'Uncorrected','Telluric model','Corrected')
+        self.plot_tellurics(wl,fl,fl0)
             
         if outfile!=None:
             spectrum=np.full(shape=(self.n_pixels*self.n_orders*self.n_dets,3),fill_value=np.nan)
@@ -328,6 +327,29 @@ class Target:
                 wlens.append(wlen_cal)
 
         return np.reshape(np.array(wlens),(self.n_orders,self.n_dets,self.n_pixels))
+    
+    def plot_tellurics(self,wl,fl,fl0):
+        fig,ax=plt.subplots(1,1,figsize=(7,2),dpi=200)
+        alph=0.3
+        ax.plot(wl.flatten(),fl.flatten(),lw=0.5,alpha=1,c=self.color1)
+        ax.plot(wl.flatten(),fl0.flatten(),lw=0.5,alpha=alph,c=self.color1)
+        lines = [Line2D([0], [0], color=self.color1,linewidth=2,label='Data (corrected)'),
+                Line2D([0], [0], color=self.color1,linewidth=2,alpha=alph,label='Data (uncorrected)')]
+        ax.legend(handles=lines,fontsize=10)
+        ax.set_ylabel('Flux')
+        ax.set_xlim(np.min(wl)-10,np.max(wl)+10)
+
+        order=5 
+        axins = ax.inset_axes([0,-1,1,0.8]) # left, bottom, width, height
+        for det in range(self.n_dets):
+            axins.plot(wl[order,det],fl[order,det],lw=0.5,alpha=1,c=self.color1)
+            axins.plot(wl[order,det],fl0[order,det],lw=0.5,alpha=alph,c=self.color1)
+        axins.set_xlim(np.min(wl[order]),np.max(wl[order]))
+        box,lines=ax.indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
+        axins.set_ylabel('Flux')
+        axins.set_xlabel('Wavelength [nm]')
+        plt.subplots_adjust(wspace=0, hspace=0)
+        fig.savefig(f'{self.name}/observations_{self.name}.jpg',bbox_inches='tight')
             
     
 

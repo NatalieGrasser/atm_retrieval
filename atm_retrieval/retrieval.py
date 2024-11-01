@@ -282,7 +282,12 @@ class Retrieval:
 
         elif self.chemistry=='freechem':
             for m1,m2 in [['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]: # isotope ratios    
-                p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
+                try:
+                    p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
+                except:
+                    print('Error with',m1)
+                    print('\nlist(self.parameters.params)\n',list(self.parameters.params))
+                    print(f'\nlist(self.parameters.params).index("log_{m1}")\n',list(self.parameters.params).index(f'log_{m1}'))
                 p2=self.posterior[:,list(self.parameters.params).index(f'log_{m2}')]
                 log_ratio=p1-p2
                 median,minus_err,plus_err=self.get_quantiles(log_ratio,flat=True)
