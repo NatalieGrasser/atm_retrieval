@@ -16,12 +16,10 @@ import pathlib
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
     from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-    from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-    from spectrum import Spectrum, convolve_to_resolution
 
 class pRT_spectrum:
 
@@ -221,6 +219,7 @@ class pRT_spectrum:
         def give_opacity(wave_micron=self.wave_micron,pressure=self.pressure):
             opa_gray_cloud = np.zeros((len(self.wave_micron),len(self.pressure))) # gray cloud = independent of wavelength
             opa_gray_cloud[:,self.pressure>10**(self.params['log_P_base_gray'])] = 0 # [bar] constant below cloud base
+            #opa_gray_cloud[:,self.pressure>10**(self.params['log_P_base_gray'])] =10**(self.params['log_opa_base_gray'])
             # Opacity decreases with power-law above the base
             above_clouds = (self.pressure<=10**(self.params['log_P_base_gray']))
             opa_gray_cloud[:,above_clouds]=(10**(self.params['log_opa_base_gray']))*(self.pressure[above_clouds]/10**(self.params['log_P_base_gray']))**self.params['fsed_gray']
@@ -281,22 +280,20 @@ class pRT_spectrum:
                             ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
             wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
             self.wlshift_orders.append(wl_shifted)
-            spec = Spectrum(flux, wl_shifted)
             waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
-            spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
-            spec = Spectrum(spec, waves_even)
-            spec = convolve_to_resolution(spec,self.spectral_resolution)
+            spec = np.interp(waves_even, wl_shifted, flux)
+            spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
+            spec = self.convolve_to_resolution(waves_even, spec, self.spectral_resolution)
 
             #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
             self.resolution = int(1e6/self.lbl_opacity_sampling)
-            flux=self.instr_broadening(spec.wavelengths*1e3,spec,
-                                             out_res=self.resolution,in_res=500000)
+            flux=self.instr_broadening(waves_even*1e3,spec,out_res=self.resolution,in_res=500000)
 
             # Interpolate/rebin onto the data's wavelength grid
             # should not be done when making spectrum for cross-corr, or wl padding will be cut off
             if self.interpolate==True:
                 ref_wave = self.data_wave[order].flatten() # [nm]
-                flux = np.interp(ref_wave, spec.wavelengths*1e3, flux) # pRT wavelengths from microns to nm
+                flux = np.interp(ref_wave, waves_even*1e3, flux) # pRT wavelengths from microns to nm
 
                 # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
                 flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
@@ -362,6 +359,25 @@ class pRT_spectrum:
             self.temperature = temperature[::-1] # reverse order, pRT reads temps from top to bottom of atm
         
         return self.temperature
+
+    def convolve_to_resolution(self, in_wlen, in_flux, out_res, in_res=None):
+        from scipy.ndimage import gaussian_filter
+        if isinstance(in_wlen, u.Quantity):
+            in_wlen = in_wlen.to(u.nm).value
+        if in_res is None:
+            in_res = np.mean((in_wlen[:-1]/np.diff(in_wlen)))
+        # delta lambda of resolution element is FWHM of the LSF's standard deviation:
+        sigma_LSF = np.sqrt(1./out_res**2-1./in_res**2)/(2.*np.sqrt(2.*np.log(2.)))
+        spacing = np.mean(2.*np.diff(in_wlen)/(in_wlen[1:]+in_wlen[:-1]))
+
+        # Calculate the sigma to be used in the gauss filter in pixels
+        sigma_LSF_gauss_filter = sigma_LSF/spacing
+        out_flux = np.tile(np.nan, in_flux.shape)
+        nans = np.isnan(in_flux)
+        out_flux[~nans] = gaussian_filter(in_flux[~nans], sigma = sigma_LSF_gauss_filter, mode = 'reflect')
+ 
+        return out_flux
+
     
     def instr_broadening(self, wave, flux, out_res=1e6, in_res=1e6):
 
@@ -406,12 +422,11 @@ class pRT_spectrum:
         v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
                         ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
         wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
-        spec = Spectrum(flux, wl_shifted)
         waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
-        spec = fastRotBroad(waves_even, spec.at(waves_even), self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
-        spec = Spectrum(spec, waves_even)
-        flux = convolve_to_resolution(spec,self.spectral_resolution)
-        flux = np.interp(ref_wave, spec.wavelengths*1e3, flux) # pRT wavelengths from microns to nm
+        spec = np.interp(waves_even, wl_shifted, flux)
+        spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
+        spec = self.convolve_to_resolution(waves_even, spec, self.spectral_resolution)
+        flux = np.interp(ref_wave, waves_even*1e3, flux) # pRT wavelengths from microns to nm
         flux/=np.nanmedian(flux)
 
         return flux

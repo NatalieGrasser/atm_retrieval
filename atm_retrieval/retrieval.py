@@ -19,6 +19,7 @@ from petitRADTRANS import Radtrans
 import pandas as pd
 import astropy.constants as const
 from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning) # pRT warning
 #warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
@@ -82,8 +83,6 @@ class Retrieval:
         self.bestfit_params=None 
         self.posterior = None
         self.params_dict=None
-        self.calc_errors=False
-
         self.color1=target.color1
         self.color2=target.color2
 
@@ -145,12 +144,7 @@ class Retrieval:
             return atmosphere_objects
 
     def PMN_lnL(self,cube=None,ndim=None,nparams=None):
-        self.model_object=pRT_spectrum(self)
-        
-        # pass exit through a self.thing attibute and not kwarg, or pmn will be confused
-        if self.calc_errors==True: # only for calc errors on Fe/H, C/O, temperatures
-            return
-        
+        self.model_object=pRT_spectrum(self)      
         self.model_flux=self.model_object.make_spectrum()
         for j in range(self.n_orders): # update covariance matrix
             for k in range(self.n_dets):
@@ -211,6 +205,7 @@ class Retrieval:
 
         for i,key in enumerate(self.parameters.param_keys):
             self.params_dict[key]=medians[i] # add median of evaluated params (more robust than bestfit)
+            self.parameters.params[key]=medians[i]
             
         # add errors in a different loop to avoid messing up order of params (needed later for indexing)
         for i,key in enumerate(self.parameters.param_keys):
@@ -219,25 +214,25 @@ class Retrieval:
 
         # create final spectrum
         self.model_object=pRT_spectrum(self)
-        model_flux0=self.model_object.make_spectrum()
+        self.model_flux0=self.model_object.make_spectrum()
         
         # get isotope and element ratios and save them in final params dict
         self.get_ratios()
 
         # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
-        self.log_likelihood = self.LogLike(model_flux0, self.Cov)
+        self.log_likelihood = self.LogLike(self.model_flux0, self.Cov)
         self.params_dict['phi_ij']=self.LogLike.phi
         self.params_dict['s2_ij']=self.LogLike.s2
         if self.callback_label=='final_':
             self.params_dict['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
             self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
 
-        self.model_flux=np.zeros_like(model_flux0)
+        self.model_flux=np.zeros_like(self.model_flux0)
         phi_ij=self.params_dict['phi_ij']
         for order in range(self.n_orders):
             for det in range(self.n_dets):
-                self.model_flux[order,det]=phi_ij[order,det]*model_flux0[order,det] # scale model accordingly
-        
+                self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
+
         spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
         spectrum[:,0]=self.data_wave.flatten()
         spectrum[:,1]=self.model_flux.flatten()
@@ -268,29 +263,24 @@ class Retrieval:
             self.ratios_posterior=ratios_posterior.T
             del ratios_posterior # or in locals() won't work when loading another retrieval
 
-            self.calc_errors=True
+            stop=10
             temperature_distribution=[] # for each of the n_atm_layers
-            x=0
-            for sample in self.posterior:
+            for j,sample in enumerate(self.posterior):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
                 self.parameters(cube)
-                self.PMN_lnL()
-                temperature_distribution.append(self.model_object.temperature)
-                x+=1
-                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop, or it takes too long (22min)
+                model_object=pRT_spectrum(self)
+                temperature_distribution.append(np.array(model_object.temperature))
+                # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
+                if getpass.getuser()=="natalie" and j>stop: 
+                    remaining=len(self.posterior)-(j+1)
+                    temperature_distribution+=[self.model_object.temperature]*remaining
                     break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
-            self.calc_errors=False # set back to False when finished
 
         elif self.chemistry=='freechem':
             for m1,m2 in [['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]: # isotope ratios    
-                try:
-                    p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
-                except:
-                    print('Error with',m1)
-                    print('\nlist(self.parameters.params)\n',list(self.parameters.params))
-                    print(f'\nlist(self.parameters.params).index("log_{m1}")\n',list(self.parameters.params).index(f'log_{m1}'))
+                p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
                 p2=self.posterior[:,list(self.parameters.params).index(f'log_{m2}')]
                 log_ratio=p1-p2
                 median,minus_err,plus_err=self.get_quantiles(log_ratio,flat=True)
@@ -302,26 +292,30 @@ class Retrieval:
                     ratios_posterior=log_ratio
             self.ratios_posterior=ratios_posterior.T
 
-            self.calc_errors=True
-            CO_distribution=np.full(self.posterior.shape[0],fill_value=0.0)
-            CH_distribution=np.full(self.posterior.shape[0],fill_value=0.0)
+            CO_distribution=[]
+            CH_distribution=[]
             temperature_distribution=[] # for each of the n_atm_layers
-            x=0
+            stop=10
             for j,sample in enumerate(self.posterior):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
                 self.parameters(cube)
-                self.PMN_lnL()
-                CO_distribution[j]=self.model_object.CO
-                CH_distribution[j]=self.model_object.FeH
-                temperature_distribution.append(self.model_object.temperature)
-                x+=1
-                if getpass.getuser()=="natalie" and x>20: # when testing from my laptop, or it takes too long (22min)
+                model_object=pRT_spectrum(self)
+                CO_distribution.append(model_object.CO)
+                CH_distribution.append(model_object.FeH)
+                temperature_distribution.append(np.array(model_object.temperature))
+                # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
+                if getpass.getuser()=="natalie" and j>stop: 
+                    remaining=len(self.posterior)-(j+1)
+                    temperature_distribution+=[self.model_object.temperature]*remaining
+                    CO_distribution+=[self.model_object.CO]*remaining
+                    CH_distribution+=[self.model_object.FeH]*remaining
+                    CO_distribution=np.array(CO_distribution)
+                    CH_distribution=np.array(CH_distribution)
                     break
             self.CO_CH_dist=np.vstack([CO_distribution,CH_distribution]).T
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
             self.ratios_posterior=np.hstack([self.CO_CH_dist,self.ratios_posterior])
-            self.calc_errors=False # set back to False when finished
 
             median,minus_err,plus_err=self.get_quantiles(CO_distribution,flat=True)
             self.params_dict['C/O']=median
@@ -335,7 +329,7 @@ class Retrieval:
                  callback_label='final_',makefigs=True):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
-        self.params_dict,self.model_flux=self.get_params_and_spectrum() # all params: constant + free + scaling phi_ij + s2_ij
+        self.params_dict,self.model_flux=self.get_params_and_spectrum() # all params + scaling phi_ij + s2_ij
         if makefigs:
             if callback_label=='final_':
                 figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
@@ -442,11 +436,9 @@ class Retrieval:
 
             self.prefix=f'pmn_wo{molecule}_' 
             finish=pathlib.Path(f'{self.output_dir}/final_wo{molecule}_posterior.npy')
-            print(finish)
             if finish.exists():
                 print(f'\n ----------------- Evidence retrieval for {molecule} already done ----------------- \n')
                 setback_prior=False
-                #continue # check if already exists and continue if yes
             else:
                 print(f'\n ----------------- Starting evidence retrieval for {molecule} ----------------- \n')
                 setback_prior=True
@@ -469,12 +461,8 @@ class Retrieval:
             ex_model=pRT_spectrum(self).make_spectrum()      
             lnL = self.LogLike(ex_model, self.Cov) # call function to generate chi2
             chi2_ex = self.LogLike.chi2_0_red # reduced chi^2
-            #print(f'lnZ=',self.lnZ)
-            #print(f'lnZ_{molecule}=',self.lnZ_ex)
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
-            #print(f'lnBm_{molecule}=',lnB)
             print(f'sigma_{molecule}=',sigma)
-            #print(f'chi2_{molecule}=',chi2_ex)
             bayes_dict[f'lnBm_{molecule}']=lnB
             bayes_dict[f'sigma_{molecule}']=sigma
             bayes_dict[f'chi2_wo_{molecule}']=chi2_ex  
@@ -508,8 +496,11 @@ class Retrieval:
         if ln_B<0: # ln_Z_B larger -> second model favored
             sign=-1
             ln_B*=sign # can't handle negative values (-> nan), multiply back later
-        p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
-        sigma = np.sqrt(2)*erfcinv(p)
+        try:
+            p = np.real(np.exp(W((-1.0/(np.exp(ln_B)*np.exp(1))),-1)))
+            sigma = np.sqrt(2)*erfcinv(p)
+        except RuntimeWarning:
+            sigma=np.inf 
         return ln_B*sign,sigma*sign
 
     def run_retrieval(self,N_live_points=400,evidence_tolerance=0.5,molecules=None,bayes=False): 
@@ -517,7 +508,7 @@ class Retrieval:
         self.evidence_tolerance=evidence_tolerance
         retrieval_output_dir=self.output_dir # save end results here
 
-        print(f'\n ----- {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.N_live_points} - ev: {self.evidence_tolerance} \n ------')
+        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.N_live_points} - ev: {self.evidence_tolerance} ------- \n')
 
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')
@@ -545,7 +536,7 @@ class Retrieval:
                     self.evidence_dict=pickle.load(file)
 
             bayes_dict=self.bayes_evidence(molecules,evidence_dict=self.evidence_dict,retrieval_output_dir=retrieval_output_dir)
-            print('\n ----------------- Final bayes_dict= ----------------- \n',bayes_dict)
+            print('\n ----------------- Final evidence dict ----------------- \n',bayes_dict)
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
                 pickle.dump(bayes_dict,file)
 

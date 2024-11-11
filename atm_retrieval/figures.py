@@ -36,7 +36,6 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     if 'ax' in kwargs:
         ax=kwargs.get('ax')
     else:
-        #fig,ax=plt.subplots(2,1,figsize=(8.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
         fig,ax=plt.subplots(2,1,figsize=(9.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
     for order in range(7):
@@ -527,14 +526,25 @@ def summary_plot(retrieval_object):
     plt.close()
 
 
-def opacity_plot(retrieval_object):
+def opacity_plot(retrieval_object,only_params=None):
     Kband=retrieval_object.target.K2166
-    molecules=['H2O_pokazatel_main_iso','H2O_181_HotWat78','CO_main_iso','CO_36','H2S_ExoMol_main_iso','HF_main_iso']
-    names=['H2O','H2(18)O','12CO','13CO','H2S','HF']
-    labels=['H$_2^{16}$O','H$_2^{18}$O','$^{12}$CO','$^{13}$CO','H$_2$S','HF']
+    if only_params==None: # plot 6 most abundant species
+        only_params=[]
+        abunds=[]
+        species=retrieval_object.chem_species
+        for spec in species:
+            abunds.append(retrieval_object.params_dict[spec])
+        abunds, species = zip(*sorted(zip(abunds, species)))
+        only_params=species[-6:][::-1] # get largest 6
+    species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+    pRT_names=[]
+    labels=[]
+    for par in only_params:
+        pRT_names.append(species_info.loc[par[4:],'pRT_name'])
+        labels.append(species_info.loc[par[4:],'mathtext_name'])
 
     wlen_range=np.array([np.min(Kband),np.max(Kband)])*1e-3 # nm to microns
-    atmosphere = Radtrans(line_species=molecules,
+    atmosphere = Radtrans(line_species=pRT_names,
                         rayleigh_species = ['H2', 'He'],
                         continuum_opacities = ['H2-H2', 'H2-He'],
                         wlen_bords_micron=wlen_range, 
@@ -548,10 +558,11 @@ def opacity_plot(retrieval_object):
 
     fig,ax=plt.subplots(1,1,figsize=(6,3),dpi=200)
     lines=[]
-    for i,m in enumerate(molecules):
-        abund=10**retrieval_object.params_dict[f'log_{names[i]}']
+    for i,m in enumerate(pRT_names):
+        abund=10**retrieval_object.params_dict[only_params[i]]
+        col=species_info.loc[f'{only_params[i][4:]}','color']
         #print(names[i],abund)
-        spec,=plt.plot(wave_nm,opas[m]*abund,lw=0.5)
+        spec,=plt.plot(wave_nm,opas[m]*abund,lw=0.5,c=col)
         lines.append(Line2D([0],[0],color=spec.get_color(),
                         linewidth=2,label=labels[i]))
         
@@ -571,6 +582,7 @@ def opacity_plot(retrieval_object):
     fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf',
                 bbox_inches="tight",dpi=200)
     plt.close()
+    del opas # to avoid memory issues
 
 def CCF_plot(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
     SNR=CCF_norm[np.where(RVs==0)[0][0]]
