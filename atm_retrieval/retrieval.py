@@ -237,7 +237,7 @@ class Retrieval:
         spectrum[:,0]=self.data_wave.flatten()
         spectrum[:,1]=self.model_flux.flatten()
 
-        if self.callback_label=='final_':
+        if self.callback_label=='final_' and getpass.getuser() == "grasser": # when runnig from LEM
             with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
                 pickle.dump(self.params_dict,file)
             np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
