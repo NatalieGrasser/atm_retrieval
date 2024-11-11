@@ -336,7 +336,7 @@ class Retrieval:
             else:
                 figs.summary_plot(self)
         
-    def cross_correlation(self,molecules,noiserange=50): # can only be run after evaluate()
+    def cross_correlation(self,molecules,noiserange=100): # can only be run after evaluate()
 
         ccf_dict={}
         CCF_list=[]

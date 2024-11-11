@@ -164,7 +164,7 @@ else: # compare freechem, equchem of same object or freechem of two different ob
         figs.VMR_plot(retrieval,retrieval_object2=retrieval2,molecules=molecules)
     else: # compare two freechem retrievals
         figs.ratios_cornerplot(retrieval,retrieval_object2=retrieval2)
-        molecules=['13CO','HF','H2S','H2(18)O']
+        molecules=['13CO','HF','H2S','H2(18)O','CH4']
         retrieval.cross_correlation(molecules) # gets CCFs and ACFs of each molecule
         retrieval2.cross_correlation(molecules)
         figs.compare_two_CCFs(retrieval,retrieval2,molecules)
