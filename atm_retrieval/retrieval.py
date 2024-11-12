@@ -24,7 +24,6 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning) # pRT warning
 #warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
 
-
 class Retrieval:
 
     def __init__(self,target,parameters,output_name,chemistry='freechem',
@@ -192,9 +191,9 @@ class Retrieval:
             minus_err=quantiles[:,0]-medians # -error
         else: # input only one posterior
             quantiles = np.array([np.percentile(posterior, [16.0,50.0,84.0])])
-            medians=quantiles[:,1] # median
-            plus_err=quantiles[:,2]-medians # +error
-            minus_err=quantiles[:,0]-medians # -error
+            medians=quantiles[:,1][0] # median
+            plus_err=quantiles[:,2][0]-medians # +error
+            minus_err=quantiles[:,0][0]-medians # -error
         return medians,minus_err,plus_err
 
     def get_params_and_spectrum(self): 

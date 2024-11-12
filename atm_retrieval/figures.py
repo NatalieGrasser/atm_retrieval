@@ -3,6 +3,7 @@ import os
 if getpass.getuser() == "grasser": # when runnig from LEM
     import atm_retrieval.cloud_cond as cloud_cond
     from atm_retrieval.pRT_model import pRT_spectrum
+
 elif getpass.getuser() == "natalie": # when testing from my laptop
     import cloud_cond as cloud_cond
     from pRT_model import pRT_spectrum
@@ -482,6 +483,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     summary_plot(retrieval_object)
     opacity_plot(retrieval_object)
     if retrieval_object.chemistry=='freechem':
+        VMR_plot(retrieval_object,comp_equ=True) # compare with what equchem abundances would be like
         ratios_cornerplot(retrieval_object) # already in equchem cornerplot by default
         if split_corner: # split corner plot to avoid massive files
             cornerplot(retrieval_object,only_abundances=True)
@@ -528,21 +530,47 @@ def summary_plot(retrieval_object):
 
 def opacity_plot(retrieval_object,only_params=None):
     Kband=retrieval_object.target.K2166
-    if only_params==None: # plot 6 most abundant species
-        only_params=[]
-        abunds=[]
-        species=retrieval_object.chem_species
-        for spec in species:
-            abunds.append(retrieval_object.params_dict[spec])
-        abunds, species = zip(*sorted(zip(abunds, species)))
-        only_params=species[-6:][::-1] # get largest 6
-    species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+
+    # plot 6 most abundant species
+    only_params=[]
+    abunds=[]
     pRT_names=[]
     labels=[]
-    for par in only_params:
-        pRT_names.append(species_info.loc[par[4:],'pRT_name'])
-        labels.append(species_info.loc[par[4:],'mathtext_name'])
+    species=retrieval_object.chem_species
 
+    if retrieval_object.chemistry=='freechem':
+        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+        for spec in species:
+            abunds.append(retrieval_object.params_dict[spec])
+        
+    elif retrieval_object.chemistry in ['equchem','quequchem']:
+        species_info = pd.read_csv(os.path.join('species_info.csv'))
+        for spec in species:
+            model_object=pRT_spectrum(retrieval_object)    
+            mass_fractions=model_object.mass_fractions
+            MMW=model_object.MMW
+            for spec in retrieval_object.species:
+                mass=species_info.loc[species_info["pRT_name"]==spec]['mass'].values[0]
+                abunds.append(np.median(mass_fractions[spec]*MMW/mass)) # take median of abundance
+                
+    abunds, species = zip(*sorted(zip(abunds, species)))
+    only_params=species[-6:][::-1] # get largest 6
+    abunds = abunds[-6:][::-1] # get largest 6
+    VMRs=[]
+    colors=[]
+    if retrieval_object.chemistry=='freechem':
+        for i,par in enumerate(only_params):
+            pRT_names.append(species_info.loc[par[4:],'pRT_name'])
+            labels.append(species_info.loc[par[4:],'mathtext_name'])
+            VMRs.append(10**retrieval_object.params_dict[only_params[i]])
+            colors.append(species_info.loc[f'{only_params[i][4:]}','color'])
+    elif retrieval_object.chemistry in ['equchem','quequchem']:
+        for i,par in enumerate(only_params):
+            pRT_names.append(species_info.loc[species_info["name"]==par]['pRT_name'].values[0])
+            labels.append(species_info.loc[species_info["name"]==par]['mathtext_name'].values[0])
+            colors.append(species_info.loc[species_info["name"]==par]['color'].values[0])
+            VMRs.append(abunds[i])
+    
     wlen_range=np.array([np.min(Kband),np.max(Kband)])*1e-3 # nm to microns
     atmosphere = Radtrans(line_species=pRT_names,
                         rayleigh_species = ['H2', 'He'],
@@ -559,10 +587,10 @@ def opacity_plot(retrieval_object,only_params=None):
     fig,ax=plt.subplots(1,1,figsize=(6,3),dpi=200)
     lines=[]
     for i,m in enumerate(pRT_names):
-        abund=10**retrieval_object.params_dict[only_params[i]]
-        col=species_info.loc[f'{only_params[i][4:]}','color']
+        #abund=10**retrieval_object.params_dict[only_params[i]]
+        #col=species_info.loc[f'{only_params[i][4:]}','color']
         #print(names[i],abund)
-        spec,=plt.plot(wave_nm,opas[m]*abund,lw=0.5,c=col)
+        spec,=plt.plot(wave_nm,opas[m]*VMRs[i],lw=0.5,c=colors[i])
         lines.append(Line2D([0],[0],color=spec.get_color(),
                         linewidth=2,label=labels[i]))
         
@@ -892,31 +920,33 @@ def ratios_cornerplot(retrieval_object,fs=10,**kwargs):
     fig.savefig(filename,bbox_inches="tight",dpi=200)
     plt.close()
 
-def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
+def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
 
-    prefix=retrieval_object.callback_label if retrieval_object.callback_label=='final_' else ''
+    #prefix=retrieval_object.callback_label if retrieval_object.callback_label=='final_' else ''
+    prefix=''
     suffix=''
     output_dir=retrieval_object.output_dir
     fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
     species_info = pd.read_csv(os.path.join('species_info.csv'))
-    molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','C18O','C17O','CH4','HCN','NH3']
-    alpha=0.6 if 'retrieval_object2' in kwargs else 1
+    molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','CH4','H2S','HCN','NH3']
+    alpha=0.6 if 'retrieval_object2' in kwargs or comp_equ==True else 1
     legend_labels=0
     xmin,xmax=1e-11,1.3
 
     def plot_VMRs(retr_obj,ax,ax2):
         mass_fractions=retr_obj.model_object.mass_fractions
         MMW=retr_obj.model_object.MMW
-        params=retrieval_object.parameters.params
+        params=retr_obj.parameters.params
         for species in molecules:
             name=species_info.loc[species_info["name"]==species]['pRT_name'].values[0]
             mass=species_info.loc[species_info["name"]==species]['mass'].values[0]
             label=species_info.loc[species_info["name"]==species]['mathtext_name'].values[0]
+            color=species_info.loc[species_info["name"]==species]['color'].values[0]
             if retr_obj.chemistry=='freechem':
                 VMR=mass_fractions[name]*MMW/mass
                 label=label if legend_labels==0 else '_nolegend_'
                 linestyle='dashed'
-                ax.plot(VMR,pressure,label=label,linestyle='dashed')
+                ax.plot(VMR,pressure,label=label,linestyle='dashed',c=color)
             elif retr_obj.chemistry in ['equchem','quequchem']:
                 if retr_obj.chemistry=='equchem':
                     linestyle='solid'
@@ -925,7 +955,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                 if species not in ['H2(18)O','13CO','C18O','C17O']:
                     VMR=mass_fractions[name]*MMW/mass
                     label=label if legend_labels==0 else '_nolegend_'
-                    ax.plot(VMR,pressure,label=label,alpha=alpha,linestyle=linestyle)
+                    ax.plot(VMR,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
                 else:  
                     H2Oname=species_info.loc[species_info["name"]=='H2O']['pRT_name'].values[0]
                     VMR_H2O=mass_fractions[H2Oname]*MMW/species_info.loc[species_info["name"]=='H2O']['mass'].values[0]
@@ -934,33 +964,57 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
                     if species=='H2(18)O':                        
                         VMR_H218O=10**(-params.get('log_O16_18_ratio',-12))*VMR_H2O
                         label=r'H$_2^{18}$O' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_H218O,pressure,label=label,alpha=alpha,linestyle=linestyle)
+                        ax.plot(VMR_H218O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
                     elif species=='13CO':
                         VMR_13CO=10**(-params.get('log_C12_13_ratio',-12))*VMR_12CO
                         label=r'$^{13}$CO' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_13CO,pressure,label=label,alpha=alpha,linestyle=linestyle)
+                        ax.plot(VMR_13CO,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
                     elif species=='C18O':
                         VMR_C18O=10**(-params.get('log_O16_18_ratio',-12))*VMR_12CO
                         label=r'C$^{18}$O' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_C18O,pressure,label=label,alpha=alpha,linestyle=linestyle)
+                        ax.plot(VMR_C18O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
                     elif species=='C17O':
                         VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
                         label=r'C$^{17}$O' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle)
+                        ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
 
         model_object=pRT_spectrum(retr_obj,contribution=True)
         model_object.make_spectrum()
         summed_contr=np.nanmean(model_object.contr_em_orders,axis=0) # average over all orders
         contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
         ax2.plot(contribution_plot,np.log10(retr_obj.model_object.pressure)[::-1],
-                    lw=1,alpha=0.5,color=retr_obj.color2,linestyle=linestyle)
+                    lw=1,alpha=alpha*0.5,color=retr_obj.color1,linestyle=linestyle)
         ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
 
     pressure=retrieval_object.model_object.pressure
-    ax2 = ax.inset_axes([0,0,1,1]) #[x0, y0, width, height]
+    ax2 = ax.inset_axes([0,0,1,1]) # [x0, y0, width, height] , for emission contribution
 
     plot_VMRs(retrieval_object,ax=ax,ax2=ax2)
     legend_labels=1 # only make legend labels once 
+
+    # compare freechem VMRs to equilibrium chemistry with other retrieved params remainig equal
+    if comp_equ==True:
+        if getpass.getuser() == "grasser": # when runnig from LEM
+            from atm_retrieval.retrieval import Retrieval
+            from atm_retrieval.parameters import Parameters
+        elif getpass.getuser() == "natalie": # when testing from my laptop
+            from retrieval import Retrieval
+            from parameters import Parameters
+
+        parameters_equ = retrieval_object.params_dict
+        parameters_equ.update({'C/O': retrieval_object.params_dict['C/O'],
+                        'Fe/H': retrieval_object.params_dict['C/H'],
+                        'log_C12_13_ratio': retrieval_object.params_dict['log_12CO/13CO'],
+                        'log_O16_18_ratio': retrieval_object.params_dict['log_H2O/H2(18)O'],
+                        'log_O16_17_ratio': retrieval_object.params_dict['log_12CO/C17O']})
+        parameters_equ = Parameters({}, parameters_equ)
+        parameters_equ.param_priors['log_l']=[-3,0]
+        retrieval_equ = Retrieval(target=retrieval_object.target,parameters=parameters_equ, 
+                                  output_name=retrieval_object.output_name,
+                                chemistry='equchem',PT_type=retrieval_object.PT_type)
+        retrieval_equ.model_object=pRT_spectrum(retrieval_equ)
+        plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
+        suffix='_eq'
 
     if 'retrieval_object2' in kwargs: # compare two retrievals
         prefix=''
@@ -991,7 +1045,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,**kwargs):
     ax.tick_params(labelsize=fs)
     ax.set_xlabel('VMR', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)
-
+    fig.tight_layout()
     fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
     plt.close()
 
