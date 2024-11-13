@@ -153,15 +153,13 @@ if BD3!=None: # compare freechem, equchem, quequchem of same object
     retrieval3.evaluate(makefigs=False)
     legend_labels=[retrieval.chemistry,retrieval2.chemistry,retrieval3.chemistry]
     figs.compare_retrievals(retrieval,retrieval2,retrieval_object3=retrieval3,legend_labels=legend_labels)
-    molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
-    figs.VMR_plot(retrieval,retrieval_object2=retrieval2,retrieval_object3=retrieval3,molecules=molecules)
+    figs.VMR_plot(retrieval,retrieval_object2=retrieval2,retrieval_object3=retrieval3)
 
 else: # compare freechem, equchem of same object or freechem of two different objects
     figs.compare_retrievals(retrieval,retrieval2)  
     chems=[retrieval.chemistry,retrieval2.chemistry]
     if 'equchem' in chems or 'quequchem' in chems:
-        molecules=['H2','He','H2O','H2(18)O','12CO','13CO','CH4','NH3']
-        figs.VMR_plot(retrieval,retrieval_object2=retrieval2,molecules=molecules)
+        figs.VMR_plot(retrieval,retrieval_object2=retrieval2)
     else: # compare two freechem retrievals
         figs.ratios_cornerplot(retrieval,retrieval_object2=retrieval2)
         molecules=['13CO','HF','H2S','H2(18)O','CH4']
