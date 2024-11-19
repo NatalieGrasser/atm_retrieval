@@ -172,7 +172,7 @@ class Retrieval:
      
     def PMN_analyse(self):
         post=pathlib.Path(f'{self.output_dir}/{self.callback_label}posterior.npy')
-        if post.exists():
+        if post.exists() and getpass.getuser() == "natalie": # save time on my laptop
             self.posterior=np.load(post)
         else:
             analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
