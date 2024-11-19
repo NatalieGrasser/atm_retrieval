@@ -171,17 +171,21 @@ class Retrieval:
             figs.VMR_plot(self)
      
     def PMN_analyse(self):
-        analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
-                                        outputfiles_basename=f'{self.output_dir}/{self.prefix}')  # set up analyzer object
-        stats = analyzer.get_stats()
-        self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
-        self.posterior = self.posterior[:,:-1] # shape 
-        np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
-        self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
-        if self.prefix=='pmn_':
-            self.lnZ = stats['nested importance sampling global log-evidence']
-        else: # when doing exclusion retrievals
-            self.lnZ_ex = stats['nested importance sampling global log-evidence']
+        post=pathlib.Path(f'{self.output_dir}/{self.callback_label}posterior.npy')
+        if post.exists():
+            self.posterior=np.load(post)
+        else:
+            analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
+                                            outputfiles_basename=f'{self.output_dir}/{self.prefix}')  # set up analyzer object
+            stats = analyzer.get_stats()
+            self.posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
+            self.posterior = self.posterior[:,:-1] # shape 
+            np.save(f'{self.output_dir}/{self.callback_label}posterior.npy',self.posterior)
+            self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
+            if self.prefix=='pmn_':
+                self.lnZ = stats['nested importance sampling global log-evidence']
+            else: # when doing exclusion retrievals
+                self.lnZ_ex = stats['nested importance sampling global log-evidence']
 
     def get_quantiles(self,posterior,flat=False):
         if flat==False: # input entire posterior of all retrieved parameters
@@ -239,8 +243,6 @@ class Retrieval:
         if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
             with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
                 pickle.dump(self.params_dict,file)
-            with open(f'{self.output_dir}/final_posterior.pickle','wb') as file:
-                pickle.dump(self.posterior,file)
             np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
         return self.params_dict,self.model_flux
@@ -253,13 +255,11 @@ class Retrieval:
             bounds_array.append(bounds)
         bounds_array=np.array(bounds_array)
 
-        ratios=pathlib.Path('ratios_posterior.pickle')
-        temp_dist=pathlib.Path('temperature_dist.pickle')
+        ratios=pathlib.Path(f'{self.output_dir}/ratios_posterior.npy')
+        temp_dist=pathlib.Path(f'{self.output_dir}/temperature_dist.npy')
         if ratios.exists() and temp_dist.exists():
-            with open(ratios,'rb') as ratios:
-                self.ratios_posterior=pickle.load(ratios)
-            with open(temp_dist,'rb') as temp_dist:
-                self.temp_dist=pickle.load(temp_dist)
+            self.ratios_posterior=np.load(ratios)
+            self.temp_dist=np.load(temp_dist)
             
         elif self.chemistry in ['equchem','quequchem']:
 
@@ -287,13 +287,10 @@ class Retrieval:
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
 
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
-                with open(f'{self.output_dir}/ratios_posterior.pickle','wb') as file:
-                    pickle.dump(self.ratios_posterior,file)
-                with open(f'{self.output_dir}/temperature_dist.pickle','wb') as file:
-                    pickle.dump(self.temp_dist,file)
+                np.save(f'{self.output_dir}/ratios_posterior.npy',self.ratios_posterior)
+                np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
 
         elif self.chemistry=='freechem':
-
 
             for m1,m2 in [['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]: # isotope ratios    
                 p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
@@ -342,10 +339,8 @@ class Retrieval:
             self.params_dict['C/H_err']=(minus_err,plus_err)
 
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
-                with open(f'{self.output_dir}/ratios_posterior.pickle','wb') as file:
-                    pickle.dump(self.ratios_posterior,file)
-                with open(f'{self.output_dir}/temperature_dist.pickle','wb') as file:
-                    pickle.dump(self.temp_dist,file)
+                np.save(f'{self.output_dir}/ratios_posterior.npy',self.ratios_posterior)
+                np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',makefigs=True):
