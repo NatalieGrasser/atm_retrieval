@@ -216,6 +216,9 @@ class Retrieval:
                 for det in range(self.n_dets):
                     self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
 
+            # get isotope and element ratios and save them in final params dict
+            self.get_ratios()
+
         else:
                 
             # make dict of constant params + evaluated params + their errors
