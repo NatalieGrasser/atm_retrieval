@@ -210,11 +210,12 @@ class Retrieval:
             # create final spectrum
             self.model_object=pRT_spectrum(self)
             self.model_flux0=self.model_object.make_spectrum()
+            self.model_flux=np.zeros_like(self.model_flux0)
             phi_ij=self.params_dict['phi_ij']
             for order in range(self.n_orders):
                 for det in range(self.n_dets):
                     self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
-                    
+
         else:
                 
             # make dict of constant params + evaluated params + their errors
