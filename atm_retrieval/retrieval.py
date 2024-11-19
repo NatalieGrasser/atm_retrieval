@@ -201,49 +201,64 @@ class Retrieval:
         return medians,minus_err,plus_err
 
     def get_params_and_spectrum(self): 
-        
-        # make dict of constant params + evaluated params + their errors
-        self.params_dict=self.parameters.constant_params.copy() # initialize dict with constant params
-        medians,minus_err,plus_err=self.get_quantiles(self.posterior)
 
-        for i,key in enumerate(self.parameters.param_keys):
-            self.params_dict[key]=medians[i] # add median of evaluated params (more robust than bestfit)
-            self.parameters.params[key]=medians[i]
+        final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')
+        if final_dict.exists():
+            with open(final_dict,'rb') as file:
+                self.params_dict=pickle.load(file)
+
+            # create final spectrum
+            self.model_object=pRT_spectrum(self)
+            self.model_flux0=self.model_object.make_spectrum()
+            phi_ij=self.params_dict['phi_ij']
+            for order in range(self.n_orders):
+                for det in range(self.n_dets):
+                    self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
+                    
+        else:
+                
+            # make dict of constant params + evaluated params + their errors
+            self.params_dict=self.parameters.constant_params.copy() # initialize dict with constant params
+            medians,minus_err,plus_err=self.get_quantiles(self.posterior)
+
+            for i,key in enumerate(self.parameters.param_keys):
+                self.params_dict[key]=medians[i] # add median of evaluated params (more robust than bestfit)
+                self.parameters.params[key]=medians[i]
+                
+            # add errors in a different loop to avoid messing up order of params (needed later for indexing)
+            for i,key in enumerate(self.parameters.param_keys):
+                self.params_dict[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
+                #self.params_dict[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
+
+            # create final spectrum
+            self.model_object=pRT_spectrum(self)
+            self.model_flux0=self.model_object.make_spectrum()
             
-        # add errors in a different loop to avoid messing up order of params (needed later for indexing)
-        for i,key in enumerate(self.parameters.param_keys):
-            self.params_dict[f'{key}_err']=(minus_err[i],plus_err[i]) # add errors of evaluated params
-            #self.params_dict[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
+            # get isotope and element ratios and save them in final params dict
+            self.get_ratios()
 
-        # create final spectrum
-        self.model_object=pRT_spectrum(self)
-        self.model_flux0=self.model_object.make_spectrum()
-        
-        # get isotope and element ratios and save them in final params dict
-        self.get_ratios()
+            # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
+            self.log_likelihood = self.LogLike(self.model_flux0, self.Cov)
+            self.params_dict['phi_ij']=self.LogLike.phi
+            self.params_dict['s2_ij']=self.LogLike.s2
+            if self.callback_label=='final_':
+                self.params_dict['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
+                self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
 
-        # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
-        self.log_likelihood = self.LogLike(self.model_flux0, self.Cov)
-        self.params_dict['phi_ij']=self.LogLike.phi
-        self.params_dict['s2_ij']=self.LogLike.s2
-        if self.callback_label=='final_':
-            self.params_dict['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
-            self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
+            self.model_flux=np.zeros_like(self.model_flux0)
+            phi_ij=self.params_dict['phi_ij']
+            for order in range(self.n_orders):
+                for det in range(self.n_dets):
+                    self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
 
-        self.model_flux=np.zeros_like(self.model_flux0)
-        phi_ij=self.params_dict['phi_ij']
-        for order in range(self.n_orders):
-            for det in range(self.n_dets):
-                self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
+            spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
+            spectrum[:,0]=self.data_wave.flatten()
+            spectrum[:,1]=self.model_flux.flatten()
 
-        spectrum=np.full(shape=(2048*7*3,2),fill_value=np.nan)
-        spectrum[:,0]=self.data_wave.flatten()
-        spectrum[:,1]=self.model_flux.flatten()
-
-        if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
-            with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
-                pickle.dump(self.params_dict,file)
-            np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
+            if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
+                with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
+                    pickle.dump(self.params_dict,file)
+                np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
         return self.params_dict,self.model_flux
 
