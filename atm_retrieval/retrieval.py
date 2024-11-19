@@ -236,9 +236,11 @@ class Retrieval:
         spectrum[:,0]=self.data_wave.flatten()
         spectrum[:,1]=self.model_flux.flatten()
 
-        if self.callback_label=='final_' and getpass.getuser() == "grasser": # when runnig from LEM
+        if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
             with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
                 pickle.dump(self.params_dict,file)
+            with open(f'{self.output_dir}/final_posterior.pickle','wb') as file:
+                pickle.dump(self.posterior,file)
             np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
         return self.params_dict,self.model_flux
@@ -250,8 +252,16 @@ class Retrieval:
             bounds=self.parameters.param_priors[key]
             bounds_array.append(bounds)
         bounds_array=np.array(bounds_array)
-        
-        if self.chemistry in ['equchem','quequchem']:
+
+        ratios=pathlib.Path('ratios_posterior.pickle')
+        temp_dist=pathlib.Path('temperature_dist.pickle')
+        if ratios.exists() and temp_dist.exists():
+            with open(ratios,'rb') as ratios:
+                self.ratios_posterior=pickle.load(ratios)
+            with open(temp_dist,'rb') as temp_dist:
+                self.temp_dist=pickle.load(temp_dist)
+            
+        elif self.chemistry in ['equchem','quequchem']:
 
             for ratio in ['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio']:
                 p=self.posterior[:,list(self.parameters.params).index(f'{ratio}')]
@@ -260,7 +270,6 @@ class Retrieval:
                 else:
                     ratios_posterior=p
             self.ratios_posterior=ratios_posterior.T
-            del ratios_posterior # or in locals() won't work when loading another retrieval
 
             stop=10
             temperature_distribution=[] # for each of the n_atm_layers
@@ -277,7 +286,15 @@ class Retrieval:
                     break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
 
+            if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
+                with open(f'{self.output_dir}/ratios_posterior.pickle','wb') as file:
+                    pickle.dump(self.ratios_posterior,file)
+                with open(f'{self.output_dir}/temperature_dist.pickle','wb') as file:
+                    pickle.dump(self.temp_dist,file)
+
         elif self.chemistry=='freechem':
+
+
             for m1,m2 in [['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]: # isotope ratios    
                 p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
                 p2=self.posterior[:,list(self.parameters.params).index(f'log_{m2}')]
@@ -323,6 +340,12 @@ class Retrieval:
             median,minus_err,plus_err=self.get_quantiles(CH_distribution,flat=True)
             self.params_dict['C/H']=median
             self.params_dict['C/H_err']=(minus_err,plus_err)
+
+            if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
+                with open(f'{self.output_dir}/ratios_posterior.pickle','wb') as file:
+                    pickle.dump(self.ratios_posterior,file)
+                with open(f'{self.output_dir}/temperature_dist.pickle','wb') as file:
+                    pickle.dump(self.temp_dist,file)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',makefigs=True):
