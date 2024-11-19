@@ -37,7 +37,8 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     if 'ax' in kwargs:
         ax=kwargs.get('ax')
     else:
-        fig,ax=plt.subplots(2,1,figsize=(9.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
+        fig,ax=plt.subplots(2,1,figsize=(10,2.5),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
+        #fig,ax=plt.subplots(2,1,figsize=(9.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
     for order in range(7):
         # add error for scale
@@ -57,7 +58,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
             ax[1].plot(wave[order,det],flux[order,det]-flux_m[order,det],lw=0.8,c=retrieval_object.color1,label='residuals')
             if order==0 and det==0:
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
-                        mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
+                        #mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
                         Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label='Bestfit')]
                         #Line2D([0], [0], color=retrieval_object.color2, linewidth=2,label='Residuals')]
                 ax[0].legend(handles=lines,fontsize=fs) # to only have it once
@@ -75,7 +76,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
 
     if inset==True:
         ord=5 
-        axins = ax[0].inset_axes([0,-1.3,1,0.8])
+        axins = ax[0].inset_axes([0,-1.3,1,0.75]) # left, bottom, width, height
         for det in range(3):
             lower=flux[ord,det]-err[ord,det]*retrieval_object.params_dict['s2_ij'][ord,det]
             upper=flux[ord,det]+err[ord,det]*retrieval_object.params_dict['s2_ij'][ord,det]
@@ -650,6 +651,8 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
     if retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry=='freechem':
         only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
                     'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
+
+        only_params=['vsini','log_g','log_H2O','log_12CO','log_13CO','log_CH4','log_HF','log_H2(18)O','log_H2S']
         
         labels=list(retrieval_object1.parameters.param_mathtext.values())
         indices=[]
@@ -776,7 +779,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
     fig.savefig(f'{comparison_dir}/cornerplot_{num}.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=50):
+def compare_two_CCFs(retrieval_object1,retrieval_object2,molecules,noiserange=100):
 
     RVs=np.arange(-500,500,1) # km/s
     comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
@@ -932,8 +935,18 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
     alpha=0.6 if 'retrieval_object2' in kwargs or comp_equ==True else 1
     legend_labels=0
     xmin,xmax=1e-11,1.3
+    chemleg=[] # legend for chemistry
 
     def plot_VMRs(retr_obj,ax,ax2):
+        if retr_obj.chemistry=='freechem':
+            linestyle='dashed'
+            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.5,label='Free'))
+        elif retr_obj.chemistry=='equchem':
+            linestyle='solid'
+            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.2,label='Equ'))
+        elif retr_obj.chemistry=='quequchem':
+            linestyle='dotted'
+            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.2,label='Quench'))
         mass_fractions=retr_obj.model_object.mass_fractions
         MMW=retr_obj.model_object.MMW
         params=retr_obj.parameters.params
@@ -944,14 +957,9 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
             color=species_info.loc[species_info["name"]==species]['color'].values[0]
             if retr_obj.chemistry=='freechem':
                 VMR=mass_fractions[name]*MMW/mass
-                label=label if legend_labels==0 else '_nolegend_'
-                linestyle='dashed'
-                ax.plot(VMR,pressure,label=label,linestyle='dashed',c=color)
+                label=label if legend_labels==0 else '_nolegend_' 
+                ax.plot(VMR,pressure,label=label,linestyle=linestyle,c=color)
             elif retr_obj.chemistry in ['equchem','quequchem']:
-                if retr_obj.chemistry=='equchem':
-                    linestyle='solid'
-                if retr_obj.chemistry=='quequchem':
-                    linestyle='dotted'
                 if species not in ['H2(18)O','13CO','C18O','C17O']:
                     VMR=mass_fractions[name]*MMW/mass
                     label=label if legend_labels==0 else '_nolegend_'
@@ -1014,7 +1022,6 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
                                 chemistry='equchem',PT_type=retrieval_object.PT_type)
         retrieval_equ.model_object=pRT_spectrum(retrieval_equ)
         plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
-        suffix='_eq'
 
     if 'retrieval_object2' in kwargs: # compare two retrievals
         prefix=''
@@ -1032,11 +1039,15 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retrieval_object3,ax=ax,ax2=ax2)
 
-    leg=ax.legend(fontsize=fs*0.8)
+    leg=ax.legend(fontsize=fs*0.8,loc='lower left')
     for lh in leg.legend_handles:
         lh.set_alpha(1)
     for line in leg.get_lines():
         line.set_linestyle('-')
+    ax.add_artist(leg)
+    if comp_equ==True:
+        leg2=ax.legend(handles=chemleg,fontsize=fs*0.8,loc='upper left')
+        ax.add_artist(leg2)
     
     ax2.axis('off')
     ax2.set_facecolor('none')
@@ -1049,6 +1060,47 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
     fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
     plt.close()
 
+def CCFs_molecules(retrieval_object1,retrieval_object2,molecules,noiserange=100):
+
+    RVs=np.arange(-500,500,1) # km/s
+    comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+
+    fig,ax=plt.subplots(len(molecules),1,figsize=(5,len(molecules)*1.5),dpi=200)
+    for i in range(len(molecules)):
+        ax[i].axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+        ax[i].set_xlim(np.min(RVs),np.max(RVs))
+        ax[i].axvline(x=0,color='k',lw=0.6,alpha=0.3)
+        ax[i].axhline(y=0,color='k',lw=0.6,alpha=0.3)
+
+    for i,molecule in enumerate(molecules):
+
+        CCF_norm1=retrieval_object1.CCF_list[i]
+        ACF_norm1=retrieval_object1.ACF_list[i]
+        SNR1=CCF_norm1[np.where(RVs==0)[0][0]]
+        CCF_norm2=retrieval_object2.CCF_list[i]
+        ACF_norm2=retrieval_object2.ACF_list[i]
+        SNR2=CCF_norm2[np.where(RVs==0)[0][0]]
+
+        ax[i].plot(RVs,CCF_norm1,color=retrieval_object1.color1,label=f'{retrieval_object1.target.name}')
+        ax[i].plot(RVs,ACF_norm1,color=retrieval_object1.color1,linestyle='dashed',alpha=0.5)
+        ax[i].plot(RVs,CCF_norm2,color=retrieval_object2.color1,label=f'{retrieval_object2.target.name}')
+        ax[i].plot(RVs,ACF_norm2,color=retrieval_object2.color1,linestyle='dashed',alpha=0.5)
+        ax[i].set_ylabel('S/N')
+        molecule_label=str(retrieval_object1.parameters.param_mathtext[f'log_{molecule}'][4:]) # remove log_
+        ax[i].text(0.05, 0.9, molecule_label,transform=ax[i].transAxes,fontsize=14,verticalalignment='top')
+
+    lines = [Line2D([0], [0], color=retrieval_object1.color1,linewidth=2,label=f'{retrieval_object1.target.name}'),
+                 Line2D([0], [0], color=retrieval_object2.color1,linewidth=2,label=f'{retrieval_object2.target.name}'),
+                 Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
+                 Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
+    ax[0].legend(handles=lines,fontsize=9,loc='upper right')
+    ax[len(molecules)-1].set_xlabel(r'$v_{\rm rad}$ (km/s)')
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0, hspace=0)
+    filename=f'CCFs_{len(molecules)}.pdf'
+    fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
+    plt.close()
 
 
 

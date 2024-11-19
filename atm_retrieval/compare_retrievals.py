@@ -24,6 +24,8 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
 # template: python3 compare_retrievals.py BD1 chem1 PT1 Nlive1 tol1 BD2 chem2 PT2 Nlive2 tol2
 # example: python3 compare_retrievals.py 2M0355 freechem PTgrad 400 0.5 2M1425 freechem PTgrad 400 0.5
 # example: python3 compare_retrievals.py 2M0355 freechem PTgrad 400 0.5 2M0355 equchem PTgrad 400 0.5 2M0355 quequchem PTgrad 400 0.5
+# example: python3 compare_retrievals.py 2M1425 freechem PTgrad 400 0.5 2M1425 equchem PTgrad 400 0.5 2M1425 quequchem PTgrad 400 0.5
+
 # PT, Nlive, tol must be same for both
 BD1=sys.argv[1]
 chem1 = sys.argv[2]
