@@ -319,7 +319,7 @@ class Retrieval:
             self.VMR_dict={}
             for molec in VMRs[0].keys():
                 vmr_list=[]
-                for i in range(len(VMRs)):
+                for i in range(len(self.posterior)):
                     vmr_list.append(VMRs[i][molec])
                 self.VMR_dict[molec]=vmr_list # reformat to make it easier to work with
 
