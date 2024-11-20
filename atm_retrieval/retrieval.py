@@ -276,9 +276,16 @@ class Retrieval:
 
         ratios=pathlib.Path(f'{self.output_dir}/ratios_posterior.npy')
         temp_dist=pathlib.Path(f'{self.output_dir}/temperature_dist.npy')
-        if ratios.exists() and temp_dist.exists():
+        if ratios.exists() and temp_dist.exists() and self.chemistry=='freechem':
             self.ratios_posterior=np.load(ratios)
             self.temp_dist=np.load(temp_dist)
+
+        elif ratios.exists() and temp_dist.exists() and VMR_dicts.exists() and self.chemistry in ['equchem','quequchem']:
+            VMR_dicts=pathlib.Path(f'{self.output_dir}/VMR_dicts.pickle')
+            self.ratios_posterior=np.load(ratios)
+            self.temp_dist=np.load(temp_dist)
+            with open(VMR_dicts,'rb') as file:
+                self.VMR_dicts=pickle.load(file)
             
         elif self.chemistry in ['equchem','quequchem']:
 
@@ -292,12 +299,14 @@ class Retrieval:
 
             stop=10
             temperature_distribution=[] # for each of the n_atm_layers
+            self.VMR_dicts=[]
             for j,sample in enumerate(self.posterior):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
                 self.parameters(cube)
                 model_object=pRT_spectrum(self)
                 temperature_distribution.append(np.array(model_object.temperature))
+                self.VMR_dicts.append(model_object.temperature.VMRs)
                 # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
                 if getpass.getuser()=="natalie" and j>stop: 
                     remaining=len(self.posterior)-(j+1)
@@ -308,6 +317,8 @@ class Retrieval:
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
                 np.save(f'{self.output_dir}/ratios_posterior.npy',self.ratios_posterior)
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
+                with open(f'{self.output_dir}/VMR_dicts.pickle','wb') as file:
+                    pickle.dump(VMR_dicts,file)
 
         elif self.chemistry=='freechem':
 
@@ -362,7 +373,7 @@ class Retrieval:
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
-                 callback_label='final_',makefigs=True):
+                 callback_label='final_',makefigs=True,del_atm=True):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.params_dict,self.model_flux=self.get_params_and_spectrum() # all params + scaling phi_ij + s2_ij
@@ -371,6 +382,8 @@ class Retrieval:
                 figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
             else:
                 figs.summary_plot(self)
+        if del_atm==True and getpass.getuser() == "natalie":
+            del self.atmosphere_objects # to avoid laptop crashing..
         
     def cross_correlation(self,molecules,noiserange=100): # can only be run after evaluate()
 

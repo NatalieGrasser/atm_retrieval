@@ -652,7 +652,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
                     'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
 
-        only_params=['vsini','log_g','log_H2O','log_12CO','log_13CO','log_CH4','log_HF','log_H2(18)O','log_H2S']
+        only_params=['log_g','log_H2O','log_12CO','log_13CO','log_CH4','log_HF','log_H2(18)O','log_H2S']
         
         labels=list(retrieval_object1.parameters.param_mathtext.values())
         indices=[]
@@ -662,6 +662,11 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         posterior1=np.array([retrieval_object1.posterior[:,i] for i in indices]).T
         posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
         labels=np.array([labels[i] for i in indices])
+
+        # get [C/H] from other posterior
+        posterior1=np.hstack([posterior1,retrieval_object1.ratios_posterior[:,1:2]]) # only C/H
+        posterior2=np.hstack([posterior2,retrieval_object2.ratios_posterior[:,1:2]]) # only C/H
+        labels=np.append(labels,'[C/H]')
 
     elif retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry in ['equchem','quequchem']:
 
@@ -1102,6 +1107,92 @@ def CCFs_molecules(retrieval_object1,retrieval_object2,molecules,noiserange=100)
     fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
     plt.close()
 
-
-
+def compare_metall_logg(retrieval_object1,retrieval_object2,fs=12,only_params=['log_g'],**kwargs):
     
+    labels=list(retrieval_object1.parameters.param_mathtext.values())
+    indices=[]
+    for key in only_params:
+        idx=list(retrieval_object1.parameters.params).index(key)
+        indices.append(idx)
+    posterior1=np.array([retrieval_object1.posterior[:,i] for i in indices]).T
+    posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
+    labels=np.array([labels[i] for i in indices])
+
+    total_posterior1=np.hstack([posterior1,retrieval_object1.ratios_posterior[:,1:2]]) # only C/H
+    total_posterior2=np.hstack([posterior2,retrieval_object2.ratios_posterior[:,1:2]]) # only C/H
+    labels=np.append(labels,'[C/H]')
+
+    figsize=4
+    fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
+
+    def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
+        fig = corner.corner(posterior, 
+                        labels=labels, 
+                        title_kwargs={'fontsize': fs},
+                        label_kwargs={'fontsize': fs*0.8},
+                        color=retr_obj.color1,
+                        linewidths=0.5,
+                        fill_contours=True,
+                        quantiles=[0.16,0.5,0.84],
+                        title_quantiles=[0.16,0.5,0.84],
+                        show_titles=True,
+                        plot_contours=True,
+                        hist_kwargs={'density': False,
+                                    'fill': True,
+                                    'alpha': 0.5,
+                                    'edgecolor': 'k',
+                                    'linewidth': 1.0},
+                        fig=fig,
+                        quiet=True)
+        
+        titles = [axi.title.get_text() for axi in fig.axes]
+        if getfig:
+            return fig,titles
+        else:
+            return titles
+        
+    fig,titles1=plot_corner(total_posterior1,retrieval_object1,labels,fig,getfig=True)
+    titles2=plot_corner(total_posterior2,retrieval_object2,labels,fig)
+    enum=[0,1]
+    titles_list=[titles1,titles2]
+    colors_list=[retrieval_object1.color1,retrieval_object2.color1]
+
+    for i, axi in enumerate(fig.axes):
+        fig.axes[i].title.set_visible(False) # remove original titles
+        fig.axes[i].xaxis.label.set_fontsize(fs)
+        fig.axes[i].yaxis.label.set_fontsize(fs)
+        fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
+        fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
+        
+    for run,titles_list,color in zip(enum,titles_list,colors_list):
+        # add new titles
+        for j, title in enumerate(titles_list):
+            if title == '':
+                continue
+            
+            # first only the name of the parameter
+            s = title.split('=')
+            if len(enum)==2:
+                y_title=1.45
+                y=y_title-(0.2*(run+1))
+            elif len(enum)==3:
+                y_title=1.47
+                y=y_title-0.12-(0.13*(run+0.2))
+            if run == 0: # first retrieval, add parameter name
+                fig.axes[j].text(0.5, y_title, s[0], fontsize=fs,
+                                ha='center', va='bottom',
+                                transform=fig.axes[j].transAxes,
+                                color='k',
+                                weight='normal')
+            # add parameter value with custom color and spacing
+            fig.axes[j].text(0.5, y, s[1], fontsize=fs,
+                            ha='center', va='bottom',
+                            transform=fig.axes[j].transAxes,
+                            color=color,
+                            weight='normal')
+
+    plt.subplots_adjust(wspace=0, hspace=0)
+    comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(f'{comparison_dir}/cornerplot_ratios_logg.pdf',bbox_inches="tight",dpi=200)
+    plt.close()

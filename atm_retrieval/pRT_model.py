@@ -67,6 +67,7 @@ class pRT_spectrum:
             # update mass_fractions with isotopologue ratios
             self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) 
             self.MMW = self.abunds['MMW']
+            self.VMRs = self.get_VMRs(self.mass_fractions)
 
         self.spectrum_orders=[]
         self.n_orders=retrieval_object.n_orders
@@ -88,6 +89,16 @@ class pRT_spectrum:
                 mass_fractions[species][:idx]=quenched_fraction
         return mass_fractions
 
+    def get_VMRs(self,mass_fractions):
+        species_info = pd.read_csv(os.path.join('species_info.csv'))
+        VMR_dict={}
+        MMW=self.MMW
+        for pRT_name in mass_fractions.keys():
+            mass=species_info.loc[species_info["pRT_name"]==pRT_name]['mass'].values[0]
+            name=species_info.loc[species_info["pRT_name"]==pRT_name]['name'].values[0]
+            VMR_dict[name]=mass_fractions[pRT_name]*MMW/mass
+        return VMR_dict
+
     def get_abundance_dict(self,species,abunds): # does not inlcude isotopes
         mass_fractions = {}
         for specie in species:
@@ -102,7 +113,7 @@ class pRT_spectrum:
             elif specie=='NH3_coles_main_iso':
                 mass_fractions[specie] = abunds['NH3']
             elif specie=='HF_main_iso':
-                mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['HF'] not in pRT chem equ table
+                mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['HF'] not in pRT chem equ table, include here
             elif specie=='H2S_ExoMol_main_iso':
                 mass_fractions[specie] = abunds['H2S']
             elif specie=='OH_main_iso':
