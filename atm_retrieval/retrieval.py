@@ -318,7 +318,7 @@ class Retrieval:
                 np.save(f'{self.output_dir}/ratios_posterior.npy',self.ratios_posterior)
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
                 with open(f'{self.output_dir}/VMR_dicts.pickle','wb') as file:
-                    pickle.dump(VMR_dicts,file)
+                    pickle.dump(self.VMR_dicts,file)
 
         elif self.chemistry=='freechem':
 
