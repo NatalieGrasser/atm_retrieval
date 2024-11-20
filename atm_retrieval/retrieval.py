@@ -306,7 +306,7 @@ class Retrieval:
                 self.parameters(cube)
                 model_object=pRT_spectrum(self)
                 temperature_distribution.append(np.array(model_object.temperature))
-                self.VMR_dicts.append(model_object.temperature.VMRs)
+                self.VMR_dicts.append(model_object.VMRs)
                 # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
                 if getpass.getuser()=="natalie" and j>stop: 
                     remaining=len(self.posterior)-(j+1)
