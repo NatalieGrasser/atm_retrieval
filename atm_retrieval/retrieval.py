@@ -276,16 +276,16 @@ class Retrieval:
 
         ratios=pathlib.Path(f'{self.output_dir}/ratios_posterior.npy')
         temp_dist=pathlib.Path(f'{self.output_dir}/temperature_dist.npy')
-        VMR_dicts=pathlib.Path(f'{self.output_dir}/VMR_dicts.pickle')
+        VMR_dict=pathlib.Path(f'{self.output_dir}/VMR_dict.pickle')
         if ratios.exists() and temp_dist.exists() and self.chemistry=='freechem':
             self.ratios_posterior=np.load(ratios)
             self.temp_dist=np.load(temp_dist)
 
-        elif ratios.exists() and temp_dist.exists() and VMR_dicts.exists() and self.chemistry in ['equchem','quequchem']:
+        elif ratios.exists() and temp_dist.exists() and VMR_dict.exists() and self.chemistry in ['equchem','quequchem']:
             self.ratios_posterior=np.load(ratios)
             self.temp_dist=np.load(temp_dist)
-            with open(VMR_dicts,'rb') as file:
-                self.VMR_dicts=pickle.load(file)
+            with open(VMR_dict,'rb') as file:
+                self.VMR_dict=pickle.load(file)
             
         elif self.chemistry in ['equchem','quequchem']:
 
@@ -299,14 +299,16 @@ class Retrieval:
 
             stop=10
             temperature_distribution=[] # for each of the n_atm_layers
-            self.VMR_dicts=[]
+            #self.VMR_dicts=[]
+            VMRs=[]
             for j,sample in enumerate(self.posterior):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
                 self.parameters(cube)
                 model_object=pRT_spectrum(self)
                 temperature_distribution.append(np.array(model_object.temperature))
-                self.VMR_dicts.append(model_object.VMRs)
+                #self.VMR_dicts.append(model_object.VMRs)
+                VMRs.append(model_object.VMRs)
                 # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
                 if getpass.getuser()=="natalie" and j>stop: 
                     remaining=len(self.posterior)-(j+1)
@@ -314,11 +316,18 @@ class Retrieval:
                     break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
 
+            self.VMR_dict={}
+            for molec in VMRs[0].keys():
+                vmr_list=[]
+                for i in range(len(VMRs)):
+                    vmr_list.append(VMRs[i][molec])
+                self.VMR_dict[molec]=vmr_list # reformat to make it easier to work with
+
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
                 np.save(f'{self.output_dir}/ratios_posterior.npy',self.ratios_posterior)
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
-                with open(f'{self.output_dir}/VMR_dicts.pickle','wb') as file:
-                    pickle.dump(self.VMR_dicts,file)
+                with open(f'{self.output_dir}/VMR_dict.pickle','wb') as file:
+                    pickle.dump(self.VMR_dict,file)
 
         elif self.chemistry=='freechem':
 
