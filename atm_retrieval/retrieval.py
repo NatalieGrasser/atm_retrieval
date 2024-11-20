@@ -276,12 +276,12 @@ class Retrieval:
 
         ratios=pathlib.Path(f'{self.output_dir}/ratios_posterior.npy')
         temp_dist=pathlib.Path(f'{self.output_dir}/temperature_dist.npy')
+        VMR_dicts=pathlib.Path(f'{self.output_dir}/VMR_dicts.pickle')
         if ratios.exists() and temp_dist.exists() and self.chemistry=='freechem':
             self.ratios_posterior=np.load(ratios)
             self.temp_dist=np.load(temp_dist)
 
         elif ratios.exists() and temp_dist.exists() and VMR_dicts.exists() and self.chemistry in ['equchem','quequchem']:
-            VMR_dicts=pathlib.Path(f'{self.output_dir}/VMR_dicts.pickle')
             self.ratios_posterior=np.load(ratios)
             self.temp_dist=np.load(temp_dist)
             with open(VMR_dicts,'rb') as file:
