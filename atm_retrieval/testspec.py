@@ -34,12 +34,10 @@ if __name__ == "__main__":
 
    if getpass.getuser() == "natalie": # when testing from my laptop
       os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
-      from spectrum import Spectrum, convolve_to_resolution
       from target import Target
       from covariance import *
    elif getpass.getuser() == "grasser": # when running from LEM
       os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
-      from atm_retrieval.spectrum import Spectrum, convolve_to_resolution
       from atm_retrieval.target import Target
       from atm_retrieval.covariance import *
    
@@ -48,7 +46,6 @@ if __name__ == "__main__":
    from astropy import constants as const
    from astropy import units as u
    from astropy.coordinates import SkyCoord
-   from spectrum import Spectrum, convolve_to_resolution
    from scipy.ndimage import gaussian_filter
 
    # option to add correlated noise as command line argument
@@ -77,6 +74,24 @@ if __name__ == "__main__":
          for chemspec in chem_species:
             species.append(species_info.loc[chemspec,'pRT_name'])
       return species
+   
+   def convolve_to_resolution(in_wlen, in_flux, out_res, in_res=None):
+        from scipy.ndimage import gaussian_filter
+        if isinstance(in_wlen, u.Quantity):
+            in_wlen = in_wlen.to(u.nm).value
+        if in_res is None:
+            in_res = np.mean((in_wlen[:-1]/np.diff(in_wlen)))
+        # delta lambda of resolution element is FWHM of the LSF's standard deviation:
+        sigma_LSF = np.sqrt(1./out_res**2-1./in_res**2)/(2.*np.sqrt(2.*np.log(2.)))
+        spacing = np.mean(2.*np.diff(in_wlen)/(in_wlen[1:]+in_wlen[:-1]))
+
+        # Calculate the sigma to be used in the gauss filter in pixels
+        sigma_LSF_gauss_filter = sigma_LSF/spacing
+        out_flux = np.tile(np.nan, in_flux.shape)
+        nans = np.isnan(in_flux)
+        out_flux[~nans] = gaussian_filter(in_flux[~nans], sigma = sigma_LSF_gauss_filter, mode = 'reflect')
+ 
+        return out_flux
 
    def free_chemistry(line_species,params,n_atm_layers):
       species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -206,19 +221,19 @@ if __name__ == "__main__":
       v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
                      ra2000=coords.ra.value,dec2000=coords.dec.value,jd=2459885.5)
       wl_shifted= wl*(1.0+(test_parameters['rv']-v_bary)/const.c.to('km/s').value)
-      spec = Spectrum(flux, wl_shifted)
+      #spec = Spectrum(flux, wl_shifted)
       waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
-      spec = fastRotBroad(waves_even, spec.at(waves_even), test_parameters['epsilon_limb'], test_parameters['vsini'])
-      spec = Spectrum(spec, waves_even)
+      spec = np.interp(waves_even, wl_shifted, flux)
+      spec = fastRotBroad(waves_even, spec, test_parameters['epsilon_limb'], test_parameters['vsini'])
       spec = convolve_to_resolution(spec,100_000)
 
       #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
       resolution = int(1e6/lbl_opacity_sampling)
-      flux_broad=instr_broadening(spec.wavelengths*1e3,spec,out_res=resolution,in_res=500000)
+      flux_broad=instr_broadening(waves_even*1e3,spec,out_res=resolution,in_res=500000)
 
       # Interpolate/rebin onto the data's wavelength grid
       ref_wave = data_wave[order].flatten() # [nm]
-      flux = np.interp(ref_wave, spec.wavelengths*1e3, flux_broad) # pRT wavelengths from microns to nm
+      flux = np.interp(ref_wave, waves_even*1e3, flux_broad) # pRT wavelengths from microns to nm
 
       # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
       flux=flux.reshape(data_wave.shape[1],data_wave.shape[2])
