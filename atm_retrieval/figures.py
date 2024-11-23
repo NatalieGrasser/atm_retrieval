@@ -11,6 +11,7 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
 import numpy as np
 import corner
 import matplotlib.pyplot as plt
+from matplotlib import pyplot as plt, ticker as mticker
 from labellines import labelLines
 from matplotlib.lines import Line2D
 from scipy.interpolate import CubicSpline
@@ -240,7 +241,8 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     labelLines(ax.get_lines(),align=False,fontsize=fs*0.8,drop_label=True)
     
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
-    file=np.loadtxt('t1400g562nc_m0.0.dat')
+    #file=np.loadtxt('t1400g562nc_m0.0.dat')
+    file=np.loadtxt('t1600g562nc_m0.0.dat')
     pres=file[:,1] # bar
     temp=file[:,2] # K
     ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
@@ -316,9 +318,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         #lines = lines[:1]+[lines[-1]]+lines[1:-1] # move object2 to second position in legend instead of last
         xmin=np.nanmin([xmin,xmin2])
         xmax=np.nanmax([xmax,xmax2])
-        model_object2=pRT_spectrum(retrieval_object2,contribution=True)
-        model_object2.make_spectrum()
-        summed_contr2=np.nanmean(model_object2.contr_em_orders,axis=0) # average over all orders
+        summed_contr2=retrieval_object2.summed_contr
         contribution_plot2=summed_contr2/np.max(summed_contr2)*(xmax-xmin)+xmin
         ax.plot(contribution_plot2,retrieval_object2.model_object.pressure,linestyle='dashed',
                 lw=1.5,alpha=0.8,color=retrieval_object2.color2)
@@ -333,18 +333,14 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         xmin3,xmax3=plot_temperature(retrieval_object3,ax,object_label3)
         xmin=np.nanmin([xmin,xmin2,xmin3])
         xmax=np.nanmax([xmax,xmax2,xmax3])
-        model_object3=pRT_spectrum(retrieval_object3,contribution=True)
-        model_object3.make_spectrum()
-        summed_contr3=np.nanmean(model_object3.contr_em_orders,axis=0) # average over all orders
+        summed_contr3=retrieval_object3.summed_contr
         contribution_plot3=summed_contr3/np.max(summed_contr3)*(xmax-xmin)+xmin
         ax.plot(contribution_plot3,retrieval_object3.model_object.pressure,linestyle='dashed',
                 lw=1.5,alpha=0.8,color=retrieval_object3.color2)
         lines.append(Line2D([0], [0], color=retrieval_object3.color2, alpha=0.8,linewidth=1.5, 
                             linestyle='--',label=f'{retrieval_object3.target.name} contribution'))
 
-    model_object=pRT_spectrum(retrieval_object,contribution=True)
-    model_object.make_spectrum()
-    summed_contr=np.nanmean(model_object.contr_em_orders,axis=0) # average over all orders
+    summed_contr=retrieval_object.summed_contr    
     contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
     ax.plot(contribution_plot,retrieval_object.model_object.pressure,linestyle='dashed',
             lw=1.5,alpha=0.8,color=retrieval_object.color2)
@@ -364,7 +360,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             #lines.append(Line2D([0], [0], color=r.color2, alpha=0.8,linewidth=1.5, 
                             #linestyle='--',label=f'{l} cont.'))
             
-    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1400\,$K, log$\,g=4.75$'))
+    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1600\,$K, log$\,g=4.75$'))
     
     ax.legend(handles=lines,fontsize=fs)
     ax.tick_params(labelsize=fs)
@@ -991,9 +987,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
                         label=r'C$^{17}$O' if legend_labels==0 else '_nolegend_'
                         ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
 
-        model_object=pRT_spectrum(retr_obj,contribution=True)
-        model_object.make_spectrum()
-        summed_contr=np.nanmean(model_object.contr_em_orders,axis=0) # average over all orders
+        summed_contr=retr_obj.summed_contr
         contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
         ax2.plot(contribution_plot,np.log10(retr_obj.model_object.pressure)[::-1],
                     lw=1,alpha=alpha*0.5,color=retr_obj.color1,linestyle=linestyle)
@@ -1195,4 +1189,136 @@ def compare_metall_logg(retrieval_object1,retrieval_object2,fs=12,only_params=['
     comparison_dir=pathlib.Path(f'{retrieval_object1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(f'{comparison_dir}/cornerplot_ratios_logg.pdf',bbox_inches="tight",dpi=200)
+    plt.close()
+
+def VMR_plot_new(retrieval_object,molecules=['H2O','12CO','CH4','H2S'],fs=10,comp_equ=False,**kwargs):
+
+    #prefix=retrieval_object.callback_label if retrieval_object.callback_label=='final_' else ''
+    prefix=''
+    suffix=''
+    output_dir=retrieval_object.output_dir
+    fig,ax=plt.subplots(1,1,figsize=(5,3.5),dpi=200)
+    species_info = pd.read_csv(os.path.join('species_info.csv'))
+    alpha=0.6 if 'retrieval_object2' in kwargs or comp_equ==True else 1
+    legend_labels=0
+    xmin,xmax=1e-10,1e-2
+    chemleg=[] # legend for chemistry
+    pressure=retrieval_object.model_object.pressure
+
+    def plot_VMRs(retr_obj,ax,ax2):
+        
+        if retr_obj.chemistry=='freechem' and 'retrieval_object2' not in kwargs:
+            linestyle='dashed'
+            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.7,label='Free'))
+        elif retr_obj.chemistry=='freechem' and 'retrieval_object2' in kwargs:    
+            chemleg.append(Line2D([0], [0], marker='o',color='k',markerfacecolor='k',linewidth=2,alpha=0.7,label='Free'))
+        elif retr_obj.chemistry=='equchem':
+            linestyle='solid'
+            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.3,label='Equ'))
+        elif retr_obj.chemistry=='quequchem':
+            linestyle='dotted'
+            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.3,label='Quench'))
+
+        if retr_obj.chemistry=='freechem':
+            contribution_plot=retr_obj.summed_contr/np.max(retr_obj.summed_contr)*(xmax-xmin)+xmin
+            ax2.plot(contribution_plot,retr_obj.model_object.pressure[::-1],
+                    lw=1,alpha=0.3,color=retr_obj.color1,linestyle='dashdot')
+            ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
+            ax2.set_ylim(np.min(pressure),np.max(pressure))
+            contr_max=pressure[np.where(retr_obj.summed_contr==np.max(retr_obj.summed_contr))[0]]
+            ax2.set_yscale('log')
+
+        for species in molecules:
+            color=species_info.loc[species_info["name"]==species]['color'].values[0]
+            label=species_info.loc[species_info["name"]==species]['mathtext_name'].values[0]
+            if retr_obj.chemistry=='freechem':
+                label=label if legend_labels==0 else '_nolegend_' 
+                VMR=10**retr_obj.params_dict[f'log_{species}']
+                idx=list(retr_obj.parameters.params).index(f'log_{species}')
+                sm3,sm2,sm1,median,sp1,sp2,sp3 = 10**np.array(np.percentile(retr_obj.posterior[:,idx],[0.2,2.3,15.9,50.0,84.1,97.7,99.8], axis=-1))
+                if 'retrieval_object2' not in kwargs:
+                    ax.plot(np.ones_like(pressure)*VMR,pressure,label=label,linestyle=linestyle,c=color)
+                    ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.1) # 95% confidence interval
+                else: # plot only as point to avoid cluttering
+                    ax.scatter(VMR,contr_max, color=color,s=13)
+                    ax.plot([sm2,sp2],[contr_max,contr_max], color=color,lw=1.5)
+            elif retr_obj.chemistry in ['equchem','quequchem']:
+                label=label if legend_labels==0 else '_nolegend_'
+                if comp_equ==False:
+                    sm3,sm2,sm1,median,sp1,sp2,sp3=np.percentile(retr_obj.VMR_dict[species], [0.2,2.3,15.9,50.0,84.1,97.7,99.8], axis=0)
+                    ax.plot(median,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
+                    if retr_obj.chemistry=='equchem':
+                        ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.1) # 95% confidence interval
+                    elif retr_obj.chemistry=='quequchem':
+                        ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.05,hatch='x') # 95% confidence interval
+                else:
+                    ax.plot(retr_obj.model_object.VMRs[species],pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
+
+    
+    ax2 = ax.inset_axes([0,0,1,1]) # [x0, y0, width, height] , for emission contribution
+
+    plot_VMRs(retrieval_object,ax=ax,ax2=ax2)
+    legend_labels=1 if 'retrieval_object2' not in kwargs else 0 # only make legend labels once 
+
+    # compare freechem VMRs to equilibrium chemistry with other retrieved params remainig equal
+    if comp_equ==True:
+        if getpass.getuser() == "grasser": # when runnig from LEM
+            from atm_retrieval.retrieval import Retrieval
+            from atm_retrieval.parameters import Parameters
+        elif getpass.getuser() == "natalie": # when testing from my laptop
+            from retrieval import Retrieval
+            from parameters import Parameters
+
+        parameters_equ = retrieval_object.params_dict
+        parameters_equ.update({'C/O': retrieval_object.params_dict['C/O'],
+                        'Fe/H': retrieval_object.params_dict['C/H'],
+                        'log_C12_13_ratio': retrieval_object.params_dict['log_12CO/13CO'],
+                        'log_O16_18_ratio': retrieval_object.params_dict['log_H2O/H2(18)O'],
+                        'log_O16_17_ratio': retrieval_object.params_dict['log_12CO/C17O']})
+        parameters_equ = Parameters({}, parameters_equ)
+        parameters_equ.param_priors['log_l']=[-3,0]
+        retrieval_equ = Retrieval(target=retrieval_object.target,parameters=parameters_equ, 
+                                  output_name=retrieval_object.output_name,
+                                chemistry='equchem',PT_type=retrieval_object.PT_type)
+        retrieval_equ.model_object=pRT_spectrum(retrieval_equ)
+        plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
+
+    if 'retrieval_object2' in kwargs: # compare two retrievals
+        prefix=''
+        suffix='_2'
+        retrieval_object2=kwargs.get('retrieval_object2')
+        plt.gca().set_prop_cycle(None) # reset color cycle
+        plot_VMRs(retrieval_object2,ax=ax,ax2=ax2)
+        legend_labels=1
+        comparison_dir=pathlib.Path(f'{retrieval_object.output_dir}/comparison') # store output in separate folder
+        comparison_dir.mkdir(parents=True, exist_ok=True)
+        output_dir=comparison_dir
+
+    if 'retrieval_object3' in kwargs: # compare three retrievals
+        suffix='_3'
+        retrieval_object3=kwargs.get('retrieval_object3')
+        plt.gca().set_prop_cycle(None) # reset color cycle
+        plot_VMRs(retrieval_object3,ax=ax,ax2=ax2)
+
+    leg=ax.legend(fontsize=fs*0.8,ncol=int(len(molecules)/2),loc='lower left')
+    for lh in leg.legend_handles:
+        lh.set_alpha(1)
+    for line in leg.get_lines():
+        line.set_linestyle('-')
+    ax.add_artist(leg)
+    if comp_equ==True or 'retrieval_object2' in kwargs:
+        leg2=ax.legend(handles=chemleg,fontsize=fs*0.8,loc='upper left')
+        ax.add_artist(leg2)
+    
+    ax2.axis('off')
+    ax2.set_facecolor('none')
+    ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
+        ylim=(np.max(pressure),np.min(pressure)),xlim=(xmin,xmax))   
+    ax.tick_params(labelsize=fs)
+    ax.xaxis.set_major_locator(mticker.LogLocator(numticks=999))
+    ax.xaxis.set_minor_locator(mticker.LogLocator(numticks=999, subs="auto"))
+    ax.set_xlabel('VMR', fontsize=fs)
+    ax.set_ylabel('Pressure [bar]', fontsize=fs)
+    fig.tight_layout()
+    fig.savefig(f'{output_dir}/{prefix}VMR_plot{suffix}.pdf')
     plt.close()

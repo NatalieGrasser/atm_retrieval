@@ -207,10 +207,14 @@ class Retrieval:
             with open(final_dict,'rb') as file:
                 self.params_dict=pickle.load(file)
 
+            for key in self.parameters.param_keys:
+                self.parameters.params[key]=self.params_dict[key] # set parameters to retrieved values
+
             # create final spectrum
-            self.model_object=pRT_spectrum(self)
+            self.model_object=pRT_spectrum(self,contribution=True)
             self.model_flux0=self.model_object.make_spectrum()
             self.model_flux=np.zeros_like(self.model_flux0)
+            self.summed_contr=np.nanmean(self.model_object.contr_em_orders,axis=0) # average over all orders
             phi_ij=self.params_dict['phi_ij']
             for order in range(self.n_orders):
                 for det in range(self.n_dets):
@@ -227,7 +231,7 @@ class Retrieval:
 
             for i,key in enumerate(self.parameters.param_keys):
                 self.params_dict[key]=medians[i] # add median of evaluated params (more robust than bestfit)
-                self.parameters.params[key]=medians[i]
+                self.parameters.params[key]=medians[i] # set parameters to retrieved values
                 
             # add errors in a different loop to avoid messing up order of params (needed later for indexing)
             for i,key in enumerate(self.parameters.param_keys):
@@ -235,8 +239,9 @@ class Retrieval:
                 #self.params_dict[f'{key}_bf']=self.bestfit_params[i] # bestfit params with highest lnL (can differ from median, not as robust)
 
             # create final spectrum
-            self.model_object=pRT_spectrum(self)
+            self.model_object=pRT_spectrum(self,contribution=True)
             self.model_flux0=self.model_object.make_spectrum()
+            self.summed_contr=np.nanmean(self.model_object.contr_em_orders,axis=0) # average over all orders
             
             # get isotope and element ratios and save them in final params dict
             self.get_ratios()

@@ -113,7 +113,8 @@ class pRT_spectrum:
             elif specie=='NH3_coles_main_iso':
                 mass_fractions[specie] = abunds['NH3']
             elif specie=='HF_main_iso':
-                mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['HF'] not in pRT chem equ table, include here
+                #mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['HF'] not in pRT chem equ table, include here
+                mass_fractions[specie] = self.params['log_HF'] # add HF manually
             elif specie=='H2S_ExoMol_main_iso':
                 mass_fractions[specie] = abunds['H2S']
             elif specie=='OH_main_iso':

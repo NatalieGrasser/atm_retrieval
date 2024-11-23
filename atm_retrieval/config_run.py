@@ -66,7 +66,8 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                 'Fe/H': ([-1.5,1.5], r'[Fe/H]'), 
                 'log_C12_13_ratio': ([1,12], r'log $\mathrm{^{12}C/^{13}C}$'), 
                 'log_O16_18_ratio': ([1,12], r'log $\mathrm{^{16}O/^{18}O}$'), 
-                'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$')}
+                'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$'),
+                'log_HF':([-12,-1],r'log HF')}
             
     if chem=='quequchem': # quenched equilibrium chemistry
         chemistry={'C/O':([0,1], r'C/O'), 
@@ -76,7 +77,8 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                 'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$'),
                 'log_Pqu_CO_CH4': ([-6,2], r'log P$_{qu}$(CO,CH$_4$,H$_2$O)'),
                 'log_Pqu_NH3': ([-6,2], r'log P$_{qu}$(NH$_3$)'),
-                'log_Pqu_HCN': ([-6,2], r'log P$_{qu}$(HCN)')}  
+                'log_Pqu_HCN': ([-6,2], r'log P$_{qu}$(HCN)'),
+                'log_HF':([-12,-1],r'log HF')}  
         
     # if free chemistry, define VMRs
     if chem=='freechem': 
