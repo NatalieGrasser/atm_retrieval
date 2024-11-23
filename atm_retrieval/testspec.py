@@ -225,7 +225,7 @@ if __name__ == "__main__":
       waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
       spec = np.interp(waves_even, wl_shifted, flux)
       spec = fastRotBroad(waves_even, spec, test_parameters['epsilon_limb'], test_parameters['vsini'])
-      spec = convolve_to_resolution(spec,100_000)
+      spec = convolve_to_resolution(waves_even,spec,100_000)
 
       #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
       resolution = int(1e6/lbl_opacity_sampling)
