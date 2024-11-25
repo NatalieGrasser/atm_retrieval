@@ -153,7 +153,7 @@ class Retrieval:
         ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
         return ln_L
 
-    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=False):
+    def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=True):
         pymultinest.run(LogLikelihood=self.PMN_lnL,Prior=self.parameters,n_dims=self.parameters.n_params, 
                         outputfiles_basename=f'{self.output_dir}/{self.prefix}', 
                         verbose=True,const_efficiency_mode=True, sampling_efficiency = 0.5,

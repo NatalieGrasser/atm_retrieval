@@ -19,6 +19,7 @@ import matplotlib.patches as mpatches
 import matplotlib.ticker as ticker
 import warnings
 import pathlib
+import math
 import pandas as pd
 from petitRADTRANS import Radtrans
 warnings.filterwarnings("ignore", category=UserWarning) 
@@ -225,9 +226,12 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         ax=kwargs.get('ax')
     else:
         fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
-    cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
-    cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
-    cs_colors=['gold','goldenrod','peru','sandybrown']
+    #cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
+    #cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
+    #cs_colors=['gold','goldenrod','peru','sandybrown']
+    cloud_species = ['MgSiO3(c)', 'Fe(c)']
+    cloud_labels=['MgSiO$_3$(c)', 'Fe(c)']
+    cs_colors=['goldenrod','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
     for i,cs in enumerate(cloud_species):
@@ -648,7 +652,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
                     'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
 
-        only_params=['log_g','log_H2O','log_12CO','log_13CO','log_CH4','log_HF','log_H2(18)O','log_H2S']
+        only_params=['log_H2O','log_12CO','log_13CO','log_CH4','log_HF','log_H2(18)O','log_H2S','log_g']
         
         labels=list(retrieval_object1.parameters.param_mathtext.values())
         indices=[]
@@ -1300,7 +1304,7 @@ def VMR_plot_new(retrieval_object,molecules=['H2O','12CO','CH4','H2S'],fs=10,com
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retrieval_object3,ax=ax,ax2=ax2)
 
-    leg=ax.legend(fontsize=fs*0.8,ncol=int(len(molecules)/2),loc='lower left')
+    leg=ax.legend(fontsize=fs*0.8,ncol=int(math.ceil(len(molecules)/2)),loc='lower left')
     for lh in leg.legend_handles:
         lh.set_alpha(1)
     for line in leg.get_lines():
