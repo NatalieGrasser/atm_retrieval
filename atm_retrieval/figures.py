@@ -1024,6 +1024,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
                                   output_name=retrieval_object.output_name,
                                 chemistry='equchem',PT_type=retrieval_object.PT_type)
         retrieval_equ.model_object=pRT_spectrum(retrieval_equ)
+        retrieval_equ.summed_contr=np.nanmean(retrieval_equ.model_object.contr_em_orders,axis=0) # average over all orders
         plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
 
     if 'retrieval_object2' in kwargs: # compare two retrievals
