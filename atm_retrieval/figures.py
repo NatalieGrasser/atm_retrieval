@@ -256,7 +256,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         from testspec import test_parameters
         test_par = Parameters({}, test_parameters)
         test_par.param_priors['log_l']=[-3,0]
-        test_ret=Retrieval(target='test',parameters=test_par, 
+        test_ret=Retrieval(target=retrieval_object.target,parameters=test_par, 
                             output_name=retrieval_object.output_name,
                             chemistry='freechem',PT_type='PTgrad')
         test_ret.model_object=pRT_spectrum(test_ret)
