@@ -3,14 +3,10 @@ import os
 if getpass.getuser() == "grasser": # when runnig from LEM
     import atm_retrieval.cloud_cond as cloud_cond
     from atm_retrieval.pRT_model import pRT_spectrum
-    from atm_retrieval.retrieval import Retrieval
-    from atm_retrieval.parameters import Parameters
 
 elif getpass.getuser() == "natalie": # when testing from my laptop
     import cloud_cond as cloud_cond
     from pRT_model import pRT_spectrum
-    from retrieval import Retrieval
-    from parameters import Parameters
   
 import numpy as np
 import corner
@@ -251,12 +247,18 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     #file=np.loadtxt('t1400g562nc_m0.0.dat')
     if retrieval_object.target.name in ['test','test_corr']:
+        if getpass.getuser() == "grasser":
+            from atm_retrieval.retrieval import Retrieval
+            from atm_retrieval.parameters import Parameters
+        elif getpass.getuser() == "natalie":
+            from retrieval import Retrieval
+            from parameters import Parameters
         from testspec import test_parameters
         test_par = Parameters({}, test_parameters)
         test_par.param_priors['log_l']=[-3,0]
-        test_ret=Retrieval(target=retrieval_object.target,parameters=test_par, 
+        test_ret=Retrieval(target='test',parameters=test_par, 
                             output_name=retrieval_object.output_name,
-                            chemistry='equchem',PT_type=retrieval_object.PT_type)
+                            chemistry='freechem',PT_type='PTgrad')
         test_ret.model_object=pRT_spectrum(test_ret)
         ax.plot(test_ret.model_object.temperature,test_ret.pressure,linestyle='dashdot',c='blueviolet',lw=2) 
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Input')
@@ -1024,6 +1026,12 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
 
     # compare freechem VMRs to equilibrium chemistry with other retrieved params remainig equal
     if comp_equ==True:
+        if getpass.getuser() == "grasser":
+            from atm_retrieval.retrieval import Retrieval
+            from atm_retrieval.parameters import Parameters
+        elif getpass.getuser() == "natalie":
+            from retrieval import Retrieval
+            from parameters import Parameters
         parameters_equ = retrieval_object.params_dict
         parameters_equ.update({'C/O': retrieval_object.params_dict['C/O'],
                         'Fe/H': retrieval_object.params_dict['C/H'],
