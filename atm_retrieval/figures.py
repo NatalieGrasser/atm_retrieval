@@ -484,7 +484,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     summary_plot(retrieval_object)
     opacity_plot(retrieval_object)
     if retrieval_object.chemistry=='freechem':
-        VMR_plot(retrieval_object,comp_equ=True) # compare with what equchem abundances would be like
+        comp_equ=True # compare with what equchem abundances would be like
         ratios_cornerplot(retrieval_object) # already in equchem cornerplot by default
         if split_corner: # split corner plot to avoid massive files
             cornerplot(retrieval_object,only_abundances=True)
@@ -492,7 +492,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
         else: # make cornerplot with all parameters, could be huge, avoid this
             cornerplot(retrieval_object,only_params=only_params)
     elif retrieval_object.chemistry in ['equchem','quequchem']:
-        VMR_plot(retrieval_object)
+        comp_equ=False
         if split_corner: # split corner plot to avoid massive files
             only_params=['rv','vsini','log_g','C/O','Fe/H',
                          'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
@@ -504,6 +504,8 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
             cornerplot(retrieval_object,only_params=only_params2,plot_label='2')
         else: # avoid this though
             cornerplot(retrieval_object,only_params=only_params)
+    VMR_plot_new(retrieval_object)
+    VMR_plot(retrieval_object,comp_equ=comp_equ)
     
 def summary_plot(retrieval_object):
 
@@ -1024,6 +1026,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
                                   output_name=retrieval_object.output_name,
                                 chemistry='equchem',PT_type=retrieval_object.PT_type)
         retrieval_equ.model_object=pRT_spectrum(retrieval_equ,contribution=True)
+        retrieval_equ.model_object.make_spectrum() # to get emission contribution
         retrieval_equ.summed_contr=np.nanmean(retrieval_equ.model_object.contr_em_orders,axis=0) # average over all orders
         plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
 
