@@ -15,11 +15,11 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'log_H2S':(-5.0,r'log H$_2$S'),
             'log_NH3':(-12,r'log NH$_3$'),
             'log_HCN':(-11,r'log HCN'),
-            'dlnT_dlnP_0': (0.2, r'$\nabla T_0$'), # gradient at T0 
-            'dlnT_dlnP_1': (0.2, r'$\nabla T_1$'), 
-            'dlnT_dlnP_2': (0.04, r'$\nabla T_2$'), 
-            'dlnT_dlnP_3': (0.04, r'$\nabla T_3$'), 
-            'dlnT_dlnP_4': (0.1, r'$\nabla T_4$'), 
+            'dlnT_dlnP_0': (0.18, r'$\nabla T_0$'), # gradient at T0 
+            'dlnT_dlnP_1': (0.23, r'$\nabla T_1$'), 
+            'dlnT_dlnP_2': (0.05, r'$\nabla T_2$'), 
+            'dlnT_dlnP_3': (0.07, r'$\nabla T_3$'), 
+            'dlnT_dlnP_4': (0.15, r'$\nabla T_4$'), 
             'T0': (2500, r'$T_0$')} # at bottom of atmosphere
 
 test_parameters={}
@@ -226,6 +226,10 @@ if __name__ == "__main__":
    n_atm_layers=50
    pres=np.logspace(-6,2,n_atm_layers)
    temp = make_pt(test_parameters,pres)
+   plt.plot(temp,pres)
+   plt.yscale('log')
+   plt.gca().invert_yaxis()
+   plt.show()
 
    species=get_species(param_dict=test_parameters,chemistry='freechem')
    mass_fractions, CO, FeH=free_chemistry(species,test_parameters,n_atm_layers)
