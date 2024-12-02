@@ -7,13 +7,20 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'log_H2O':(-3.0,r'log H$_2$O'),
             'log_12CO':(-3.0,r'log $^{12}$CO'),
             'log_13CO':(-5.0,r'log $^{13}$CO'),
+            'log_C17O':(-10.0,r'log C$^{17}$O'),
+            'log_C18O':(-8.0,r'log C$^{18}$O'),
             'log_CH4':(-6.0,r'log CH$_4$'),
             'log_HF':(-6.0,r'log HF'),
             'log_H2(18)O':(-6.0,r'log H$_2^{18}$O'),
-            'log_H2S':(-5.0,r'log H$_2$S')}
-            #'log_a':(2.5,r'$\log\ a$'),
-            #'log_a':(0.8,r'$\log\ a$'),
-            #'log_l':(-0.5,r'$\log\ l$')}
+            'log_H2S':(-5.0,r'log H$_2$S'),
+            'log_NH3':(-12,r'log NH$_3$'),
+            'log_HCN':(-11,r'log HCN'),
+            'dlnT_dlnP_0': (0.2, r'$\nabla T_0$'), # gradient at T0 
+            'dlnT_dlnP_1': (0.2, r'$\nabla T_1$'), 
+            'dlnT_dlnP_2': (0.04, r'$\nabla T_2$'), 
+            'dlnT_dlnP_3': (0.04, r'$\nabla T_3$'), 
+            'dlnT_dlnP_4': (0.1, r'$\nabla T_4$'), 
+            'T0': (2500, r'$T_0$')} # at bottom of atmosphere
 
 test_parameters={}
 test_mathtext={}
@@ -31,6 +38,7 @@ if __name__ == "__main__":
    import getpass
    import sys
    import pathlib
+   from scipy.interpolate import interp1d
 
    if getpass.getuser() == "natalie": # when testing from my laptop
       os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
@@ -173,6 +181,33 @@ if __name__ == "__main__":
       GP_amp *= variance**2
       cov[w_ij] += GP_amp * np.exp(-(separation[w_ij])**2/(2*l**2)) # Gaussian radial-basis function kernel
       return cov
+   
+   def make_pt(params,pressure): 
+
+      log_P_knots = np.linspace(np.log10(np.min(pressure)),
+                                       np.log10(np.max(pressure)),num=5) # 5 gradient values
+
+      dlnT_dlnP_knots=[]
+      for i in range(5):
+         dlnT_dlnP_knots.append(params[f'dlnT_dlnP_{i}'])
+
+      # interpolate over dlnT/dlnP gradients
+      interp_func = interp1d(log_P_knots,dlnT_dlnP_knots,kind='quadratic') # for the other 50 atm layers
+      dlnT_dlnP = interp_func(np.log10(pressure))[::-1] # reverse order, start at bottom of atm
+      T_base = params['T0'] # T0 is free param, at bottom of atmosphere
+      ln_P = np.log(pressure)[::-1]
+      temperature = [T_base, ]
+
+      # calc temperatures relative to base pressure, from bottom to top of atmosphere
+      for i, ln_P_up_i in enumerate(ln_P[1:]): # start after base, T at base already defined
+            ln_P_low_i = ln_P[i]
+            ln_T_low_i = np.log(temperature[-1])
+            # compute temperatures based on gradient
+            ln_T_up_i = ln_T_low_i + (ln_P_up_i - ln_P_low_i)*dlnT_dlnP[i+1]
+            temperature.append(np.exp(ln_T_up_i))
+      temperature = temperature[::-1] # reverse order, pRT reads temps from top to bottom of atm
+
+      return temperature
       
    target=Target('2M0355') # test spectrum based on 2M0355
    data_wave,data_flux,data_err=target.load_spectrum()
@@ -183,10 +218,14 @@ if __name__ == "__main__":
    lbl_opacity_sampling=3
 
    # sonora bobcat P-T profile (T=1600K, logg=4.75, solar metallicity, solar C/O-ratio)
-   file=np.loadtxt('t1600g562nc_m0.0.dat')
-   pres=file[:,1] # bar
-   temp=file[:,2] # K
-   n_atm_layers=len(pres)
+   #file=np.loadtxt('t1600g562nc_m0.0.dat')
+   #pres=file[:,1] # bar
+   #temp=file[:,2] # K
+   #n_atm_layers=len(pres)
+
+   n_atm_layers=50
+   pres=np.logspace(-6,2,n_atm_layers)
+   temp = make_pt(test_parameters,pres)
 
    species=get_species(param_dict=test_parameters,chemistry='freechem')
    mass_fractions, CO, FeH=free_chemistry(species,test_parameters,n_atm_layers)

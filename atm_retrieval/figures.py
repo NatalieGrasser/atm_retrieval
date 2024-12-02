@@ -3,10 +3,14 @@ import os
 if getpass.getuser() == "grasser": # when runnig from LEM
     import atm_retrieval.cloud_cond as cloud_cond
     from atm_retrieval.pRT_model import pRT_spectrum
+    from atm_retrieval.retrieval import Retrieval
+    from atm_retrieval.parameters import Parameters
 
 elif getpass.getuser() == "natalie": # when testing from my laptop
     import cloud_cond as cloud_cond
     from pRT_model import pRT_spectrum
+    from retrieval import Retrieval
+    from parameters import Parameters
   
 import numpy as np
 import corner
@@ -246,10 +250,23 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     #file=np.loadtxt('t1400g562nc_m0.0.dat')
-    file=np.loadtxt('t1600g562nc_m0.0.dat')
-    pres=file[:,1] # bar
-    temp=file[:,2] # K
-    ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
+    if retrieval_object.target.name in ['test','test_corr']:
+        from testspec import test_parameters
+        test_par = Parameters({}, test_parameters)
+        test_par.param_priors['log_l']=[-3,0]
+        test_ret=Retrieval(target=retrieval_object.target,parameters=test_par, 
+                            output_name=retrieval_object.output_name,
+                            chemistry='equchem',PT_type=retrieval_object.PT_type)
+        test_ret.model_object=pRT_spectrum(test_ret)
+        ax.plot(test_ret.model_object.temperature,test_ret.pressure,linestyle='dashdot',c='blueviolet',lw=2) 
+        comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Input')
+
+    else:
+        file=np.loadtxt('t1600g562nc_m0.0.dat')
+        pres=file[:,1] # bar
+        temp=file[:,2] # K
+        ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
+        comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1600\,$K, log$\,g=4.75$')
 
     if retrieval_object.target.name=='2M0355': # compare with Zhang2022 science verification
         PT_Zhang=np.loadtxt(f'{retrieval_object.target.name}/2M0355_PT_Zhang2021.dat')
@@ -364,7 +381,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
             #lines.append(Line2D([0], [0], color=r.color2, alpha=0.8,linewidth=1.5, 
                             #linestyle='--',label=f'{l} cont.'))
             
-    lines.append(Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1600\,$K, log$\,g=4.75$'))
+    lines.append(comparison_pt)
     
     ax.legend(handles=lines,fontsize=fs)
     ax.tick_params(labelsize=fs)
@@ -1007,13 +1024,6 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
 
     # compare freechem VMRs to equilibrium chemistry with other retrieved params remainig equal
     if comp_equ==True:
-        if getpass.getuser() == "grasser": # when runnig from LEM
-            from atm_retrieval.retrieval import Retrieval
-            from atm_retrieval.parameters import Parameters
-        elif getpass.getuser() == "natalie": # when testing from my laptop
-            from retrieval import Retrieval
-            from parameters import Parameters
-
         parameters_equ = retrieval_object.params_dict
         parameters_equ.update({'C/O': retrieval_object.params_dict['C/O'],
                         'Fe/H': retrieval_object.params_dict['C/H'],
