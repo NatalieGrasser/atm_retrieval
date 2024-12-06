@@ -1,7 +1,7 @@
 # generate synthetic spectrum based on 2M0355 to test retrieval
 
 test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
-            'vsini': (10.0,r'$v$ sin$i$'),
+            'vsini': (4.0,r'$v$ sin$i$'),
             'log_g':(4.75,r'log $g$'),
             'epsilon_limb': (0.6, r'$\epsilon_\mathrm{limb}$'),
             'log_H2O':(-3.0,r'log H$_2$O'),
@@ -287,7 +287,7 @@ if __name__ == "__main__":
    test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
 
    # random noise depending on data points
-   random_noise=np.random.normal(0,np.nanmean(data_err)*3,size=test_spectrum.shape)
+   random_noise=np.random.normal(0,np.nanmean(data_err),size=test_spectrum.shape)
    # white noise independent of data points
    white_noise=np.random.normal(np.zeros_like(test_spectrum),data_err,size=test_spectrum.shape)
    if GP==False:
