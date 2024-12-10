@@ -294,7 +294,7 @@ if __name__ == "__main__":
       # add Gaussian noise by using data_err
       test_spectrum_noisy=test_spectrum+random_noise
    else:
-      # add correlated noise
+      # add correlated noise by using Gaussia smoothing, set length scale and amplitude w that?
       if False: # old version
          Cov = np.empty((n_orders,n_dets), dtype=object) # covariance matrix
          test_spectrum_noisy=np.copy(test_spectrum)
