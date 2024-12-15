@@ -70,7 +70,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     ax[0].set_ylabel('Normalized Flux',fontsize=fs)
     ax[1].set_ylabel('Residuals',fontsize=fs)
     ax[0].set_xlim(np.min(wave)-10,np.max(wave)+10)
-    ax[0].set_ylim(np.min(np.array([flux,flux_m])),np.max(np.array([flux,flux_m])))
+    ax[0].set_ylim(np.nanmin(np.array([flux,flux_m])),np.nanmax(np.array([flux,flux_m])))
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
     ax[1].xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
