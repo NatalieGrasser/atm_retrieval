@@ -5,11 +5,13 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     import atm_retrieval.figures as figs
     from atm_retrieval.covariance import *
     from atm_retrieval.log_likelihood import *
+    from atm_retrieval.target import Target
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from pRT_model import pRT_spectrum
     import figures as figs
     from covariance import *
     from log_likelihood import *
+    from target import Target
 
 import numpy as np
 import pymultinest
@@ -30,13 +32,23 @@ class Retrieval:
                  GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False):
         
         self.target=target
+        self.primary_label=self.target.primary_label
         self.data_wave,self.data_flux,self.data_err=target.load_spectrum()
-        self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)
+        self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)    
         self.separation,self.err_eff=target.prepare_for_covariance()
         self.K2166=target.K2166
         self.parameters=parameters
         self.chemistry=chemistry # freechem/equchem/quequchem
         self.species=self.get_species(param_dict=self.parameters.params,chemistry=self.chemistry)
+
+        # if companion, load in primary spectrum as well 
+        if self.target.primary_label==False:
+            self.target_primary=Target(f'{self.target.name[:-1]}A')
+            self.primary_wave,self.primary_flux,self.primary_err=self.target_primary.load_spectrum()
+            #primary_name=f'{self.target.name[:-1]}A'
+            #primary_file=pathlib.Path(f'./{primary_name}/{primary_name}_spectrum.txt')
+            #primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
+            #self.primary_flux = np.reshape(primary_flux,(7,3,2048))
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
         self.n_params = len(parameters.free_params)
@@ -169,6 +181,8 @@ class Retrieval:
         figs.summary_plot(self)
         if self.chemistry in ['equchem','quequchem']:
             figs.VMR_plot(self)
+        if self.primary_label==False: 
+            figs.plot_spectrum_split(plot_components=True)
      
     def PMN_analyse(self):
         post=pathlib.Path(f'{self.output_dir}/{self.callback_label}posterior.npy')
@@ -396,8 +410,8 @@ class Retrieval:
                 figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
             else:
                 figs.summary_plot(self)
-        if del_atm==True and getpass.getuser() == "natalie":
-            del self.atmosphere_objects # to avoid laptop crashing..
+        #if del_atm==True and getpass.getuser() == "natalie":
+            #del self.atmosphere_objects # to avoid laptop crashing..
         
     def cross_correlation(self,molecules,noiserange=100): # can only be run after evaluate()
 

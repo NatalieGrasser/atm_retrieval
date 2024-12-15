@@ -16,6 +16,7 @@ class Target:
         self.n_orders=7
         self.n_dets=3
         self.n_pixels=2048
+        self.primary_label=True
         self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
                             [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
                             [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
@@ -32,7 +33,7 @@ class Target:
             self.standard_star_temp=15536 # lamTau
             self.color1='deepskyblue' # color of retrieval output
             self.color2='lightskyblue' 
-        if self.name=='2M1425':
+        elif self.name=='2M1425':
             self.ra="14h25m27.9845344257s"
             self.dec="-36d50m23.248617541s"
             self.JD=2459976.5        
@@ -40,6 +41,23 @@ class Target:
             self.standard_star_temp=10980 # betHya
             self.color1='lightcoral' # color of retrieval output
             self.color2='lightpink'
+        elif self.name=='ROXs12B':
+            self.primary_label=False
+            self.ra="16h26m28.0396675056s"
+            self.dec="-25d26m47.717480112s"
+            self.JD=2460007.5
+            self.standard_star_temp=15142 # iSco
+            self.fullname='ROXs12B'  
+            self.color1='mediumturquoise'
+            self.color2='lightseagreen'
+        elif self.name=='ROXs12A':
+            self.ra="16h26m28.0396675056s"
+            self.dec="-25d26m47.717480112s"
+            self.JD=2460007.5
+            self.standard_star_temp=15142 # iSco
+            self.fullname='ROXs12A'  
+            self.color1='orange'
+            self.color2='darkorange'
 
     def load_spectrum(self):
         self.cwd = os.getcwd()
@@ -103,7 +121,14 @@ class Target:
         self.mask_isfinite=np.empty((self.n_orders,self.n_dets,self.n_pixels),dtype=bool)
         for i in range(self.n_orders):
             for j in range(self.n_dets):
-                mask_ij = np.isfinite(self.fl[i,j]) # only finite pixels
+                if self.primary_label==True:
+                    mask_ij = np.isfinite(self.fl[i,j]) # only finite pixels
+                else:
+                    primary_name=f'{self.name[:-1]}A'
+                    primary_file=pathlib.Path(f'{self.cwd}/{primary_name}/{primary_name}_spectrum.txt')
+                    primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
+                    primary_flux = np.reshape(primary_flux,(self.n_orders,self.n_dets,self.n_pixels))
+                    mask_ij = np.isfinite(self.fl[i,j]) & np.isfinite(primary_flux[i,j]) # include nans of primary
                 self.mask_isfinite[i,j]=mask_ij
         return self.mask_isfinite
     

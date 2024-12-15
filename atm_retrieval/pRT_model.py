@@ -12,6 +12,7 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter
 import pickle
 import pathlib
+from scipy.optimize import nnls
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -20,6 +21,7 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+    os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
 
 class pRT_spectrum:
 
@@ -29,6 +31,13 @@ class pRT_spectrum:
                  contribution=False, # only for plotting atmosphere.contr_em
                  interpolate=True):
         
+        self.primary_label=retrieval_object.primary_label
+        if self.primary_label==False:
+            self.primary_wave=retrieval_object.primary_wave
+            self.primary_flux=retrieval_object.primary_flux
+            self.data_flux = retrieval_object.data_flux
+            self.data_err = retrieval_object.data_err
+
         self.params=retrieval_object.parameters.params
         self.data_wave=retrieval_object.data_wave
         self.target=retrieval_object.target
@@ -249,6 +258,8 @@ class pRT_spectrum:
         self.wlshift_orders=[]
         waves_orders=[]
         self.contr_em_orders=[]
+        self.phi_components=np.full(shape=(7,3,2),fill_value=np.nan)
+        self.secondary_flux=np.full(shape=(7,3,2048),fill_value=np.nan)
         for order in range(self.n_orders):
             atmosphere=self.atmosphere_objects[order]
 
@@ -313,6 +324,44 @@ class pRT_spectrum:
                 # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
                 flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
 
+            if self.primary_label==False: # should have same wavelengths
+                for det in range(3):
+                    #nans = np.isnan(self.primary_flux[order][det]) | np.isnan(self.data_flux[order][det])
+                    nonans = np.isfinite(self.primary_flux[order][det]) & np.isfinite(self.data_flux[order][det])
+                    #if nans.all()==True: # skip empty
+                    if np.sum(nonans)==0:
+                        flux[det]/=np.nanmedian(flux[det])
+                        continue
+                    #M = np.vstack([self.primary_flux[order][det][~nans], flux[det][~nans]]).T # model matrix, shape (2, N)
+                    #d = self.data_flux[order][det][~nans]  # prepare data
+                    #var = self.data_err[order][det][~nans]**2
+                    M = np.vstack([self.primary_flux[order][det][nonans], flux[det][nonans]]).T # model matrix, shape (2, N)
+                    d = self.data_flux[order][det][nonans]  # prepare data
+                    var = self.data_err[order][det][nonans]**2
+                    inv_cov = np.diag(1/var) # inverse of covariance matrix
+
+                    # set up equation to solve (see Ruffio+2019 Appendix A)
+                    lhs = M.T @ inv_cov @ M # left-hand side
+                    rhs = M.T @ inv_cov @ d # right-hand side
+                    phi_comp, _ = nnls(lhs, rhs)
+                    #self.phi_components.append(phi_comp)
+                    self.phi_components[order,det]=phi_comp
+                    self.secondary_flux[order,det]=np.copy(flux[det])
+                    flx = phi_comp[1]*flux[det] + phi_comp[0]*self.primary_flux[order][det]
+
+                    #if getpass.getuser() == "natalie": # when testing from my laptop
+                    if False:
+                        print(f'Linear parameters: {phi_comp}')
+                        plt.plot(self.data_wave[order][det], self.data_flux[order][det],c='k', label='data')
+                        plt.plot(self.data_wave[order][det], phi_comp[0]*self.primary_flux[order][det], label='A')
+                        plt.plot(self.data_wave[order][det], phi_comp[1]*flux[det], label='B')
+                        plt.plot(self.data_wave[order][det], flx, label='A+B',linestyle='dotted',c='limegreen')
+                        plt.legend()
+                        plt.show()
+                    
+                    #flx/=np.median(flx)
+                    flux[det]=flx
+
             spectrum_orders.append(flux)
             waves_orders.append(waves_even*1e3) # from um to nm
 
@@ -320,6 +369,18 @@ class pRT_spectrum:
                 contr_em = atmosphere.contr_em # emission contribution
                 summed_contr = np.nansum(contr_em,axis=1) # sum over all wavelengths
                 self.contr_em_orders.append(summed_contr)
+
+        if False:
+            for order in range(7):
+                for det in range(3):
+                    phi_comp=self.phi_components[order,det]
+                    print(f'Linear parameters: {phi_comp}')
+                    plt.plot(self.data_wave[order][det], self.data_flux[order][det],c='k', label='data')
+                    plt.plot(self.data_wave[order][det], phi_comp[0]*self.primary_flux[order][det], label='A')
+                    plt.plot(self.data_wave[order][det], phi_comp[1]*self.secondary_flux[order][det], label='B')
+                    plt.plot(self.data_wave[order][det], spectrum_orders[order][det], label='A+B',linestyle='dotted',c='limegreen')
+                    plt.legend()
+                    plt.show()
             
         if self.interpolate==False:
             get_median=np.array([])

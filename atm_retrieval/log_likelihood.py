@@ -15,6 +15,13 @@ class LogLikelihood:
         self.N_params = retrieval_object.n_params
         self.alpha = alpha # from Ruffio+2019
         self.N_phi = N_phi # number of linear scaling parameters
+        self.primary_label = retrieval_object.primary_label
+        if self.primary_label==False:
+            self.mask_primary=np.empty((self.n_orders,self.n_dets,2048),dtype=bool)
+            for i in range(self.n_orders):
+                for j in range(self.n_dets):
+                    mask_ij = np.isfinite(retrieval_object.primary_flux[i,j]) # only finite pixels
+                    self.mask_primary[i,j]=mask_ij
         
     def __call__(self, m_flux, Cov, **kwargs):
 
@@ -24,15 +31,20 @@ class LogLikelihood:
         self.s2  = np.ones((self.n_orders, self.n_dets)) # uncertainty-scaling
         self.m_flux_phi = np.nan * np.ones_like(self.d_flux) # scaled model flux
 
+
         for i in range(self.n_orders): # Loop over all orders and detectors
             for j in range(self.n_dets):
 
-                mask_ij = self.d_mask[i,j,:] # mask out nans
+                if self.primary_label==False:
+                    mask_ij = self.d_mask[i,j,:] & self.mask_primary[i,j,:]
+                else:
+                    mask_ij = self.d_mask[i,j,:] # mask out nans
                 N_d = mask_ij.sum() # Number of (valid) data points
                 if N_d == 0:
                     continue
                 d_flux_ij = self.d_flux[i,j,mask_ij] # data flux
                 m_flux_ij = m_flux[i,j,mask_ij] # model flux
+                self.arrs = [d_flux_ij, m_flux_ij, Cov[i,j]]
                 
                 if Cov[i,j].is_matrix:
                     Cov[i,j].get_cholesky() # Retrieve a Cholesky decomposition

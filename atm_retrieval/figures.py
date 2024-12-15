@@ -113,7 +113,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
                     bbox_inches='tight')
         plt.close()
 
-def plot_spectrum_split(retrieval_object,overplot_species=None):
+def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=False):
 
     if overplot_species!=None: # overplot species onto residuals
         opacities={}
@@ -140,7 +140,13 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
 
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.model_flux)
-    fig,ax=plt.subplots(20,1,figsize=(10,13),dpi=200,gridspec_kw={'height_ratios':[2,0.9,0.57]*6+[2,0.9]})
+    figsize=(10,13)
+    gridspec_kw={'height_ratios':[2,0.9,0.57]*6+[2,0.9]}
+    if plot_components==True:
+        phi_comp=retrieval.model_object.phi_components
+        #figsize=(9,15)
+        gridspec_kw={'height_ratios':[2,0.3,0.57]*6+[2,0.3]}
+    fig,ax=plt.subplots(20,1,figsize=figsize,dpi=200,gridspec_kw=gridspec_kw)
     x=0
     for order in range(7): 
         ax1=ax[x]
@@ -155,7 +161,11 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
             ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax1.plot(retrieval.data_wave[order,det],retrieval.model_flux[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
             ax1.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
-            
+            if plot_components==True:
+                prim_c='orange'
+                sec_c='dodgerblue'
+                ax1.plot(retrieval.data_wave[order,det], phi_comp[order,det][0]*retrieval.primary_flux[order,det], label='A',lw=0.8, c=prim_c)
+                ax1.plot(retrieval.data_wave[order,det], phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det],lw=0.8, label='B', c=sec_c)
             ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color1,label='residuals')
             ax2.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
 
@@ -166,11 +176,16 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
                             ecolor=retrieval_object.color1, elinewidth=1, capsize=2)
             
             if x==0 and det==0:
+                ncol=2
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
-                        mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
+                        #mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
                         Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit')]
-                ax1.legend(handles=lines,fontsize=12,ncol=3,bbox_to_anchor=(0.47,1.4),loc='upper center')
-                #leg.get_frame().set_linewidth(0.0)
+                if plot_components==True:
+                    lines.append(Line2D([0], [0], color=prim_c,linewidth=2,label='A'))
+                    lines.append(Line2D([0], [0], color=sec_c,linewidth=2,label='B'))
+                    ncol=4
+                leg=ax1.legend(handles=lines,fontsize=12,ncol=ncol,bbox_to_anchor=(0.47,1.4),loc='upper center')
+                leg.get_frame().set_linewidth(0.0)
 
             ax2.plot([np.min(retrieval.data_wave[order,det]),np.max(retrieval.data_wave[order,det])],[0,0],lw=0.8,c='k')
 
@@ -185,8 +200,17 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
                 opa=scale_between(ymin,ymax,opa)
                 ax2.plot(wave_orders[order],opa,lw=0.8,c=colors[i])
 
-        min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.model_flux[order]]))
-        max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.model_flux[order]]))
+        #min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.model_flux[order]]))
+        #max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.model_flux[order]]))
+        min_array=[retrieval.data_flux[order],retrieval.model_flux[order]]
+        max_array=[retrieval.data_flux[order],retrieval.model_flux[order]]
+        if plot_components==True:
+            min_array.append(retrieval.primary_flux[order])
+            min_array.append(retrieval.model_object.secondary_flux[order])
+            max_array.append(retrieval.primary_flux[order])
+            max_array.append(retrieval.model_object.secondary_flux[order])
+        min1=np.nanmin(np.array(min_array))
+        max1=np.nanmax(np.array(max_array))
         ax1.set_ylim(min1,max1)
         if np.nansum(residuals[order])!=0:
             ax2.set_ylim(np.nanmin(residuals[order]),np.nanmax(residuals[order]))
@@ -207,7 +231,10 @@ def plot_spectrum_split(retrieval_object,overplot_species=None):
     ax[19].set_xlabel('Wavelength [nm]')
     fig.tight_layout()
     plt.subplots_adjust(wspace=0,hspace=0)
-    name = 'bestfit_spectrum' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}bestfit_spectrum'
+    if plot_components==False:
+        name = 'bestfit_spectrum' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}bestfit_spectrum'
+    else:
+        name = 'components' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}components'
     fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf')
     plt.close()
 
