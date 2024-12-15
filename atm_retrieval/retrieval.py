@@ -182,7 +182,7 @@ class Retrieval:
         if self.chemistry in ['equchem','quequchem']:
             figs.VMR_plot(self)
         if self.primary_label==False: 
-            figs.plot_spectrum_split(plot_components=True)
+            figs.plot_spectrum_split(self,plot_components=True)
      
     def PMN_analyse(self):
         post=pathlib.Path(f'{self.output_dir}/{self.callback_label}posterior.npy')
