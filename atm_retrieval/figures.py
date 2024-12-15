@@ -70,6 +70,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     ax[0].set_ylabel('Normalized Flux',fontsize=fs)
     ax[1].set_ylabel('Residuals',fontsize=fs)
     ax[0].set_xlim(np.min(wave)-10,np.max(wave)+10)
+    ax[0].set_ylim(np.min(np.array([flux,flux_m])),np.max(np.array([flux,flux_m])))
     ax[1].set_xlim(np.min(wave)-10,np.max(wave)+10)
     tick_spacing=10
     ax[1].xaxis.set_minor_locator(ticker.MultipleLocator(tick_spacing))
@@ -552,6 +553,8 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
             cornerplot(retrieval_object,only_params=only_params)
     VMR_plot_new(retrieval_object)
     VMR_plot(retrieval_object,comp_equ=comp_equ)
+    if retrieval_object.primary_label==False:
+        plot_spectrum_split(retrieval_object,plot_components=True)
     
 def summary_plot(retrieval_object):
 
@@ -1070,6 +1073,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
         retrieval_equ = Retrieval(target=retrieval_object.target,parameters=parameters_equ, 
                                   output_name=retrieval_object.output_name,
                                 chemistry='equchem',PT_type=retrieval_object.PT_type)
+        retrieval_equ.primary_label=True # to avoid problems
         retrieval_equ.model_object=pRT_spectrum(retrieval_equ,contribution=True)
         retrieval_equ.model_object.make_spectrum() # to get emission contribution
         retrieval_equ.summed_contr=np.nanmean(retrieval_equ.model_object.contr_em_orders,axis=0) # average over all orders
