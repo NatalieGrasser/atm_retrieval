@@ -25,7 +25,7 @@ class Target:
                             [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
                             [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
         
-        if self.name in ['2M0355','test','test_corr']: # test spectrum based on 2M0355
+        if self.name in ['2M0355','test','test_corr','testsys']: # test spectrum based on 2M0355
             self.ra ="03h55m23.3735910810s"
             self.dec = "+11d33m43.797034332s"
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
@@ -33,6 +33,8 @@ class Target:
             self.standard_star_temp=15536 # lamTau
             self.color1='deepskyblue' # color of retrieval output
             self.color2='lightskyblue' 
+            if self.name=='testsys':
+                self.primary_label=False
         elif self.name=='2M1425':
             self.ra="14h25m27.9845344257s"
             self.dec="-36d50m23.248617541s"
@@ -124,11 +126,12 @@ class Target:
                 if self.primary_label==True:
                     mask_ij = np.isfinite(self.fl[i,j]) # only finite pixels
                 else:
-                    primary_name=f'{self.name[:-1]}A'
+                    #primary_name=f'{self.name[:-1]}A'
+                    primary_name='ROXs12A'
                     primary_file=pathlib.Path(f'{self.cwd}/{primary_name}/{primary_name}_spectrum.txt')
                     primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
                     primary_flux = np.reshape(primary_flux,(self.n_orders,self.n_dets,self.n_pixels))
-                    mask_ij = np.isfinite(self.fl[i,j]) & np.isfinite(primary_flux[i,j]) # include nans of primary
+                    mask_ij = np.isfinite(self.fl[i,j]) & np.isfinite(primary_flux[i,j]) & np.isfinite(self.err[i,j]) # include nans of primary
                 self.mask_isfinite[i,j]=mask_ij
         return self.mask_isfinite
     

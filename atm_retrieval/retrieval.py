@@ -43,7 +43,8 @@ class Retrieval:
 
         # if companion, load in primary spectrum as well 
         if self.target.primary_label==False:
-            self.target_primary=Target(f'{self.target.name[:-1]}A')
+            #self.target_primary=Target(f'{self.target.name[:-1]}A')
+            self.target_primary=Target('ROXs12A')
             self.primary_wave,self.primary_flux,self.primary_err=self.target_primary.load_spectrum()
             #primary_name=f'{self.target.name[:-1]}A'
             #primary_file=pathlib.Path(f'./{primary_name}/{primary_name}_spectrum.txt')

@@ -327,7 +327,7 @@ class pRT_spectrum:
             if self.primary_label==False: # should have same wavelengths
                 for det in range(3):
                     #nans = np.isnan(self.primary_flux[order][det]) | np.isnan(self.data_flux[order][det])
-                    nonans = np.isfinite(self.primary_flux[order][det]) & np.isfinite(self.data_flux[order][det])
+                    nonans = np.isfinite(self.primary_flux[order][det]) & np.isfinite(self.data_flux[order][det]) & np.isfinite(self.data_err[order][det])
                     #if nans.all()==True: # skip empty
                     if np.sum(nonans)==0:
                         flux[det]/=np.nanmedian(flux[det])
@@ -339,7 +339,7 @@ class pRT_spectrum:
                     d = self.data_flux[order][det][nonans]  # prepare data
                     var = self.data_err[order][det][nonans]**2
                     inv_cov = np.diag(1/var) # inverse of covariance matrix
-
+                    
                     # set up equation to solve (see Ruffio+2019 Appendix A)
                     lhs = M.T @ inv_cov @ M # left-hand side
                     rhs = M.T @ inv_cov @ d # right-hand side
