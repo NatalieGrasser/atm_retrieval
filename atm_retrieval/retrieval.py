@@ -268,6 +268,8 @@ class Retrieval:
             if self.callback_label=='final_':
                 self.params_dict['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
                 self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
+            if self.primary_label==False:
+                self.params_dict['phi_ij_comp']=self.model_object.phi_components
 
             self.model_flux=np.zeros_like(self.model_flux0)
             phi_ij=self.params_dict['phi_ij']
