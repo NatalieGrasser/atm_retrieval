@@ -151,8 +151,8 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
         gridspec_kw={'height_ratios':[2,0.3,0.57]*6+[2,0.3]}
     fig,ax=plt.subplots(20,1,figsize=figsize,dpi=200,gridspec_kw=gridspec_kw)
     x=0
-    min_array=[retrieval.data_flux[order],retrieval.model_flux[order]]
-    max_array=[retrieval.data_flux[order],retrieval.model_flux[order]]
+    min_array=[np.nanmin([retrieval.data_flux,retrieval.model_flux])]
+    max_array=[np.nanmax([retrieval.data_flux,retrieval.model_flux])]
     for order in range(7): 
         ax1=ax[x]
         ax2=ax[x+1]
@@ -161,9 +161,6 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
             ax3=ax[x+2] #for spacing
         for det in range(3):
             ax1.plot(retrieval.data_wave[order,det],retrieval.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
-            upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
-            ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
             ax1.plot(retrieval.data_wave[order,det],retrieval.model_flux[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
             ax1.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
             if plot_components==True:
@@ -171,18 +168,22 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
                 sec_c='dodgerblue'
                 ax1.plot(retrieval.data_wave[order,det], phi_comp[order,det][0]*retrieval.primary_flux[order,det], label='A',lw=0.8, c=prim_c)
                 ax1.plot(retrieval.data_wave[order,det], phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det],lw=0.8, label='B', c=sec_c)
-                min_array.append(phi_comp[order,det][0]*retrieval.primary_flux[order,det])
-                min_array.append(phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det])
-                max_array.append(phi_comp[order,det][0]*retrieval.primary_flux[order,det])
-                max_array.append(phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det])
+                min_array.append(np.nanmin([phi_comp[order,det][0]*retrieval.primary_flux[order,det],
+                                            phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]]))
+                max_array.append(np.nanmax([phi_comp[order,det][0]*retrieval.primary_flux[order,det],
+                                            phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]]))
             ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color1,label='residuals')
             ax2.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
 
             # add error for scale
-            errmean=np.nanmean(retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det])
-            if np.nansum(retrieval.data_flux[order])!=0: # skip empty orders
-                ax2.errorbar(np.min(retrieval.data_wave[order,det])-0.3, 0, yerr=errmean, 
-                            ecolor=retrieval_object.color1, elinewidth=1, capsize=2)
+            if retrieval.callback_label=='final_':
+                lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
+                upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
+                ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+                errmean=np.nanmean(retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det])
+                if np.nansum(retrieval.data_flux[order])!=0: # skip empty orders
+                    ax2.errorbar(np.min(retrieval.data_wave[order,det])-0.3, 0, yerr=errmean, 
+                                 ecolor=retrieval_object.color1, elinewidth=1, capsize=2)
             
             if x==0 and det==0:
                 ncol=2
