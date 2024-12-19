@@ -326,15 +326,10 @@ class pRT_spectrum:
 
             if self.primary_label==False: # should have same wavelengths
                 for det in range(3):
-                    #nans = np.isnan(self.primary_flux[order][det]) | np.isnan(self.data_flux[order][det])
                     nonans = np.isfinite(self.primary_flux[order][det]) & np.isfinite(self.data_flux[order][det]) & np.isfinite(self.data_err[order][det])
-                    #if nans.all()==True: # skip empty
+                    flux[det]/=np.nanmedian(flux[det])
                     if np.sum(nonans)==0:
-                        flux[det]/=np.nanmedian(flux[det])
                         continue
-                    #M = np.vstack([self.primary_flux[order][det][~nans], flux[det][~nans]]).T # model matrix, shape (2, N)
-                    #d = self.data_flux[order][det][~nans]  # prepare data
-                    #var = self.data_err[order][det][~nans]**2
                     M = np.vstack([self.primary_flux[order][det][nonans], flux[det][nonans]]).T # model matrix, shape (2, N)
                     d = self.data_flux[order][det][nonans]  # prepare data
                     var = self.data_err[order][det][nonans]**2
@@ -344,7 +339,6 @@ class pRT_spectrum:
                     lhs = M.T @ inv_cov @ M # left-hand side
                     rhs = M.T @ inv_cov @ d # right-hand side
                     phi_comp, _ = nnls(lhs, rhs)
-                    #self.phi_components.append(phi_comp)
                     self.phi_components[order,det]=phi_comp
                     self.secondary_flux[order,det]=np.copy(flux[det])
                     flx = phi_comp[1]*flux[det] + phi_comp[0]*self.primary_flux[order][det]

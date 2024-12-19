@@ -151,27 +151,30 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
         gridspec_kw={'height_ratios':[2,0.3,0.57]*6+[2,0.3]}
     fig,ax=plt.subplots(20,1,figsize=figsize,dpi=200,gridspec_kw=gridspec_kw)
     x=0
-    min_array=[np.nanmin([retrieval.data_flux,retrieval.model_flux])]
-    max_array=[np.nanmax([retrieval.data_flux,retrieval.model_flux])]
+    
     for order in range(7): 
+        min_array=[np.nanmin([retrieval.data_flux[order],retrieval.model_flux[order]])]
+        max_array=[np.nanmax([retrieval.data_flux[order],retrieval.model_flux[order]])]
         ax1=ax[x]
         ax2=ax[x+1]
         
         if x!=18: # last ax cannot be spacer, or xlabel also invisible
             ax3=ax[x+2] #for spacing
         for det in range(3):
+            
             ax1.plot(retrieval.data_wave[order,det],retrieval.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
             ax1.plot(retrieval.data_wave[order,det],retrieval.model_flux[order,det],lw=0.8,alpha=0.8,c=retrieval_object.color1,label='model')
             ax1.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
             if plot_components==True:
                 prim_c='orange'
                 sec_c='dodgerblue'
-                ax1.plot(retrieval.data_wave[order,det], phi_comp[order,det][0]*retrieval.primary_flux[order,det], label='A',lw=0.8, c=prim_c)
-                ax1.plot(retrieval.data_wave[order,det], phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det],lw=0.8, label='B', c=sec_c)
-                min_array.append(np.nanmin([phi_comp[order,det][0]*retrieval.primary_flux[order,det],
-                                            phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]]))
-                max_array.append(np.nanmax([phi_comp[order,det][0]*retrieval.primary_flux[order,det],
-                                            phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]]))
+                prim_flx=phi_comp[order,det][0]*retrieval.primary_flux[order,det]
+                sec_flx = phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]
+                ax1.plot(retrieval.data_wave[order,det], prim_flx, label='A',lw=0.8, c=prim_c)
+                ax1.plot(retrieval.data_wave[order,det], sec_flx,lw=0.8, label='B', c=sec_c)
+                if np.isfinite(phi_comp[order,det].all()) and np.isfinite(prim_flx).any() and np.isfinite(sec_flx).any():
+                    min_array.append(np.nanmin([prim_flx,sec_flx]))
+                    max_array.append(np.nanmax([prim_flx,sec_flx]))
             ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retrieval_object.color1,label='residuals')
             ax2.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
 
