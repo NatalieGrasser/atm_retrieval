@@ -296,7 +296,8 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         ax.plot(test_ret.model_object.temperature,test_ret.pressure,linestyle='dashdot',c='blueviolet',lw=2) 
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Input')
 
-    elif retrieval_object.target.name in ['2M0355','2M1425']:
+    #elif retrieval_object.target.name in ['2M0355','2M1425']:
+    else:
         file=np.loadtxt('t1600g562nc_m0.0.dat')
         pres=file[:,1] # bar
         temp=file[:,2] # K
