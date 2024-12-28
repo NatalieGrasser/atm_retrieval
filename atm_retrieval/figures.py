@@ -145,8 +145,8 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
     gridspec_kw={'height_ratios':[2,0.9,0.57]*6+[2,0.9]}
     if plot_components==True:
         phi_comp=retrieval.model_object.phi_components
-        print('Avg phi star=',np.nanmean(phi_comp.reshape(7*3,2)[:,0]))
-        print('Avg phi BD  =',np.nanmean(phi_comp.reshape(7*3,2)[:,1]))
+        print('Avg phi star=',np.nanmean(np.nansum(phi_comp.reshape(7*3,8)[:,:-1],axis=1)))
+        print('Avg phi BD  =',np.nanmean(phi_comp.reshape(7*3,8)[:,-1]))
         #figsize=(9,15)
         gridspec_kw={'height_ratios':[2,0.3,0.57]*6+[2,0.3]}
     fig,ax=plt.subplots(20,1,figsize=figsize,dpi=200,gridspec_kw=gridspec_kw)
@@ -168,10 +168,14 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
             if plot_components==True:
                 prim_c='orange'
                 sec_c='dodgerblue'
-                prim_flx=phi_comp[order,det][0]*retrieval.primary_flux[order,det]
-                sec_flx = phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]
+                #prim_flx=phi_comp[order,det][0]*retrieval.primary_flux[order,det]
+                #prim_flx= np.sum(phi_comp[order,det][:-1])*retrieval.primary_broadened[order][det]
+                #sec_flx = phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]
+                prim_flx= retrieval.model_object.secondary_flux[order,det]
+                sec_flx = retrieval.model_object.secondary_flux[order,det]
                 ax1.plot(retrieval.data_wave[order,det], prim_flx, label='A',lw=0.8, c=prim_c)
                 ax1.plot(retrieval.data_wave[order,det], sec_flx,lw=0.8, label='B', c=sec_c)
+                #plt.plot(self.data_wave[order][det], np.sum(phi_comp[:-1])*self.primary_broadened[order][det], label='A_broad',c='orange')
                 if np.isfinite(phi_comp[order,det].all()) and np.isfinite(prim_flx).any() and np.isfinite(sec_flx).any():
                     min_array.append(np.nanmin([prim_flx,sec_flx]))
                     max_array.append(np.nanmax([prim_flx,sec_flx]))

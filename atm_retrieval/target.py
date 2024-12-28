@@ -132,6 +132,9 @@ class Target:
                     primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
                     primary_flux = np.reshape(primary_flux,(self.n_orders,self.n_dets,self.n_pixels))
                     mask_ij = np.isfinite(self.fl[i,j]) & np.isfinite(primary_flux[i,j]) & np.isfinite(self.err[i,j]) # include nans of primary
+                    #mask_ij = np.convolve(mask_ij, np.ones(7), mode='same') < 0 # grow mask by 7 pixels bc later we shift +-3 pixels
+                    mask_ij2 = np.convolve(~np.array(mask_ij), np.ones(7), mode='same') > 0 # grow mask by 7 pixels bc later we shift +-3 pixels
+                    mask_ij= ~mask_ij2
                 self.mask_isfinite[i,j]=mask_ij
         return self.mask_isfinite
     

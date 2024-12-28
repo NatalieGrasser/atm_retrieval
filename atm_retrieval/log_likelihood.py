@@ -31,7 +31,6 @@ class LogLikelihood:
         self.s2  = np.ones((self.n_orders, self.n_dets)) # uncertainty-scaling
         self.m_flux_phi = np.nan * np.ones_like(self.d_flux) # scaled model flux
 
-
         for i in range(self.n_orders): # Loop over all orders and detectors
             for j in range(self.n_dets):
 

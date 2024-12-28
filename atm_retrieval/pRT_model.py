@@ -1,3 +1,4 @@
+from re import S
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -258,8 +259,9 @@ class pRT_spectrum:
         self.wlshift_orders=[]
         waves_orders=[]
         self.contr_em_orders=[]
-        self.phi_components=np.full(shape=(7,3,2),fill_value=np.nan)
+        self.phi_components=np.full(shape=(7,3,8),fill_value=np.nan)
         self.secondary_flux=np.full(shape=(7,3,2048),fill_value=np.nan)
+        self.primary_broadened=np.full(shape=(7,3,2048),fill_value=np.nan)
         for order in range(self.n_orders):
             atmosphere=self.atmosphere_objects[order]
 
@@ -330,7 +332,14 @@ class pRT_spectrum:
                     flux[det]/=np.nanmedian(flux[det])
                     if np.sum(nonans)==0:
                         continue
-                    M = np.vstack([self.primary_flux[order][det][nonans], flux[det][nonans]]).T # model matrix, shape (2, N)
+                    s = self.primary_flux[order][det][nonans] # primary
+                    # include more with np.roll, shift primary -3 to 3 pixels to account for scattering broadening
+                    stack=s
+                    for px in [1,2,3]:
+                        sp = np.roll(s,px)
+                        sm = np.roll(s,-px)
+                        stack = np.vstack([sm,stack,sp])
+                    M = np.vstack([stack,flux[det][nonans]]).T # model matrix, structure: [-3,-2,-1,0primary,1,2,3,secondary]
                     d = self.data_flux[order][det][nonans]  # prepare data
                     var = self.data_err[order][det][nonans]**2
                     inv_cov = np.diag(1/var) # inverse of covariance matrix
@@ -340,21 +349,34 @@ class pRT_spectrum:
                     rhs = M.T @ inv_cov @ d # right-hand side
                     phi_comp, _ = nnls(lhs, rhs)
                     self.phi_components[order,det]=phi_comp
-                    self.secondary_flux[order,det]=np.copy(flux[det])
-                    flx = phi_comp[1]*flux[det] + phi_comp[0]*self.primary_flux[order][det]
+                    self.secondary_flux[order,det]=phi_comp[-1]*np.copy(flux[det])
+                    #total_flux = phi_comp[-1]*flux[det] #+ phi_comp[3]*self.primary_flux[order][det] # primary + secondary
+                    s = self.primary_flux[order][det]
+                    self.primary_broadened[order,det] = phi_comp[3]*s
+                    for px,n in enumerate([2,1,0]):
+                        px+=1 # to start numbering at 1
+                        #print(phi_comp[:-1][n],phi_comp[:-1][-n])
+                        #print(phi_comp[:-1])
+                        if n==0:
+                            self.primary_broadened[order,det] += phi_comp[:-1][0]*np.roll(s,-px) + phi_comp[:-1][-1]*np.roll(s,px)
+                        else:
+                            self.primary_broadened[order,det] += phi_comp[:-1][n]*np.roll(s,-px) + phi_comp[:-1][-(n+1)]*np.roll(s,px)
+                        #total_flux += phi_comp[:-1][n]*np.roll(s,-px) + phi_comp[:-1][-n]*np.roll(s,px)
+                    total_flux = self.secondary_flux[order,det] + self.primary_broadened[order,det]
 
                     #if getpass.getuser() == "natalie": # when testing from my laptop
                     if False:
                         print(f'Linear parameters: {phi_comp}')
                         plt.plot(self.data_wave[order][det], self.data_flux[order][det],c='k', label='data')
-                        plt.plot(self.data_wave[order][det], phi_comp[0]*self.primary_flux[order][det], label='A')
-                        plt.plot(self.data_wave[order][det], phi_comp[1]*flux[det], label='B')
-                        plt.plot(self.data_wave[order][det], flx, label='A+B',linestyle='dotted',c='limegreen')
+                        plt.plot(self.data_wave[order][det], phi_comp[3]*self.primary_flux[order][det], label='A',alpha=0.2,c='orange')
+                        plt.plot(self.data_wave[order][det], self.primary_broadened[order][det], label='A_broad',c='orange')
+                        plt.plot(self.data_wave[order][det], self.secondary_flux[order,det], label='B',c='tab:blue')
+                        plt.plot(self.data_wave[order][det], total_flux, label='A+B',linestyle='dotted',c='limegreen')
                         plt.legend()
                         plt.show()
                     
                     #flx/=np.median(flx)
-                    flux[det]=flx
+                    flux[det]=total_flux
 
             spectrum_orders.append(flux)
             waves_orders.append(waves_even*1e3) # from um to nm
