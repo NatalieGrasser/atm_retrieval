@@ -171,7 +171,7 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
                 #prim_flx=phi_comp[order,det][0]*retrieval.primary_flux[order,det]
                 #prim_flx= np.sum(phi_comp[order,det][:-1])*retrieval.primary_broadened[order][det]
                 #sec_flx = phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]
-                prim_flx= retrieval.model_object.secondary_flux[order,det]
+                prim_flx= retrieval.model_object.primary_broadened[order,det]
                 sec_flx = retrieval.model_object.secondary_flux[order,det]
                 ax1.plot(retrieval.data_wave[order,det], prim_flx, label='A',lw=0.8, c=prim_c)
                 ax1.plot(retrieval.data_wave[order,det], sec_flx,lw=0.8, label='B', c=sec_c)
@@ -271,15 +271,16 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
     cs_colors=['goldenrod','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
-    for i,cs in enumerate(cloud_species):
-        cs_key = cs[:-3]
-        if cs_key == 'KCl':
-            cs_key = cs_key.upper()
-        P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
-        pi=np.where((P_cloud>min(retrieval_object.model_object.pressure))&(P_cloud<max(retrieval_object.model_object.pressure)))[0]
-        ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
-    # https://github.com/cphyc/matplotlib-label-lines
-    labelLines(ax.get_lines(),align=False,fontsize=fs*0.8,drop_label=True)
+    if retrieval_object.target.name in ['2M0355','2M1425','test','test_corr']:
+        for i,cs in enumerate(cloud_species):
+            cs_key = cs[:-3]
+            if cs_key == 'KCl':
+                cs_key = cs_key.upper()
+            P_cloud, T_cloud = getattr(cloud_cond, f'return_T_cond_{cs_key}')(Fe_H, C_O)
+            pi=np.where((P_cloud>min(retrieval_object.model_object.pressure))&(P_cloud<max(retrieval_object.model_object.pressure)))[0]
+            ax.plot(T_cloud[pi], P_cloud[pi], lw=1.3, label=cloud_labels[i], ls=':',c=cs_colors[i])
+        # https://github.com/cphyc/matplotlib-label-lines
+        labelLines(ax.get_lines(),align=False,fontsize=fs*0.8,drop_label=True)
     
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     #file=np.loadtxt('t1400g562nc_m0.0.dat')
@@ -300,13 +301,18 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         ax.plot(test_ret.model_object.temperature,test_ret.pressure,linestyle='dashdot',c='blueviolet',lw=2) 
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Input')
 
-    #elif retrieval_object.target.name in ['2M0355','2M1425']:
-    else:
+    elif retrieval_object.target.name in ['2M0355','2M1425']:
         file=np.loadtxt('t1600g562nc_m0.0.dat')
         pres=file[:,1] # bar
         temp=file[:,2] # K
         ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1600\,$K, log$\,g=4.75$')
+    elif retrieval_object.target.name=='ROXs12B':
+        file=np.loadtxt('t2400g562nc_m0.0.dat')
+        pres=file[:,1] # bar
+        temp=file[:,2] # K
+        ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
+        comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=2400\,$K, log$\,g=4.75$')
 
     if retrieval_object.target.name=='2M0355': # compare with Zhang2022 science verification
         PT_Zhang=np.loadtxt(f'{retrieval_object.target.name}/2M0355_PT_Zhang2021.dat')
@@ -318,7 +324,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         object_label=f'{retrieval_object.target.name} retrieval'
         contr_label=f'{retrieval_object.target.name} contribution'
     else:
-        object_label='This retrieval'
+        object_label='$P$--$T$ profile'
         contr_label='Contribution'
 
     lines=[]

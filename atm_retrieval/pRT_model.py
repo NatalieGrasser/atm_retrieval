@@ -326,7 +326,7 @@ class pRT_spectrum:
                 # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
                 flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
 
-            if self.primary_label==False: # should have same wavelengths
+            if self.primary_label==False and self.interpolate==True: # should have same wavelengths
                 for det in range(3):
                     nonans = np.isfinite(self.primary_flux[order][det]) & np.isfinite(self.data_flux[order][det]) & np.isfinite(self.data_err[order][det])
                     flux[det]/=np.nanmedian(flux[det])
