@@ -307,7 +307,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         temp=file[:,2] # K
         ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1600\,$K, log$\,g=4.75$')
-    elif retrieval_object.target.name=='ROXs12B':
+    elif retrieval_object.target.name in ['ROXs12A','ROXs12B']:
         file=np.loadtxt('t2400g562nc_m0.0.dat')
         pres=file[:,1] # bar
         temp=file[:,2] # K
