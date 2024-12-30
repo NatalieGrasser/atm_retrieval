@@ -91,6 +91,11 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                 'log_HF':([-12,-1],r'log HF'),
                 'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
                 'log_H2S':([-12,-1],r'log H$_2$S')}
+        if brown_dwarf.name=='ROXs12A': # add extra abundances
+            hot_chemistry={'log_Ca':([-12,-1],r'log Ca'),
+                        'log_Na':([-12,-1],r'log Na'),
+                        'log_Ti':([-12,-1],r'log Ti')}
+            chemistry.update(hot_chemistry)
         
     if cloud_mode=='gray':
         cloud_props={'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'),  

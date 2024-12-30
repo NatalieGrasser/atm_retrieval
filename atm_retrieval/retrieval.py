@@ -124,7 +124,9 @@ class Retrieval:
     def get_atmosphere_objects(self,redo=False,broader=True):
 
         atmosphere_objects=[]
-        file=pathlib.Path(f'atmosphere_objects.pickle')
+        file=pathlib.Path('atmosphere_objects.pickle')
+        if self.target.name=='ROXs12A': # different file for star, has additional species
+            file=pathlib.Path('ROXs12A/atmosphere_objects.pickle')
         if file.exists() and redo==False:
             with open(file,'rb') as file:
                 atmosphere_objects=pickle.load(file)
