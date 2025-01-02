@@ -602,7 +602,7 @@ class Retrieval:
             print('\n ----------------- Main retrieval exists. ----------------- \n')
         self.evaluate() # created and saves self.params_dict
 
-        if self.chemistry=='free':
+        if self.chemistry=='freechem':
             ccf_molecules=[]
             for molec in self.chem_species:
                 ccf_molecules.append(molec[4:]) # without log_
