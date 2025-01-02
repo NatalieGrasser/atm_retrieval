@@ -498,6 +498,7 @@ class Retrieval:
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
+            print(f'{molecule} S/N =',SNR)
             figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
             self.parameters.params=orig_params_dict
         self.CCF_list=CCF_list
@@ -601,7 +602,12 @@ class Retrieval:
             print('\n ----------------- Main retrieval exists. ----------------- \n')
         self.evaluate() # created and saves self.params_dict
 
-        ccf_molecules=self.chem_species if self.chemistry=='free' else molecules
+        if self.chemistry=='free':
+            ccf_molecules=[]
+            for molec in self.chem_species:
+                ccf_molecules.append(molec[4:]) # without log_
+        else:
+            ccf_molecules=molecules
         ccf_dict=self.cross_correlation(ccf_molecules)
         self.params_dict.update(ccf_dict)
         with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
