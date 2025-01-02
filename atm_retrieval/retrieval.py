@@ -125,7 +125,7 @@ class Retrieval:
 
         atmosphere_objects=[]
         file=pathlib.Path('atmosphere_objects.pickle')
-        if self.target.name=='ROXs12A': # different file for star, has additional species
+        if self.target.name in ['ROXs12A','ROXs12B']: # different file for hotter objects, has additional species
             file=pathlib.Path('ROXs12A/atmosphere_objects.pickle')
         if file.exists() and redo==False:
             with open(file,'rb') as file:
@@ -600,12 +600,13 @@ class Retrieval:
         else:
             print('\n ----------------- Main retrieval exists. ----------------- \n')
         self.evaluate() # created and saves self.params_dict
-        if molecules!=None:
-            ccf_dict=self.cross_correlation(molecules)
-            self.params_dict.update(ccf_dict)
-            with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
-                pickle.dump(self.params_dict,file)
-        
+
+        ccf_molecules=self.chem_species if self.chemistry=='free' else molecules
+        ccf_dict=self.cross_correlation(ccf_molecules)
+        self.params_dict.update(ccf_dict)
+        with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
+            pickle.dump(self.params_dict,file)
+    
         print(self.params_dict)
         if bayes==True:
             evidence_dict=pathlib.Path(f'{retrieval_output_dir}/evidence_dict.pickle')
