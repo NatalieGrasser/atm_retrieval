@@ -85,16 +85,23 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                 'log_13CO':([-12,-1],r'log $^{13}$CO'),
                 'log_C18O':([-12,-1],r'log C$^{18}$O'),
                 'log_C17O':([-12,-1],r'log C$^{17}$O'),
-                'log_CH4':([-12,-1],r'log CH$_4$'),
-                'log_NH3':([-12,-1],r'log NH$_3$'),
-                'log_HCN':([-12,-1],r'log HCN'),
                 'log_HF':([-12,-1],r'log HF'),
-                'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
-                'log_H2S':([-12,-1],r'log H$_2$S')}
-        if brown_dwarf.name in ['ROXs12A','ROXs12B']: # add extra abundances
+                'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O')}
+        if brown_dwarf.name in ['2M0355','2M1425','test','test_corr','testsys']:
+            cool_chemistry={'log_CH4':([-12,-1],r'log CH$_4$'),
+                            'log_NH3':([-12,-1],r'log NH$_3$'),
+                            'log_HCN':([-12,-1],r'log HCN'),
+                            'log_H2S':([-12,-1],r'log H$_2$S')}
+            chemistry.update(cool_chemistry)
+        if brown_dwarf.name in ['ROXs12A','ROXs12B']:
             hot_chemistry={'log_Ca':([-12,-1],r'log Ca'),
                         'log_Na':([-12,-1],r'log Na'),
-                        'log_Ti':([-12,-1],r'log Ti')}
+                        'log_Ti':([-12,-1],r'log Ti'),
+                        'log_OH':([-12,-1],r'log OH'),
+                        'log_CN':([-12,-1],r'log CN'),
+                        'log_Fe':([-12,-1],r'log Fe'),
+                        #'log_Sc':([-12,-1],r'log Sc')
+                        }
             chemistry.update(hot_chemistry)
         
     if cloud_mode=='gray':
