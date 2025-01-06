@@ -78,7 +78,7 @@ class Target:
             self.fl=np.reshape(self.fl,(self.n_orders,self.n_dets,self.n_pixels))
             self.err=np.reshape(self.err,(self.n_orders,self.n_dets,self.n_pixels))
 
-        if self.name in ['2M0355','ROXs12A']:
+        if self.name in ['2M0355']:#,'ROXs12A']:
             # use corrected wavelength solution, wasn't good for last order-detector
             wlcorr=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}_corr_wl.txt')
             if wlcorr.exists():

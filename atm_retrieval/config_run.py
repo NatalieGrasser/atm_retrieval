@@ -38,7 +38,7 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
     output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
 
     constant_params={} # add if needed
-    free_params = {'rv': ([2,20],r'$v_{\rm rad}$'),
+    free_params = {'rv': ([-20,20],r'$v_{\rm rad}$'),
                 'vsini': ([0,40],r'$v$ sin$i$'),
                 'log_g':([3,5],r'log $g$'),
                 'epsilon_limb': ([0.2,1], r'$\epsilon_\mathrm{limb}$')} # limb-darkening coefficient (0-1)
