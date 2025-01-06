@@ -18,7 +18,7 @@ if getpass.getuser() == "grasser": # when running from LEM
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
-    os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
+    os.environ['pRT_input_data_path'] = "/media/natalie/Data1/input_data"
     from target import Target
     from retrieval import Retrieval
     from parameters import Parameters
@@ -57,7 +57,7 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                 'dlnT_dlnP_2': ([0.,0.4], r'$\nabla T_2$'), 
                 'dlnT_dlnP_3': ([0.,0.4], r'$\nabla T_3$'), 
                 'dlnT_dlnP_4': ([0.,0.4], r'$\nabla T_4$'), 
-                'T0': ([1000,4000], r'$T_0$')} # at bottom of atmosphere
+                'T0': ([1000,6000], r'$T_0$')} # at bottom of atmosphere
         free_params.update(pt_params)
 
     # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
@@ -100,8 +100,7 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                         'log_OH':([-12,-1],r'log OH'),
                         'log_CN':([-12,-1],r'log CN'),
                         'log_Fe':([-12,-1],r'log Fe'),
-                        #'log_Sc':([-12,-1],r'log Sc')
-                        }
+                        'log_Sc':([-12,-1],r'log Sc')}
             chemistry.update(hot_chemistry)
         
     if cloud_mode=='gray':

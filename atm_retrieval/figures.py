@@ -324,7 +324,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         object_label=f'{retrieval_object.target.name} retrieval'
         contr_label=f'{retrieval_object.target.name} contribution'
     else:
-        object_label='$P$--$T$ profile'
+        object_label='$P-T$ profile'
         contr_label='Contribution'
 
     lines=[]
