@@ -18,7 +18,7 @@ if getpass.getuser() == "grasser": # when running from LEM
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
 elif getpass.getuser() == "natalie": # when testing from my laptop
-    os.environ['pRT_input_data_path'] = "/media/natalie/Data1/input_data"
+    os.environ['pRT_input_data_path'] = "/media/natalie/Data1/input_data_std/input_data"
     from target import Target
     from retrieval import Retrieval
     from parameters import Parameters

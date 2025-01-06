@@ -17,7 +17,9 @@
 */SP0829/*
 
 */ROXs12A/*
+!model_spectrum.txt
 !ROXs12A_spectrum.txt
+!ROXs12A_corr_wl.txt
 
 */ROXs12B/*
 !ROXs12B_spectrum.txt

@@ -78,7 +78,7 @@ class Target:
             self.fl=np.reshape(self.fl,(self.n_orders,self.n_dets,self.n_pixels))
             self.err=np.reshape(self.err,(self.n_orders,self.n_dets,self.n_pixels))
 
-        if self.name=='2M0355':
+        if self.name in ['2M0355','ROXs12A']:
             # use corrected wavelength solution, wasn't good for last order-detector
             wlcorr=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}_corr_wl.txt')
             if wlcorr.exists():
@@ -313,7 +313,8 @@ class Target:
         for ord in range(fluxes.shape[0]):
             for det in range(fluxes.shape[1]):
                 # function to interpolate transmission spectrum
-                template_interp_func = interp1d(w_init[ord,det],transm_spec[ord,det],kind='linear')
+                template_interp_func = interp1d(w_init[ord,det],transm_spec[ord,det],kind='linear',
+                                                fill_value='extrapolate')
 
                 f, f_err, wlen_init = fluxes[ord,det], errs[ord,det], w_init[ord,det]
                 f, w, f_err = f[Ncut:-Ncut], wlen_init[Ncut:-Ncut], f_err[Ncut:-Ncut]
@@ -321,8 +322,12 @@ class Target:
                 # Remove continuum and nans of spectra
                 # continuum estimated by smoothing spectrum with Savitzky-Golay filter
                 nans = np.isnan(f)
+                if nans.all()==True or (np.sum(nans)>2000): # won't work if too many nans
+                    wlens.append(wlen_init)
+                    continue
                 continuum = signal.savgol_filter(f[~nans], window_length=cont_smooth_len,polyorder=2, mode='interp')
                 f = f[~nans] - continuum
+                
                 f, w, f_err = f[Ncut:-Ncut], w[~nans][Ncut:-Ncut], f_err[Ncut:-Ncut]
                 bound = [(-p_range[j], p_range[j]) for j in range(order+1)] # 2nd order polynomial -> 3 values
 
@@ -356,7 +361,6 @@ class Target:
                     warnings.warn(f"Not enough telluric features to correct wavelength for order {ord,det}")
                     wlen_cal = wlen_init
                 wlens.append(wlen_cal)
-
         return np.reshape(np.array(wlens),(self.n_orders,self.n_dets,self.n_pixels))
     
     def plot_tellurics(self,wl,fl,fl0):
