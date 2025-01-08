@@ -376,6 +376,13 @@ class pRT_spectrum:
                         plt.show()
                     
                     #flx/=np.median(flx)
+
+                    # because continuum has been removed for system, must be removed here as well
+                    #wl=self.data_wave[order][det]
+                    #continuum_model = np.poly1d(np.polyfit(wl,total_flux,deg=3))
+                    #continuum = continuum_model(wl)
+                    #flux_contrem = total_flux/continuum
+                    #flux[det]=flux_contrem #total_flux
                     flux[det]=total_flux
 
             spectrum_orders.append(flux)

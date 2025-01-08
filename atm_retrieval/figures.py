@@ -324,7 +324,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         object_label=f'{retrieval_object.target.name} retrieval'
         contr_label=f'{retrieval_object.target.name} contribution'
     else:
-        object_label='$P-T$ profile'
+        object_label='$P$-$T$ profile'
         contr_label='Contribution'
 
     lines=[]
@@ -1011,7 +1011,13 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
     output_dir=retrieval_object.output_dir
     fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
     species_info = pd.read_csv(os.path.join('species_info.csv'))
-    molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','CH4','H2S','HCN','NH3']
+    #molecules=molecules if molecules!='all' else ['H2','He','H2O','H2(18)O','12CO','13CO','CH4','H2S','HCN','NH3']
+    molecules=[]
+    for chemspec in retrieval_object.chem_species:
+        if retrieval_object.chemistry=='freechem':
+            molecules.append(chemspec[4:])
+        else:    
+            molecules.append(chemspec)
     alpha=0.6 if 'retrieval_object2' in kwargs or comp_equ==True else 1
     legend_labels=0
     xmin,xmax=1e-11,1.3
@@ -1272,7 +1278,7 @@ def compare_metall_logg(retrieval_object1,retrieval_object2,fs=12,only_params=['
     fig.savefig(f'{comparison_dir}/cornerplot_ratios_logg.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def VMR_plot_new(retrieval_object,molecules=['H2O','12CO','CH4','H2S'],fs=10,comp_equ=False,**kwargs):
+def VMR_plot_new(retrieval_object,fs=10,comp_equ=False,**kwargs):
 
     #prefix=retrieval_object.callback_label if retrieval_object.callback_label=='final_' else ''
     prefix=''
@@ -1285,6 +1291,24 @@ def VMR_plot_new(retrieval_object,molecules=['H2O','12CO','CH4','H2S'],fs=10,com
     xmin,xmax=1e-10,1e-2
     chemleg=[] # legend for chemistry
     pressure=retrieval_object.model_object.pressure
+
+    # plot 6 most abundant species
+    abunds=[]
+    species=retrieval_object.chem_species
+    if retrieval_object.chemistry=='freechem':
+        for i,spec in enumerate(species):
+            abunds.append(retrieval_object.params_dict[spec])
+            species[i]=spec[4:]
+    elif retrieval_object.chemistry in ['equchem','quequchem']:
+        for spec in species:
+            model_object=pRT_spectrum(retrieval_object)    
+            mass_fractions=model_object.mass_fractions
+            MMW=model_object.MMW
+            for spec in retrieval_object.species:
+                mass=species_info.loc[species_info["pRT_name"]==spec]['mass'].values[0]
+                abunds.append(np.median(mass_fractions[spec]*MMW/mass)) # take median of abundance            
+    abunds, species = zip(*sorted(zip(abunds, species)))
+    molecules=species[-6:][::-1] # get largest 6
 
     def plot_VMRs(retr_obj,ax,ax2):
         
