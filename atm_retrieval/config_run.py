@@ -87,7 +87,7 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                 'log_C17O':([-12,-1],r'log C$^{17}$O'),
                 'log_HF':([-12,-1],r'log HF'),
                 'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O')}
-        if brown_dwarf.name in ['2M0355','2M1425','test','test_corr','testsys']:
+        if brown_dwarf.name in ['2M0355','2M1425','test','test_corr','testsys','ROXs12B']:
             cool_chemistry={'log_CH4':([-12,-1],r'log CH$_4$'),
                             'log_NH3':([-12,-1],r'log NH$_3$'),
                             'log_HCN':([-12,-1],r'log HCN'),

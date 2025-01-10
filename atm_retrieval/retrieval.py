@@ -125,8 +125,10 @@ class Retrieval:
 
         atmosphere_objects=[]
         file=pathlib.Path('atmosphere_objects.pickle')
-        if self.target.name in ['ROXs12A','ROXs12B']: # different file for hotter objects, has additional species
+        if self.target.name=='ROXs12A': # different file for hotter objects, has additional species
             file=pathlib.Path('ROXs12A/atmosphere_objects.pickle')
+        if self.target.name=='ROXs12B':
+            file=pathlib.Path('ROXs12B/atmosphere_objects.pickle')
         if file.exists() and redo==False:
             with open(file,'rb') as file:
                 atmosphere_objects=pickle.load(file)
@@ -186,6 +188,8 @@ class Retrieval:
             figs.VMR_plot(self)
         if self.primary_label==False: 
             figs.plot_spectrum_split(self,plot_components=True)
+        else:
+            figs.plot_spectrum_split(self)
      
     def PMN_analyse(self):
         post=pathlib.Path(f'{self.output_dir}/{self.callback_label}posterior.npy')
