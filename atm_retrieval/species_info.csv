@@ -24,7 +24,6 @@ Sc,Sc_high,Sc1,44.95591,green,Sc,0,0,1,0,0
 CaH,CaH_main_iso,Ca1H1,41.085840000000005,b,CaH,0,0,1,0,0
 46TiO,TiO_46_Exomol_McKemmish,,61.951,b,$^{46}$TiO,0,1,0,0,0
 47TiO,TiO_47_Exomol_McKemmish,,62.95,b,$^{47}$TiO,0,1,0,0,0
-48TiO,TiO_48_Exomol_McKemmish,b,63.946000000000005,C13,$^{48}$TiO,0,1,0,0,0
 49TiO,TiO_49_Exomol_McKemmish,,64.946,b,$^{49}$TiO,0,1,0,0,0
 50TiO,TiO_50_Exomol_McKemmish,,65.943,b,$^{50}$TiO,0,1,0,0,0
 TiO,TiO_48_Exomol_McKemmish,O1Ti1,63.946000000000005,cadetblue,TiO,0,1,0,0,0
