@@ -127,7 +127,7 @@ class Retrieval:
         species=self.species if for_species==None else for_species
         if for_species!=None:
             species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
-            for_species = species_info.loc[species,'pRT_name']
+            species = [species_info.loc[species,'pRT_name']]
         if for_species==None: # none specified
             file=pathlib.Path('atmosphere_objects.pickle')
             not_exists=False
@@ -163,8 +163,9 @@ class Retrieval:
                 
                 atmosphere.setup_opa_structure(self.pressure)
                 atmosphere_objects.append(atmosphere)
-            with open(file,'wb') as file:
-                pickle.dump(atmosphere_objects,file)
+            if for_species==None:
+                with open(file,'wb') as file:
+                    pickle.dump(atmosphere_objects,file)
             return atmosphere_objects
 
     def PMN_lnL(self,cube=None,ndim=None,nparams=None):

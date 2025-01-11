@@ -221,8 +221,8 @@ class pRT_spectrum:
         mass_fractions['H2'] = self.read_species_info('H2', 'mass')*(1-VMR_wo_H2)
         H += self.read_species_info('H2','H')*(1-VMR_wo_H2) # Add to the H-bearing species
         
-        if VMR_wo_H2.any() > 1:
-            print('VMR_wo_H2 > 1. Other species are too abundant!')
+        #if VMR_wo_H2.any() > 1:
+            #print('VMR_wo_H2 > 1. Other species are too abundant!')
 
         MMW = 0 # Compute the mean molecular weight from all species
         for mass_i in mass_fractions.values():
@@ -232,7 +232,7 @@ class pRT_spectrum:
         for line_species_i in mass_fractions.keys():
             mass_fractions[line_species_i] /= MMW # Turn the molecular masses into mass fractions
         mass_fractions['MMW'] = MMW # pRT requires MMW in mass fractions dictionary
-        CO = C/O
+        CO = C/O if np.sum(O)!=0 else np.inf
         log_CH_solar = 8.46 - 12 # Asplund et al. (2021)
         FeH = np.log10(C/H)-log_CH_solar
         CO = np.nanmean(CO)

@@ -106,7 +106,12 @@ def init_retrieval(brown_dwarf,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True)
                         'log_V':([-12,-1],r'log V'),
                         'log_K':([-12,-1],r'log K'),
                         'log_Al':([-12,-1],r'log Al'),
-                        'log_Mn':([-12,-1],r'log Mn')}
+                        'log_Mn':([-12,-1],r'log Mn'),
+                        'log_FeH':([-12,-1],r'log FeH'),
+                        'log_TiO':([-12,-1],r'log TiO'),
+                        'log_TiH':([-12,-1],r'log TiH'),
+                        'log_CrH':([-12,-1],r'log CrH')}
+
             chemistry.update(hot_chemistry)
         
     if cloud_mode=='gray':

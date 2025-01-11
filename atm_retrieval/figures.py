@@ -150,7 +150,8 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
                                     chemistry='freechem',PT_type=retrieval_object.PT_type)
             if f'log_{spec}' not in retrieval_object.params_dict.keys():
                 retrieval_species.atmosphere_objects = retrieval_species.get_atmosphere_objects(for_species=spec)
-                parameters_species[f'log_{spec}']=-4 # check species that isn't in retrieval
+                parameters_species.params[f'log_{spec}']=-4 # check species that isn't in retrieval
+                retrieval_species.species = [spec]
             retrieval_species.primary_label=True # to avoid problems
             retrieval_species.model_object=pRT_spectrum(retrieval_species)
             spec_flux=retrieval_species.model_object.make_spectrum()
