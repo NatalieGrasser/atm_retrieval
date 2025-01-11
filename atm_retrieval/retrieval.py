@@ -121,19 +121,27 @@ class Retrieval:
                 species.append(species_info.loc[chemspec,'pRT_name'])
         return species
 
-    def get_atmosphere_objects(self,redo=False,broader=True):
+    def get_atmosphere_objects(self,redo=False,broader=True,for_species=None):
 
         atmosphere_objects=[]
-        file=pathlib.Path('atmosphere_objects.pickle')
-        if self.target.name=='ROXs12A': # different file for hotter objects, has additional species
-            file=pathlib.Path('ROXs12A/atmosphere_objects.pickle')
-        if self.target.name=='ROXs12B':
-            file=pathlib.Path('ROXs12B/atmosphere_objects.pickle')
-        if file.exists() and redo==False:
-            with open(file,'rb') as file:
-                atmosphere_objects=pickle.load(file)
-                return atmosphere_objects
-        else:
+        species=self.species if for_species==None else for_species
+        if for_species!=None:
+            species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+            for_species = species_info.loc[species,'pRT_name']
+        if for_species==None: # none specified
+            file=pathlib.Path('atmosphere_objects.pickle')
+            not_exists=False
+            if self.target.name=='ROXs12A': # different file for hotter objects, has additional species
+                file=pathlib.Path('ROXs12A/atmosphere_objects.pickle')
+            if self.target.name=='ROXs12B':
+                file=pathlib.Path('ROXs12B/atmosphere_objects.pickle')
+            if file.exists() and redo==False:
+                with open(file,'rb') as file:
+                    atmosphere_objects=pickle.load(file)
+                    return atmosphere_objects
+            else:
+                not_exists=True
+        if for_species!=None or not_exists:
             for order in range(self.n_orders):
                 wl_pad=7 # wavelength padding because spectrum is not wavelength shifted yet
                 if broader==True:  # larger wl pad needed when shifting during cross-correlation
@@ -144,7 +152,7 @@ class Retrieval:
                 wlmax=np.max(self.K2166[order])+wl_pad
                 wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
 
-                atmosphere = Radtrans(line_species=self.species,
+                atmosphere = Radtrans(line_species=species,
                                     rayleigh_species = ['H2', 'He'],
                                     continuum_opacities = ['H2-H2', 'H2-He'],
                                     wlen_bords_micron=wlen_range, 
@@ -431,7 +439,12 @@ class Retrieval:
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in for loop
 
-        for molecule in molecules:
+        # plot all CCFs in one big figure
+        number=len(molecules)
+        nrows=number//2+number%2
+        fig,ax = plt.subplots(nrows,2,figsize=(5,nrows),dpi=200,sharex=True)
+
+        for j,molecule in enumerate(molecules):
             # create final model without opacity from a certain molecule
             exclusion_dict=self.params_dict.copy()
             if self.chemistry=='freechem':
@@ -503,10 +516,25 @@ class Retrieval:
             ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
             print(f'{molecule} S/N =',SNR)
-            figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
+            #figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
             self.parameters.params=orig_params_dict
+
+            figs.CCF_plot_all(self,molecule,RVs,CCF_norm,ACF_norm,ax=ax[j//2,j%2],noiserange=noiserange)
+            if j%2==1:
+                ax[j//2,j%2].yaxis.set_label_position("right")
+                ax[j//2,j%2].yaxis.tick_right()
+            else:
+                ax[j//2,j%2].set_ylabel('S/N')
+            if j//2==(nrows-1):
+                ax[j//2,j%2].set_xlabel('RV [km/s]')
+              
         self.CCF_list=CCF_list
         self.ACF_list=ACF_list
+        fig.tight_layout()
+        plt.subplots_adjust(wspace=0, hspace=0)
+        fig.savefig(f'{self.output_dir}/CCFs_all.pdf')
+        plt.close()
+
         return ccf_dict
 
     def bayes_evidence(self,molecules,evidence_dict,retrieval_output_dir):

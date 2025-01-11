@@ -118,26 +118,67 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
 
     if overplot_species!=None: # overplot species onto residuals
         opacities={}
+
         for spec in overplot_species:
-            opa_orders=[]
-            wave_orders=[]
+
+            if getpass.getuser() == "grasser":
+                from atm_retrieval.retrieval import Retrieval
+                from atm_retrieval.parameters import Parameters
+                from atm_retrieval.pRT_model import pRT_spectrum
+            elif getpass.getuser() == "natalie":
+                from retrieval import Retrieval
+                from parameters import Parameters
+                from pRT_model import pRT_spectrum
+            #opa_orders=[]
+            #wave_orders=[]
+
+            # create spectrum containing only selected species
+            parameters_species = {} #retrieval_object.params_dict.copy()
+            for key in retrieval_object.parameters.free_params.keys():
+                if key in retrieval_object.chem_species:
+                    parameters_species[key]= -12
+                else:
+                    parameters_species[key]=retrieval_object.params_dict[key]
+            if f'log_{spec}' in retrieval_object.params_dict.keys():
+                parameters_species[f'log_{spec}']=retrieval_object.params_dict[f'log_{spec}']
+            #else:
+                #parameters_species[f'log_{spec}']=-4 # check species that isn't in retrieval
+            parameters_species = Parameters({}, parameters_species)
+            parameters_species.param_priors['log_l']=[-3,0]
+            retrieval_species = Retrieval(target=retrieval_object.target,parameters=parameters_species, 
+                                        output_name=retrieval_object.output_name,
+                                    chemistry='freechem',PT_type=retrieval_object.PT_type)
+            if f'log_{spec}' not in retrieval_object.params_dict.keys():
+                retrieval_species.atmosphere_objects = retrieval_species.get_atmosphere_objects(for_species=spec)
+                parameters_species[f'log_{spec}']=-4 # check species that isn't in retrieval
+            retrieval_species.primary_label=True # to avoid problems
+            retrieval_species.model_object=pRT_spectrum(retrieval_species)
+            spec_flux=retrieval_species.model_object.make_spectrum()
             for order in range(7):
-                wl_pad=0#7 # wavelength padding because spectrum is not wavelength shifted yet
-                wlmin=np.min(retrieval_object.K2166[order])-wl_pad
-                wlmax=np.max(retrieval_object.K2166[order])+wl_pad
-                wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
-                atm = Radtrans(line_species=[spec],
-                                    rayleigh_species = [],
-                                    continuum_opacities = [],
-                                    wlen_bords_micron=wlen_range, 
-                                    mode='lbl',
-                                    lbl_opacity_sampling=3) # take every nth point (=3 in deRegt+2024)
-                
-                T = np.array([1400]).reshape(1)
-                wave_cm, opas = atm.get_opa(T)
-                wave_orders.append(wave_cm*1e7)
-                opa_orders.append(opas[spec].flatten())
-            opacities[spec]=opa_orders
+                for det in range(3):
+                    spec_flux[order,det]/=np.median(spec_flux[order,det])
+            #print(spec_flux)
+            
+            #for order in range(7):
+            if False:
+                    wl_pad=0#7 # wavelength padding because spectrum is not wavelength shifted yet
+                    wlmin=np.min(retrieval_object.K2166[order])-wl_pad
+                    wlmax=np.max(retrieval_object.K2166[order])+wl_pad
+                    wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
+                    atm = Radtrans(line_species=[spec],
+                                        rayleigh_species = [],
+                                        continuum_opacities = [],
+                                        wlen_bords_micron=wlen_range, 
+                                        mode='lbl',
+                                        lbl_opacity_sampling=3) # take every nth point (=3 in deRegt+2024)
+                    
+                    T = np.array([1400]).reshape(1)
+                    wave_cm, opas = atm.get_opa(T)
+                    wave_orders.append(wave_cm*1e7)
+                    opa_orders.append(opas[spec].flatten())
+                #opacities[spec]=opa_orders
+            opacities[spec] = spec_flux
+        retrieval_object.opacities=opacities
 
     retrieval=retrieval_object
     residuals=(retrieval.data_flux-retrieval.model_flux)
@@ -206,16 +247,16 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
 
             ax2.plot([np.min(retrieval.data_wave[order,det]),np.max(retrieval.data_wave[order,det])],[0,0],lw=0.8,c='k')
 
-        if overplot_species!=None:
-            colors=['b','r','g']
-            wl_shifted=retrieval.model_object.wlshift_orders
-            for i,species in enumerate(overplot_species):
-                opas=opacities[species]
-                ymax=np.nanmax(residuals[order])
-                ymin=np.nanmin(residuals[order])
-                opa=opas[order]
-                opa=scale_between(ymin,ymax,opa)
-                ax2.plot(wave_orders[order],opa,lw=0.8,c=colors[i])
+            if overplot_species!=None:
+                colors=['b','r','g','y']
+                #wl_shifted=retrieval.model_object.wlshift_orders
+                for i,species in enumerate(overplot_species):
+                    opas=opacities[species]
+                    #ymax=np.nanmax(residuals[order])
+                    #ymin=np.nanmin(residuals[order])
+                    #opa=opas[order]
+                    #opa=scale_between(ymin,ymax,opa)
+                    ax1.plot(retrieval.data_wave[order,det],opas[order,det],lw=0.8,c=colors[i])
 
         #min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.model_flux[order]]))
         #max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.model_flux[order]]))
@@ -655,7 +696,10 @@ def opacity_plot(retrieval_object,only_params=None):
                         mode='lbl',
                         lbl_opacity_sampling=10)
     
-    T = np.array([1400]).reshape(1)
+    # use temperature at maximum contribution
+    summed_contr = retrieval_object.summed_contr
+    idx=np.where(summed_contr == np.max(summed_contr))[0][0]
+    T = np.array([retrieval_object.model_object.temperature[idx]]).reshape(1)
     wave_cm, opas = atmosphere.get_opa(T)
     wave_nm = wave_cm*1e7
     ymin,ymax=5e-8,5e2
@@ -1427,3 +1471,22 @@ def VMR_plot_new(retrieval_object,fs=10,comp_equ=False,**kwargs):
     fig.tight_layout()
     fig.savefig(f'{output_dir}/{prefix}VMR_plot{suffix}.pdf')
     plt.close()
+
+def CCF_plot_all(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,ax,noiserange=50):
+    SNR=CCF_norm[np.where(RVs==0)[0][0]]
+    ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+    ax.set_xlim(np.min(RVs),np.max(RVs))
+    ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
+    ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
+    ax.plot(RVs,CCF_norm,color=retrieval_object.color1,label='CCF')
+    ax.plot(RVs,ACF_norm,color=retrieval_object.color1,linestyle='dashed',alpha=0.5,label='ACF')
+    #ax.legend(loc='upper right')
+    if retrieval_object.chemistry=='freechem':
+        molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+    elif retrieval_object.chemistry in ['equchem','quequchem']:
+        if molecule=='13CO':
+            molecule_name=r'$^{13}$CO'
+        elif molecule=='H2(18)O':
+            molecule_name=r'log H$_2^{18}$O'
+    molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
+    ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
