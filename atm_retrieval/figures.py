@@ -610,7 +610,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
         else: # avoid this though
             cornerplot(retrieval_object,only_params=only_params)
     VMR_plot_new(retrieval_object)
-    VMR_plot(retrieval_object,comp_equ=comp_equ)
+    #VMR_plot(retrieval_object,comp_equ=comp_equ)
     if retrieval_object.primary_label==False:
         plot_spectrum_split(retrieval_object,plot_components=True)
     
