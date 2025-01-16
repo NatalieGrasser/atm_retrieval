@@ -33,6 +33,9 @@ class Target:
             self.standard_star_temp=15536 # lamTau
             self.color1='deepskyblue' # color of retrieval output
             self.color2='lightskyblue' 
+            self.fwhm_lorentz = 1.8553184456821055 # Lorentz FWHM in pixels
+            self.fwhm_boxcar = 0.6490476214956428
+            self.fwhm_wl = 0.07372747749381153 # fwhm in wavelength units
             if self.name=='testsys':
                 self.primary_label=False
         elif self.name=='2M1425':
@@ -43,6 +46,9 @@ class Target:
             self.standard_star_temp=10980 # betHya
             self.color1='lightcoral' # color of retrieval output
             self.color2='lightpink'
+            self.fwhm_lorentz= 2.6185322374450375 # Lorentz FWHM in pixels
+            self.fwhm_boxcar = 0.7267016613786428
+            
         elif self.name=='ROXs12B':
             self.primary_label=False
             self.ra="16h26m28.0396675056s"
@@ -52,6 +58,7 @@ class Target:
             self.fullname='ROXs12B'  
             self.color1='mediumturquoise'
             self.color2='lightseagreen'
+            self.fwhm_pix = 4.9810776558378 # Gaussian FWHM in pixels
         elif self.name=='ROXs12A':
             self.ra="16h26m28.0396675056s"
             self.dec="-25d26m47.717480112s"
@@ -60,6 +67,7 @@ class Target:
             self.fullname='ROXs12A'  
             self.color1='orange'
             self.color2='darkorange'
+            self.fwhm_pix = 4.9810776558378 # Gaussian FWHM in pixels
 
     def load_spectrum(self):
         self.cwd = os.getcwd()
@@ -117,6 +125,21 @@ class Target:
                 self.wl=np.reshape(wl_new,(self.n_orders,self.n_dets,self.n_pixels))
 
         return self.wl,self.fl,self.err
+    
+    def calc_resolution(self):
+        # FWHM as determined in molecfit/model/BEST_FIT_PARAMETERS.fits
+        self.spec_resolution=np.zeros((7,3))
+        for order in range(7):
+            for det in range(3):
+                wave = self.wl[order,det]
+                if hasattr(self, 'fwhm_pix'):
+                    pix_size = np.median(np.diff(wave))
+                    fwhm = pix_size*self.fwhm_pix
+                if hasattr(self, 'fwhm_wl'):
+                    fwhm = self.fwhm_wl
+                self.spec_resolution[order,det] = np.median(wave)/fwhm
+        return np.nanmedian(self.spec_resolution)
+        
         
     def get_mask_isfinite(self):
         self.n_orders,self.n_dets,self.n_pixels = self.fl.shape # shape (orders,detectors,pixels)
