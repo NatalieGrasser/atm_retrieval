@@ -39,7 +39,7 @@ class Retrieval:
         self.K2166=target.K2166
         self.parameters=parameters
         self.chemistry=chemistry # freechem/equchem/quequchem
-        self.species=self.get_species(param_dict=self.parameters.params,chemistry=self.chemistry)
+        self.species, self.species_hill =self.get_species(param_dict=self.parameters.params,chemistry=self.chemistry)
 
         # if companion, load in primary spectrum as well 
         if self.target.primary_label==False:
@@ -100,6 +100,8 @@ class Retrieval:
 
     def get_species(self,param_dict,chemistry): # get pRT species name from parameters dict
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+        species=[]
+        hill=[] # hill notation
         if chemistry=='freechem':
             self.chem_species=[]
             for par in param_dict:
@@ -110,16 +112,16 @@ class Retrieval:
                         pass
                     else:
                         self.chem_species.append(par)
-            species=[]
             for chemspec in self.chem_species:
                 species.append(species_info.loc[chemspec[4:],'pRT_name'])
+                hill.append(species_info.loc[chemspec[4:],'Hill_notation'])
         elif chemistry in ['equchem','quequchem']:
             self.chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
                          'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
-            species=[]
             for chemspec in self.chem_species:
                 species.append(species_info.loc[chemspec,'pRT_name'])
-        return species
+                hill.append(species_info.loc[chemspec,'Hill_notation'])
+        return species, hill
 
     def get_atmosphere_objects(self,redo=False,broader=True,for_species=None):
 
@@ -434,6 +436,7 @@ class Retrieval:
     def cross_correlation(self,molecules,noiserange=100): # can only be run after evaluate()
 
         ccf_dict={}
+        ccf_acf_dict={}
         CCF_list=[]
         ACF_list=[]
         orig_params_dict=self.params_dict
@@ -516,6 +519,7 @@ class Retrieval:
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
+            ccf_acf_dict[f'SNR_{molecule}']=(CCF_norm,ACF_norm)
             print(f'{molecule} S/N =',SNR)
             #figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
             self.parameters.params=orig_params_dict
@@ -531,6 +535,9 @@ class Retrieval:
               
         self.CCF_list=CCF_list
         self.ACF_list=ACF_list
+        file=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict.pickle')
+        with open(file,'wb') as file:
+            pickle.dump(ccf_acf_dict,file)
         fig.tight_layout()
         plt.subplots_adjust(wspace=0, hspace=0)
         fig.savefig(f'{self.output_dir}/CCFs_all.pdf')

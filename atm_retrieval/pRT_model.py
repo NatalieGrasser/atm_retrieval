@@ -20,9 +20,11 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
+    path_tables = '/net/lem/data2/regt/fastchem_tables'
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-    os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
+    os.environ['pRT_input_data_path'] = "/media/natalie/Data1/input_data_std/input_data"
+    path_tables = '/home/natalie/fastchem_tables'
 
 class pRT_spectrum:
 
@@ -72,12 +74,15 @@ class pRT_spectrum:
             self.MMW = self.mass_fractions['MMW']
 
         if self.chemistry in ['equchem','quequchem']: # use equilibium chemistry
-            self.abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
-            self.mass_fractions = self.get_abundance_dict(self.species,self.abunds)
+            #self.abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
+            #self.mass_fractions = self.get_abundance_dict(self.species,self.abunds)
+            self.species_hill = retrieval_object.species_hill
+            self.mass_fractions = self.equ_chemistry(self.species,self.params)
             # update mass_fractions with isotopologue ratios
             self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) 
-            self.MMW = self.abunds['MMW']
-            self.VMRs = self.get_VMRs(self.mass_fractions)
+            #self.MMW = self.abunds['MMW']
+            self.MMW = self.mass_fractions['MMW']
+            #self.VMRs = self.get_VMR_values(self.mass_fractions)
 
         self.spectrum_orders=[]
         self.n_orders=retrieval_object.n_orders
@@ -99,7 +104,7 @@ class pRT_spectrum:
                 mass_fractions[species][:idx]=quenched_fraction
         return mass_fractions
 
-    def get_VMRs(self,mass_fractions):
+    def get_VMR_values(self,mass_fractions):
         species_info = pd.read_csv(os.path.join('species_info.csv'))
         VMR_dict={}
         MMW=self.MMW
@@ -123,7 +128,10 @@ class pRT_spectrum:
             elif specie=='NH3_coles_main_iso':
                 mass_fractions[specie] = abunds['NH3']
             elif specie=='HF_main_iso':
-                mass_fractions[specie] = 1e-12 #abunds['HF'] not in pRT chem equ table
+                if "log_HF" in self.params:
+                    mass_fractions[specie] = self.params['log_HF'] # ACHTUNG: is vmr, not mass fraction
+                else:
+                    mass_fractions[specie] = 1e-12 #abunds['HF'] not in pRT chem equ table
                 #species_info = pd.read_csv(os.path.join('species_info.csv'))
                 #mass=species_info.loc[species_info["name"]=='HF']['mass'].values[0]
                 #mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers)*mass/self.abunds['MMW'] #abunds['HF'] not in pRT chem equ table, include here
@@ -189,6 +197,117 @@ class pRT_spectrum:
                 continue
             
         return mass_fractions
+    
+    # https://github.com/samderegt/retrieval_base/blob/Restructuring/retrieval_base/model_components/chemistry.py
+    def equ_chemistry(self,line_species,params):
+        species_info = pd.read_csv(os.path.join('species_info.csv'))
+
+        def load_interp_tables():
+            import h5py
+            def load_hdf5(file, key):
+                with h5py.File(f'{path_tables}/{file}', 'r') as f:
+                    return f[key][...]
+                
+            # Load the interpolation grid (ignore N/O)
+            self.P_grid = load_hdf5('grid.hdf5', 'P')
+            self.T_grid = load_hdf5('grid.hdf5', 'T')
+            self.CO_grid  = load_hdf5('grid.hdf5', 'C/O')
+            self.FeH_grid = load_hdf5('grid.hdf5', 'Fe/H')
+            points = (self.P_grid, self.T_grid, self.CO_grid, self.FeH_grid)
+
+            from scipy.interpolate import RegularGridInterpolator
+            self.interp_tables = {}
+            for species_i, hill_i in zip([*line_species, 'MMW'], [*self.species_hill, 'MMW']):
+                key = 'MMW' if species_i=='MMW' else 'log_VMR'
+                if species_i == 'HF_main_iso_new':
+                    continue
+                arr = load_hdf5(f'{hill_i}.hdf5', key=key)  # Load equchem abundance tables
+                
+                # Generate interpolation functions
+                self.interp_tables[species_i] = RegularGridInterpolator(
+                    values=arr[:,:,:,0,:], points=points, method='linear', # arr[P,T,C/O,N/O (const, solar value),FeH]
+                    #bounds_error=False, fill_value=None
+                        )        
+                
+        def get_VMRs(ParamTable):
+            self.VMRs = {}
+            self.VMRs = {'He':0.15*np.ones(self.n_atm_layers)}
+
+            def apply_bounds(val, grid):
+                val=np.array(val)
+                val[val > grid.max()] = grid.max()
+                val[val < grid.min()] = grid.min()
+                return val
+
+            # Update the parameters
+            self.CO  = ParamTable.get('C/O')
+            self.FeH = ParamTable.get('Fe/H')
+
+            # Apply the bounds of the grid
+            P = apply_bounds(self.pressure.copy(), grid=self.P_grid)
+            T = apply_bounds(self.temperature.copy(), grid=self.T_grid)
+            CO  = apply_bounds(np.array([self.CO]).copy(), grid=self.CO_grid)[0]
+            FeH = apply_bounds(np.array([self.FeH]).copy(), grid=self.FeH_grid)[0]
+            
+            # Interpolate abundances
+            for pRT_name_i, interp_func_i in self.interp_tables.items():
+
+                # Interpolate the equilibrium abundances
+                arr_i = interp_func_i(xi=(P, T, CO, FeH))
+
+                if pRT_name_i != 'MMW':
+                    species_i=species_info.loc[species_info["pRT_name"]==pRT_name_i]['name'].values[0]
+                    self.VMRs[species_i] = 10**arr_i # log10(VMR)
+                else:
+                    self.MMW = arr_i.copy() # Mean-molecular weight
+
+            # add these separately, not in table
+            for species_i in ['HF']:
+                self.VMRs[species_i] = np.ones(self.n_atm_layers)*10**params[f"log_{species_i}"]
+
+        def VMR_to_MF():
+            MMW = 0.
+            for species_i, VMR_i in self.VMRs.items():
+                mass_i = self.read_species_info(species_i, 'mass')
+                MMW += mass_i * VMR_i
+
+            # Convert to mass-fractions using mass-ratio
+            self.mass_fractions = {'MMW': MMW * np.ones(self.n_atm_layers)}
+            for species_i, VMR_i in self.VMRs.items():            
+                line_species_i = self.read_species_info(species_i, 'pRT_name')
+                mass_i = self.read_species_info(species_i, 'mass')
+                self.mass_fractions[line_species_i] = VMR_i * mass_i/MMW
+
+        def get_H2(): # get H2 abundance as the remainder of the total VMR
+
+            VMR_wo_H2 = np.sum([VMR_i for VMR_i in self.VMRs.values()], axis=0)
+            self.VMRs['H2'] = 1 - VMR_wo_H2
+
+            if (self.VMRs['H2'] < 0).any():
+                # Other species are too abundant
+                self.VMR_wo_H2=1.1
+                self.VMRs = -np.inf
+            else:
+                self.VMR_wo_H2=0.8 # just for avoiding an error at an if statement later on
+
+        load_interp_tables()
+        get_VMRs(params)
+        get_H2()
+        VMR_to_MF()
+
+        if self.chemistry=='quequchem':
+            for species in ['CO','H2O','CH4']:
+                Pqu=10**self.params['log_Pqu_CO_CH4'] # is in log
+                idx=find_nearest(self.pressure,Pqu)
+                quenched_fraction=self.mass_fractions[species][idx]
+                self.mass_fractions[species][:idx]=quenched_fraction
+            for species in ['NH3','HCN']:    
+                Pqu=10**self.params[f'log_Pqu_{species}'] # is in log
+                idx=find_nearest(self.pressure,Pqu)
+                quenched_fraction=self.mass_fractions[species][idx]
+                self.mass_fractions[species][:idx]=quenched_fraction
+
+        return self.mass_fractions
     
     def free_chemistry(self,line_species,params):
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)

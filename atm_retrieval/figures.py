@@ -599,7 +599,7 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     elif retrieval_object.chemistry in ['equchem','quequchem']:
         comp_equ=False
         if split_corner: # split corner plot to avoid massive files
-            only_params=['rv','vsini','log_g','C/O','Fe/H',
+            only_params=['rv','vsini','log_g','C/O','Fe/H','log_HF',
                          'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
             if retrieval_object.chemistry=='quequchem':
                 for val in ['log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']:
@@ -845,12 +845,14 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
     #corner.overplot_lines(fig,np.array([retrieval_object1.bestfit_params[i] for i in indices]),
                           #color='b',lw=1.3,linestyle='solid')
 
-
     if 'retrieval_object3' in kwargs:
         titles3=plot_corner(posterior3,retrieval_object3,labels,fig)
         enum=[0,1,2]
         titles_list.append(titles3)
         colors_list.append(retrieval_object3.color1)
+
+    if retrieval_object2.name=='2M1425':
+        fig.axes[3].xaxis.set_xlim(-12,-5.5) # increase range for CH4 to make better visible
 
     for i, axi in enumerate(fig.axes):
         fig.axes[i].title.set_visible(False) # remove original titles
