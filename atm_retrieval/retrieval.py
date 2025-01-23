@@ -28,10 +28,12 @@ warnings.simplefilter(action='ignore', category=FutureWarning) # pRT warning
 
 class Retrieval:
 
-    def __init__(self,target,parameters,output_name,chemistry='freechem',
+    def __init__(self,target,parameters,Nlive,evtol,chemistry='freechem',
                  GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False):
         
-        self.target=target
+        self.Nlive=Nlive
+        self.evtol=evtol
+        self.target = target
         self.primary_label=self.target.primary_label
         self.data_wave,self.data_flux,self.data_err=target.load_spectrum()
         self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)    
@@ -53,7 +55,8 @@ class Retrieval:
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
         self.n_params = len(parameters.free_params)
-        self.output_name=output_name
+
+        self.output_name=f'{chemistry}_{PT_type}_N{Nlive}_ev{evtol}' # output folder name
         self.cwd = os.getcwd()
         self.output_dir = pathlib.Path(f'{self.cwd}/{self.target.name}/{self.output_name}')
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -178,7 +181,7 @@ class Retrieval:
                 if not self.mask_isfinite[j,k].any(): # skip empty order/detector
                     continue
                 self.Cov[j,k](self.parameters.params)
-        ln_L = self.LogLike(self.model_flux, self.Cov) # retrieve log-likelihood
+        ln_L = self.LogLike(self.model_flux, self.Cov, params=self.parameters.params) # retrieve log-likelihood
         return ln_L
 
     def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=True):
@@ -440,108 +443,107 @@ class Retrieval:
         CCF_list=[]
         ACF_list=[]
         orig_params_dict=self.params_dict
-        if isinstance(molecules, list)==False:
-            molecules=[molecules] # if only one, make list so that it works in for loop
+        CCF_results=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict.pickle')
+        if CCF_results.exists():
+            with open(CCF_results,'rb') as file:
+                CCF_ACF_dict=pickle.load(file)
 
-        # plot all CCFs in one big figure
-        number=len(molecules)
-        nrows=number//2+number%2
-        fig,ax = plt.subplots(nrows,2,figsize=(5,nrows),dpi=200,sharex=True)
+        if isinstance(molecules, list)==False:
+            molecules=[molecules] # if only one, make list so that it works in the for loop
+
+        RVs=np.arange(-500,500,1) # km/s
 
         for j,molecule in enumerate(molecules):
-            # create final model without opacity from a certain molecule
-            exclusion_dict=self.params_dict.copy()
-            if self.chemistry=='freechem':
-                exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
-            elif self.chemistry in ['equchem','quequchem']:
-                if molecule=='13CO':
-                    exclusion_dict['log_C12_13_ratio']=14 # exclude molecule from model
-                elif molecule=='H2(18)O':
-                    exclusion_dict['log_O16_18_ratio']=14 # exclude molecule from model
-                else:
-                    continue
 
-            # necessary for cross-correlation:
-            # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
-            # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
-            # must still be shaped correctly and interpolated
-            self.parameters.params=exclusion_dict
-            exclusion_model,exclusion_model_wl=pRT_spectrum(self,interpolate=False).make_spectrum()
-
-            self.parameters.params=orig_params_dict        
-            model_flux_broad,_=pRT_spectrum(self,interpolate=False).make_spectrum()
-
-            RVs=np.arange(-500,500,1) # km/s
-            beta=1.0-RVs/const.c.to('km/s').value
-            CCF = np.zeros((self.n_orders,self.n_dets,len(RVs)))
-            ACF = np.zeros((self.n_orders,self.n_dets,len(RVs))) # auto-correlation
-
-            for order in range(self.n_orders):
-                for det in range(self.n_dets):
-
-                    if np.isnan(self.data_flux[order,det]).all():
-                        pass # skip empty order/det, CCF and ACF remains 0 
-
+            if CCF_results.exists()==False:
+                # create final model without opacity from a certain molecule
+                exclusion_dict=self.params_dict.copy()
+                if self.chemistry=='freechem':
+                    exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
+                elif self.chemistry in ['equchem','quequchem']:
+                    if molecule=='13CO':
+                        exclusion_dict['log_C12_13_ratio']=14 # exclude molecule from model
+                    elif molecule=='H2(18)O':
+                        exclusion_dict['log_O16_18_ratio']=14 # exclude molecule from model
                     else:
-                        wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
-                        fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
-                        
-                        wl_excl=exclusion_model_wl[order]
-                        fl_excl=exclusion_model[order]*self.params_dict['phi_ij'][order,det]
-                        fl_final=model_flux_broad[order]*self.params_dict['phi_ij'][order,det]
+                        continue
 
-                        # data minus model without certain molecule
-                        fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
-                        residuals=fl_data-fl_excl_rebinned
-                        residuals-=np.nanmean(residuals) # mean should be at zero
-                        self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
-                        cov_0_res=self.Cov[order,det].solve(residuals)
-                        
-                        # excluded molecule template: complete final model minus final model w/o molecule
-                        molecule_template=fl_final-fl_excl
-                        molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
-                        molecule_template_rebinned-=np.nanmean(molecule_template_rebinned) # mean should be at zero
-                        cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
-                        wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
-                        template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
-                        template_shift-=np.nanmean(template_shift) # mean should be at zero
+                # necessary for cross-correlation:
+                # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
+                # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
+                # must still be shaped correctly and interpolated
+                self.parameters.params=exclusion_dict
+                exclusion_model,exclusion_model_wl=pRT_spectrum(self,interpolate=False).make_spectrum()
 
-                        CCF[order,det]=(template_shift.T).dot(cov_0_res)
-                        ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+                self.parameters.params=orig_params_dict        
+                model_flux_broad,_=pRT_spectrum(self,interpolate=False).make_spectrum()
 
-            CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
-            ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
-            noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-            #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-            CCF_norm = CCF_sum/noise # get ccf map in S/N units
-            ACF_norm = ACF_sum/noise
-            SNR=CCF_norm[np.where(RVs==0)[0][0]]
+                beta=1.0-RVs/const.c.to('km/s').value
+                CCF = np.zeros((self.n_orders,self.n_dets,len(RVs)))
+                ACF = np.zeros((self.n_orders,self.n_dets,len(RVs))) # auto-correlation
+
+                for order in range(self.n_orders):
+                    for det in range(self.n_dets):
+
+                        if np.isnan(self.data_flux[order,det]).all():
+                            pass # skip empty order/det, CCF and ACF remains 0 
+
+                        else:
+                            wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
+                            fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
+                            
+                            wl_excl=exclusion_model_wl[order]
+                            fl_excl=exclusion_model[order]*self.params_dict['phi_ij'][order,det]
+                            fl_final=model_flux_broad[order]*self.params_dict['phi_ij'][order,det]
+
+                            # data minus model without certain molecule
+                            fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
+                            residuals=fl_data-fl_excl_rebinned
+                            residuals-=np.nanmean(residuals) # mean should be at zero
+                            self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                            cov_0_res=self.Cov[order,det].solve(residuals)
+                            
+                            # excluded molecule template: complete final model minus final model w/o molecule
+                            molecule_template=fl_final-fl_excl
+                            molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
+                            molecule_template_rebinned-=np.nanmean(molecule_template_rebinned) # mean should be at zero
+                            cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
+                            wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
+                            template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
+                            template_shift-=np.nanmean(template_shift) # mean should be at zero
+
+                            CCF[order,det]=(template_shift.T).dot(cov_0_res)
+                            ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+
+                CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
+                ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
+                noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
+                #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
+                CCF_norm = CCF_sum/noise # get ccf map in S/N units
+                ACF_norm = ACF_sum/noise
+                SNR=CCF_norm[np.where(RVs==0)[0][0]]
+                self.parameters.params=orig_params_dict
+
+            else:
+                CCF_norm,ACF_norm,SNR = CCF_ACF_dict[molecule]
+
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
-            ccf_acf_dict[f'SNR_{molecule}']=(CCF_norm,ACF_norm)
+            ccf_acf_dict[molecule]=(CCF_norm,ACF_norm,SNR)
             print(f'{molecule} S/N =',SNR)
             #figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
-            self.parameters.params=orig_params_dict
-
-            figs.CCF_plot_all(self,molecule,RVs,CCF_norm,ACF_norm,ax=ax[j//2,j%2],noiserange=noiserange)
-            if j%2==1:
-                ax[j//2,j%2].yaxis.set_label_position("right")
-                ax[j//2,j%2].yaxis.tick_right()
-            else:
-                ax[j//2,j%2].set_ylabel('S/N')
-            if j//2==(nrows-1):
-                ax[j//2,j%2].set_xlabel('RV [km/s]')
+            
+            #figs.CCF_plot_all(self,molecule,RVs,CCF_norm,ACF_norm,ax=ax[j%2,j//2],noiserange=noiserange)
               
-        self.CCF_list=CCF_list
-        self.ACF_list=ACF_list
-        file=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict.pickle')
-        with open(file,'wb') as file:
-            pickle.dump(ccf_acf_dict,file)
-        fig.tight_layout()
-        plt.subplots_adjust(wspace=0, hspace=0)
-        fig.savefig(f'{self.output_dir}/CCFs_all.pdf')
-        plt.close()
+        #self.CCF_list=CCF_list
+        #self.ACF_list=ACF_list
+        self.ccf_acf_dict = ccf_acf_dict
+        figs.CCF_plot_all(self,molecules,RVs,noiserange=100)
+
+        if CCF_results.exists()==False:
+            with open(CCF_results,'wb') as CCF_results:
+                pickle.dump(ccf_acf_dict,CCF_results)
 
         return ccf_dict
 
@@ -626,18 +628,17 @@ class Retrieval:
             sigma=np.inf 
         return ln_B*sign,sigma*sign
 
-    def run_retrieval(self,N_live_points=400,evidence_tolerance=0.5,molecules=None,bayes=False): 
-        self.N_live_points=N_live_points
-        self.evidence_tolerance=evidence_tolerance
+    def run_retrieval(self,**kwargs): 
+
         retrieval_output_dir=self.output_dir # save end results here
 
-        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.N_live_points} - ev: {self.evidence_tolerance} ------- \n')
+        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.Nlive} - ev: {self.evtol} ------- \n')
 
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')
         if final_dict.exists()==False:
             print('\n ----------------- Starting main retrieval. ----------------- \n')
-            self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance)
+            self.PMN_run(N_live_points=self.Nlive,evidence_tolerance=self.evtol)
         else:
             print('\n ----------------- Main retrieval exists. ----------------- \n')
         self.evaluate() # created and saves self.params_dict
@@ -647,14 +648,15 @@ class Retrieval:
             for molec in self.chem_species:
                 ccf_molecules.append(molec[4:]) # without log_
         else:
-            ccf_molecules=molecules
+            ccf_molecules=self.chem_species
         ccf_dict=self.cross_correlation(ccf_molecules)
         self.params_dict.update(ccf_dict)
         with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
             pickle.dump(self.params_dict,file)
     
         print(self.params_dict)
-        if bayes==True:
+        if 'bayes_molecules' in kwargs:
+            bayes_molecules=kwargs.get('bayes_molecules')
             evidence_dict=pathlib.Path(f'{retrieval_output_dir}/evidence_dict.pickle')
             if evidence_dict.exists()==False: # to avoid overwriting sigmas from other evidence retrievals
                 print('\n ----------------- Creating evidence dict ----------------- \n')
@@ -664,7 +666,7 @@ class Retrieval:
                 with open(evidence_dict,'rb') as file:
                     self.evidence_dict=pickle.load(file)
 
-            bayes_dict=self.bayes_evidence(molecules,evidence_dict=self.evidence_dict,retrieval_output_dir=retrieval_output_dir)
+            bayes_dict=self.bayes_evidence(bayes_molecules,evidence_dict=self.evidence_dict,retrieval_output_dir=retrieval_output_dir)
             print('\n ----------------- Final evidence dict ----------------- \n',bayes_dict)
             with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
                 pickle.dump(bayes_dict,file)

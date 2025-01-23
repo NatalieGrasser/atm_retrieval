@@ -23,7 +23,7 @@ if getpass.getuser() == "grasser": # when runnig from LEM
     path_tables = '/net/lem/data2/regt/fastchem_tables'
 elif getpass.getuser() == "natalie": # when testing from my laptop
     from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
-    os.environ['pRT_input_data_path'] = "/media/natalie/Data1/input_data_std/input_data"
+    os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
     path_tables = '/home/natalie/fastchem_tables'
 
 class pRT_spectrum:

@@ -1,5 +1,5 @@
 
-def init_retrieval(science_object,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=True):
+def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
 
     import getpass
     import os
@@ -14,19 +14,18 @@ def init_retrieval(science_object,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=Tr
         from mpi4py import MPI 
         comm = MPI.COMM_WORLD # important for MPI
         rank = comm.Get_rank() # important for MPI
-        from atm_retrieval.target import Target
         from atm_retrieval.retrieval import Retrieval
         from atm_retrieval.parameters import Parameters
+        from atm_retrieval.target import Target
         import matplotlib
         matplotlib.use('Agg') # disable interactive plotting
     elif getpass.getuser() == "natalie": # when testing from my laptop
-        os.environ['pRT_input_data_path'] = "/media/natalie/Data1/input_data_std/input_data"
-        from target import Target
+        os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
         from retrieval import Retrieval
         from parameters import Parameters
+        from target import Target
 
-    science_object = Target(science_object)
-    output=f'{chem}_{PT_type}_N{Nlive}_ev{tol}' # output folder name
+    target = Target(target)
 
     constant_params={} # add if needed
     free_params = {'rv': ([-20,20],r'$v_{\rm rad}$'),
@@ -74,13 +73,13 @@ def init_retrieval(science_object,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=Tr
                 'log_C17O':([-12,-1],r'log C$^{17}$O'),
                 'log_HF':([-12,-1],r'log HF'),
                 'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O')}
-        if science_object.name in ['2M0355','2M1425','test','test_corr','testsys','ROXs12B']:
+        if target.name in ['2M0355','2M1425','test','test_corr','testsys','ROXs12B']:
             cool_chemistry={'log_CH4':([-12,-1],r'log CH$_4$'),
                             'log_NH3':([-12,-1],r'log NH$_3$'),
                             'log_HCN':([-12,-1],r'log HCN'),
                             'log_H2S':([-12,-1],r'log H$_2$S')}
             chemistry.update(cool_chemistry)
-        if science_object.name in ['ROXs12A','ROXs12B']:
+        if target.name in ['ROXs12A','ROXs12B']:
             hot_chemistry={'log_Ca':([-12,-1],r'log Ca'),
                         'log_Na':([-12,-1],r'log Na'),
                         'log_Ti':([-12,-1],r'log Ti'),
@@ -100,6 +99,19 @@ def init_retrieval(science_object,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=Tr
                         'log_Ni':([-12,-1],r'log Ni'),
                         'log_Rb':([-12,-1],r'log Rb')}
             chemistry.update(hot_chemistry)
+
+    if target.name in ['2M0355','2M1425'] and chem=='freechem': # um alte ergebnisse noch zu plotten wo reihenfolge anders war...
+            chemistry={'log_H2O':([-12,-1],r'log H$_2$O'),
+            'log_12CO':([-12,-1],r'log $^{12}$CO'),
+            'log_13CO':([-12,-1],r'log $^{13}$CO'),
+            'log_C18O':([-12,-1],r'log C$^{18}$O'),
+            'log_C17O':([-12,-1],r'log C$^{17}$O'),
+            'log_CH4':([-12,-1],r'log CH$_4$'),
+            'log_NH3':([-12,-1],r'log NH$_3$'),
+            'log_HCN':([-12,-1],r'log HCN'),
+            'log_HF':([-12,-1],r'log HF'),
+            'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
+            'log_H2S':([-12,-1],r'log H$_2$S')}
         
     if cloud_mode=='gray':
         cloud_props={'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'),  
@@ -123,8 +135,8 @@ def init_retrieval(science_object,PT_type,chem,Nlive,tol,cloud_mode='gray',GP=Tr
     cube = np.random.rand(parameters.n_params)
     parameters(cube)
 
-    retrieval=Retrieval(target=science_object,parameters=parameters,
-                    output_name=output,chemistry=chem,PT_type=PT_type)
+    retrieval=Retrieval(target=target,parameters=parameters,
+                        Nlive=Nlive,evtol=evtol,chemistry=chem,PT_type=PT_type)
 
     return retrieval
 
@@ -133,13 +145,12 @@ if __name__ == '__main__':
 
     # pass configuration as command line argument
     # example: config_run.py 2M0355 freechem PTgrad 200 5
-    science_object = sys.argv[1] # 2M0355 / 2M1425 / test
+    target = sys.argv[1] # 2M0355 / 2M1425 / test
     chem = sys.argv[2] # freechem / equchem / quequchem
     PT_type = sys.argv[3] # PTknot / PTgrad
     Nlive=int(sys.argv[4]) # number of live points (integer)
-    tol=float(sys.argv[5]) # evidence tolerance (float)
-    bayes=True if len(sys.argv)>6 else False # True / False (do bayes evidence retrievals)
+    evtol=float(sys.argv[5]) # evidence tolerance (float)
+    bayes_molecules=sys.argv[6] if len(sys.argv)>6 else None # bayes evidence retrievals on specified species
 
-    retrieval=init_retrieval(science_object=science_object,PT_type=PT_type,chem=chem,Nlive=Nlive,tol=tol)
-    molecules=['13CO','HF','H2S','H2(18)O','CH4']
-    retrieval.run_retrieval(N_live_points=Nlive,evidence_tolerance=tol,molecules=molecules,bayes=bayes)
+    retrieval=init_retrieval(target=target,PT_type=PT_type,chem=chem,Nlive=Nlive,evtol=evtol)
+    retrieval.run_retrieval(bayes_molecules=bayes_molecules)

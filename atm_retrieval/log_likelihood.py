@@ -74,7 +74,13 @@ class LogLikelihood:
         # Reduced chi-squared
         self.chi2_0_red = self.chi2_0 / self.N_d
 
-        return self.ln_L
+        if np.isfinite(self.ln_L)==False:
+            print('ERROR: Not finite lnL')
+            if 'params' in kwargs:
+                print(kwargs.get('params'))
+            return -np.inf
+        else:
+            return self.ln_L
 
     def get_flux_scaling(self, d_flux_ij, m_flux_ij, cov_ij): 
         # Solve for linear scaling parameter phi: (M^T * cov^-1 * M) * phi = M^T * cov^-1 * d

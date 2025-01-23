@@ -110,8 +110,7 @@ def plot_spectrum_inset(retrieval_object,inset=True,fs=10,**kwargs):
     plt.subplots_adjust(wspace=0, hspace=0)
     if 'ax' not in kwargs:
         name = 'bestfit_spectrum_inset' if retrieval_object.callback_label=='final_' else f'{retrieval_object.callback_label}bestfit_spectrum_inset'
-        fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf',
-                    bbox_inches='tight')
+        fig.savefig(f'{retrieval_object.output_dir}/{name}.pdf', bbox_inches='tight')
         plt.close()
 
 def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=False):
@@ -567,7 +566,7 @@ def cornerplot(retrieval_object,getfig=False,figsize=(20,20),fs=12,plot_label=''
                 compare[i]=value_i # add only those values that are used in cornerplot, in correct order
         x=0
         for i in range(len(compare)):
-            titles[x] = titles[x]+'\n'+f'{compare[i]}'
+            titles[x] = titles[x]+'\n'+f'in: {compare[i]}'
             fig.axes[x].title.set_text(titles[x])
             x+=len(labels)+1
 
@@ -617,8 +616,9 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
 def summary_plot(retrieval_object):
 
     fs=13
+    only_abundances=False
     if retrieval_object.chemistry in ['equchem','quequchem']:
-        only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
+        only_params=['rv','vsini','log_g','T0','C/O','Fe/H','log HF',
                  'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
     if retrieval_object.chemistry=='freechem':
         only_params=['rv','vsini','log_g','T0']
@@ -630,8 +630,11 @@ def summary_plot(retrieval_object):
             abunds.append(retrieval_object.params_dict[f'{spec}'])
         abunds, species = zip(*sorted(zip(abunds, species)))
         only_params.extend(species[-7:][::-1]) # get largest 6
+    if retrieval_object.target.name=='test':
+        only_params=None
+        only_abundances=True
 
-    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(17,17),fs=fs)
+    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,only_abundances=only_abundances,figsize=(17,17),fs=fs)
     l, b, w, h = [0.37,0.84,0.6,0.15] # left, bottom, width, height
     ax_spec = fig.add_axes([l,b,w,h])
     ax_res = fig.add_axes([l,b-0.03,w,h-0.12])
@@ -772,7 +775,7 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         only_params=['log_H2O','log_12CO','log_13CO','log_CH4',
                     'log_NH3','log_HCN','log_HF','log_H2(18)O','log_H2S']
 
-        only_params=['log_H2O','log_12CO','log_13CO','log_CH4','log_HF','log_H2(18)O','log_H2S','log_g']
+        only_params=['log_H2O','log_12CO','log_13CO','log_CH4','log_H2S','log_HF','log_H2(18)O','log_NH3']
         
         labels=list(retrieval_object1.parameters.param_mathtext.values())
         indices=[]
@@ -784,9 +787,9 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         labels=np.array([labels[i] for i in indices])
 
         # get [C/H] from other posterior
-        posterior1=np.hstack([posterior1,retrieval_object1.ratios_posterior[:,1:2]]) # only C/H
-        posterior2=np.hstack([posterior2,retrieval_object2.ratios_posterior[:,1:2]]) # only C/H
-        labels=np.append(labels,'[C/H]')
+        #posterior1=np.hstack([posterior1,retrieval_object1.ratios_posterior[:,1:2]]) # only C/H
+        #posterior2=np.hstack([posterior2,retrieval_object2.ratios_posterior[:,1:2]]) # only C/H
+        #labels=np.append(labels,'[C/H]')
 
     elif retrieval_object1.chemistry=='freechem' and retrieval_object2.chemistry in ['equchem','quequchem']:
 
@@ -806,10 +809,13 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
             posterior3=np.hstack([retrieval_object3.ratios_posterior,reshaped])
 
     #figsize=15
-    figsize=14
+    figsize=13
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
-
+    #ranges = np.empty((len(only_params),2))
+    
     def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
+        ranges = [(posterior[:, i].min(), posterior[:, i].max()) for i in range(posterior.shape[1])]
+        #ranges[3] = (-10,-5.0) # increase range for CH4 to make better visible
         fig = corner.corner(posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize': fs},
@@ -827,7 +833,8 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
                                     'edgecolor': 'k',
                                     'linewidth': 1.0},
                         fig=fig,
-                        quiet=True)
+                        quiet=True,
+                        range=ranges)
         
         titles = [axi.title.get_text() for axi in fig.axes]
         if getfig:
@@ -851,8 +858,8 @@ def compare_retrievals(retrieval_object1,retrieval_object2,fs=12,**kwargs): # co
         titles_list.append(titles3)
         colors_list.append(retrieval_object3.color1)
 
-    if retrieval_object2.name=='2M1425':
-        fig.axes[3].xaxis.set_xlim(-12,-5.5) # increase range for CH4 to make better visible
+    #if retrieval_object2.target.name=='2M1425':
+        #fig.axes[3,3].set_xlim(-12,-5.5) # increase range for CH4 to make better visible
 
     for i, axi in enumerate(fig.axes):
         fig.axes[i].title.set_visible(False) # remove original titles
@@ -1246,11 +1253,12 @@ def compare_metall_logg(retrieval_object1,retrieval_object2,fs=12,only_params=['
     posterior2=np.array([retrieval_object2.posterior[:,i] for i in indices]).T
     labels=np.array([labels[i] for i in indices])
 
-    total_posterior1=np.hstack([posterior1,retrieval_object1.ratios_posterior[:,1:2]]) # only C/H
-    total_posterior2=np.hstack([posterior2,retrieval_object2.ratios_posterior[:,1:2]]) # only C/H
-    labels=np.append(labels,'[C/H]')
+    # add C/O and C/H
+    total_posterior1=np.hstack([posterior1,retrieval_object1.ratios_posterior[:,0:1],retrieval_object1.ratios_posterior[:,1:2]]) 
+    total_posterior2=np.hstack([posterior2,retrieval_object2.ratios_posterior[:,0:1],retrieval_object2.ratios_posterior[:,1:2]])
+    labels=np.hstack([labels,'C/O','[C/H]'])
 
-    figsize=4
+    figsize=5
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
 
     def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
@@ -1475,21 +1483,105 @@ def VMR_plot_new(retrieval_object,fs=10,comp_equ=False,**kwargs):
     fig.savefig(f'{output_dir}/{prefix}VMR_plot{suffix}.pdf')
     plt.close()
 
-def CCF_plot_all(retrieval_object,molecule,RVs,CCF_norm,ACF_norm,ax,noiserange=50):
-    SNR=CCF_norm[np.where(RVs==0)[0][0]]
-    ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-    ax.set_xlim(np.min(RVs),np.max(RVs))
-    ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
-    ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
-    ax.plot(RVs,CCF_norm,color=retrieval_object.color1,label='CCF')
-    ax.plot(RVs,ACF_norm,color=retrieval_object.color1,linestyle='dashed',alpha=0.5,label='ACF')
-    #ax.legend(loc='upper right')
-    if retrieval_object.chemistry=='freechem':
-        molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
-    elif retrieval_object.chemistry in ['equchem','quequchem']:
-        if molecule=='13CO':
-            molecule_name=r'$^{13}$CO'
-        elif molecule=='H2(18)O':
-            molecule_name=r'log H$_2^{18}$O'
-    molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
-    ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
+def CCF_plot_all(retrieval_object,molecules,RVs,noiserange=100,vertical_layout=True,**kwargs):
+
+    # plot all CCFs in one big figure
+    
+    figname='CCFs_all' if 'retrieval_object2' not in kwargs else 'comparison/CCFs_both'
+
+    if vertical_layout==True:
+        number=len(molecules)
+        nrows=number//2+number%2
+        fig,axes = plt.subplots(nrows,2,figsize=(5,nrows*1.3),dpi=200,sharex=True)
+        for j,molecule in enumerate(molecules):
+            ax=axes[j//2,j%2]
+            CCF_norm,_,SNR = retrieval_object.ccf_acf_dict[molecule]
+            if j%2==1:
+                ax.yaxis.set_label_position("right")
+                ax.yaxis.tick_right()
+
+            ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+            ax.set_xlim(-300,300)
+            ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
+            ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
+            ax.plot(RVs,CCF_norm,color=retrieval_object.color1,label='CCF')
+            if 'retrieval_object2' in kwargs: 
+                retrieval_object2=kwargs.get('retrieval_object2')
+                CCF_norm2,_,SNR2 = retrieval_object2.ccf_acf_dict[molecule]
+                ax.plot(RVs,CCF_norm2,color=retrieval_object2.color1,label='CCF')
+            if retrieval_object.chemistry=='freechem':
+                molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+            elif retrieval_object.chemistry in ['equchem','quequchem']:
+                if molecule=='13CO':
+                    molecule_name=r'$^{13}$CO'
+                elif molecule=='H2(18)O':
+                    molecule_name=r'log H$_2^{18}$O'
+            if 'retrieval_object2' in kwargs:
+                molecule_label=f'{molecule_name}'
+            else:
+                molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
+            ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
+
+        # in case of odd number, remove last plot
+        if len(molecules)%2==1:
+            axes[-1,-1].axis('off')
+
+        if 'retrieval_object2' in kwargs:
+            lines = [Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label=retrieval_object.target.name),
+                Line2D([0], [0], color=retrieval_object2.color1, linewidth=2,label=retrieval_object2.target.name)]
+            leg=axes[0,0].legend(handles=lines,fontsize=11,ncol=2,bbox_to_anchor=(1,1.4),loc='upper center')
+            leg.get_frame().set_linewidth(0.0)
+            leg.get_frame().set_alpha(None)
+            leg.get_frame().set_facecolor((0, 0, 0, 0))
+            leg.get_frame().set_edgecolor((0, 0, 0, 0))
+
+        plt.subplots_adjust(wspace=0, hspace=0)
+
+
+    else:
+        number=len(molecules)
+        ncols=number//2+number%2
+        fig,axes = plt.subplots(2,ncols,figsize=(ncols*2,4),dpi=200,sharex=True,constrained_layout=True)
+
+        for j,molecule in enumerate(molecules):
+            ax = axes[j%2,j//2]
+            CCF_norm,_,SNR = retrieval_object.ccf_acf_dict[molecule]
+
+            ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+            #ax.set_xlim(np.min(RVs),np.max(RVs))
+            ax.set_xlim(-300,300)
+            ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
+            ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
+            ax.plot(RVs,CCF_norm,color=retrieval_object.color1,label='CCF')
+            if 'retrieval_object2' in kwargs: 
+                retrieval_object2=kwargs.get('retrieval_object2')
+                CCF_norm2,_,SNR2 = retrieval_object2.ccf_acf_dict[molecule]
+                ax.plot(RVs,CCF_norm2,color=retrieval_object2.color1,label='CCF')
+            if retrieval_object.chemistry=='freechem':
+                molecule_name=retrieval_object.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
+            elif retrieval_object.chemistry in ['equchem','quequchem']:
+                if molecule=='13CO':
+                    molecule_name=r'$^{13}$CO'
+                elif molecule=='H2(18)O':
+                    molecule_name=r'log H$_2^{18}$O'
+            if 'retrieval_object2' in kwargs:
+                molecule_label=f'{molecule_name}'
+            else:
+                molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
+            ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
+
+        # in case of odd number, remove last plot
+        if len(molecules)%2==1:
+            axes[-1,-1].axis('off')
+
+        if 'retrieval_object2' in kwargs:
+            lines = [Line2D([0], [0], color=retrieval_object.color1, linewidth=2,label=retrieval_object.target.name),
+                Line2D([0], [0], color=retrieval_object2.color1, linewidth=2,label=retrieval_object2.target.name)]
+            leg=axes[0,(int(len(molecules)/2)//2)].legend(handles=lines,fontsize=12,ncol=2,bbox_to_anchor=(0.47,1.4),loc='upper center')
+            leg.get_frame().set_linewidth(0.0)
+        fig.tight_layout()
+
+    fig.supxlabel(r'$v_{\rm rad}$ [km/s]')
+    fig.supylabel('S/N')
+    fig.savefig(f'{retrieval_object.output_dir}/{figname}.pdf', bbox_inches='tight')
+    plt.close()
