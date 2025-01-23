@@ -14,6 +14,7 @@ from scipy.ndimage import gaussian_filter
 import pickle
 import pathlib
 from scipy.optimize import nnls
+from scipy.ndimage import gaussian_filter
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -61,7 +62,7 @@ class pRT_spectrum:
         self.int_opa_cloud = np.zeros_like(self.pressure)
         self.gravity = 10**self.params['log_g'] 
         self.contribution=contribution
-        self.cloud_mode=retrieval_object.cloud_mode
+        self.cloud_mode=None#retrieval_object.cloud_mode
 
         # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
@@ -579,7 +580,7 @@ class pRT_spectrum:
         return self.temperature
 
     def convolve_to_resolution(self, in_wlen, in_flux, out_res, in_res=None):
-        from scipy.ndimage import gaussian_filter
+        
         if isinstance(in_wlen, u.Quantity):
             in_wlen = in_wlen.to(u.nm).value
         if in_res is None:

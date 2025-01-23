@@ -613,12 +613,11 @@ def make_all_plots(retrieval_object,only_abundances=False,only_params=None,split
     if retrieval_object.primary_label==False:
         plot_spectrum_split(retrieval_object,plot_components=True)
     
-def summary_plot(retrieval_object):
+def summary_plot(retrieval_object,**kwargs):
 
     fs=13
-    only_abundances=False
     if retrieval_object.chemistry in ['equchem','quequchem']:
-        only_params=['rv','vsini','log_g','T0','C/O','Fe/H','log HF',
+        only_params=['rv','vsini','log_g','T0','C/O','Fe/H','log_HF',
                  'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
     if retrieval_object.chemistry=='freechem':
         only_params=['rv','vsini','log_g','T0']
@@ -630,11 +629,10 @@ def summary_plot(retrieval_object):
             abunds.append(retrieval_object.params_dict[f'{spec}'])
         abunds, species = zip(*sorted(zip(abunds, species)))
         only_params.extend(species[-7:][::-1]) # get largest 6
-    if retrieval_object.target.name=='test':
-        only_params=None
-        only_abundances=True
+    if 'show_params' in kwargs:
+        only_params=kwargs.get('show_params')
 
-    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,only_abundances=only_abundances,figsize=(17,17),fs=fs)
+    fig, ax = cornerplot(retrieval_object,getfig=True,only_params=only_params,figsize=(17,17),fs=fs)
     l, b, w, h = [0.37,0.84,0.6,0.15] # left, bottom, width, height
     ax_spec = fig.add_axes([l,b,w,h])
     ax_res = fig.add_axes([l,b-0.03,w,h-0.12])
