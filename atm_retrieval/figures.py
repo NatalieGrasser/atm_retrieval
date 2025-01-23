@@ -145,8 +145,8 @@ def plot_spectrum_split(retrieval_object,overplot_species=None,plot_components=F
             parameters_species = Parameters({}, parameters_species)
             parameters_species.param_priors['log_l']=[-3,0]
             retrieval_species = Retrieval(target=retrieval_object.target,parameters=parameters_species, 
-                                        output_name=retrieval_object.output_name,
-                                    chemistry='freechem',PT_type=retrieval_object.PT_type)
+                                        Nlive=retrieval_object.Nlive,evtol=retrieval_object.evtol,
+                                    chemistry='freechem',PT_type=retrieval_object.PT_type)            
             if f'log_{spec}' not in retrieval_object.params_dict.keys():
                 retrieval_species.atmosphere_objects = retrieval_species.get_atmosphere_objects(for_species=spec)
                 parameters_species.params[f'log_{spec}']=-4 # check species that isn't in retrieval
@@ -336,7 +336,7 @@ def plot_pt(retrieval_object,fs=12,**kwargs):
         test_par = Parameters({}, test_parameters)
         test_par.param_priors['log_l']=[-3,0]
         test_ret=Retrieval(target=retrieval_object.target,parameters=test_par, 
-                            output_name=retrieval_object.output_name,
+                           Nlive=retrieval_object.Nlive,evtol=retrieval_object.evtol,
                             chemistry='freechem',PT_type='PTgrad')
         test_ret.model_object=pRT_spectrum(test_ret)
         ax.plot(test_ret.model_object.temperature,test_ret.pressure,linestyle='dashdot',c='blueviolet',lw=2) 
@@ -1153,7 +1153,7 @@ def VMR_plot(retrieval_object,molecules='all',fs=10,comp_equ=False,**kwargs):
         parameters_equ = Parameters({}, parameters_equ)
         parameters_equ.param_priors['log_l']=[-3,0]
         retrieval_equ = Retrieval(target=retrieval_object.target,parameters=parameters_equ, 
-                                  output_name=retrieval_object.output_name,
+                                  Nlive=retrieval_object.Nlive,evtol=retrieval_object.evtol,
                                 chemistry='equchem',PT_type=retrieval_object.PT_type)
         retrieval_equ.primary_label=True # to avoid problems
         retrieval_equ.model_object=pRT_spectrum(retrieval_equ,contribution=True)
@@ -1436,7 +1436,7 @@ def VMR_plot_new(retrieval_object,fs=10,comp_equ=False,**kwargs):
         parameters_equ = Parameters({}, parameters_equ)
         parameters_equ.param_priors['log_l']=[-3,0]
         retrieval_equ = Retrieval(target=retrieval_object.target,parameters=parameters_equ, 
-                                  output_name=retrieval_object.output_name,
+                                  Nlive=retrieval_object.Nlive,evtol=retrieval_object.evtol,
                                 chemistry='equchem',PT_type=retrieval_object.PT_type)
         retrieval_equ.model_object=pRT_spectrum(retrieval_equ)
         plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
