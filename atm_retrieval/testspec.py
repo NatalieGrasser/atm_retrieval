@@ -42,12 +42,10 @@ if __name__ == "__main__":
 
    if getpass.getuser() == "natalie": # when testing from my laptop
       os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
-      from target import Target
-      from covariance import *
    elif getpass.getuser() == "grasser": # when running from LEM
       os.environ['pRT_input_data_path'] ="/net/lem/data2/pRT_input_data"
-      from atm_retrieval.target import Target
-      from atm_retrieval.covariance import *
+   from target import Target
+   from covariance import *
    
    from petitRADTRANS import Radtrans
    from PyAstronomy.pyasl import fastRotBroad, helcorr

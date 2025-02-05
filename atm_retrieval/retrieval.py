@@ -24,11 +24,12 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning) # pRT warning
+warnings.simplefilter("error", RuntimeWarning)  # Convert warnings to exceptions
 #warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
 
 class Retrieval:
 
-    def __init__(self,target,parameters,Nlive,evtol,chemistry='freechem',
+    def __init__(self,target,parameters,species_names,Nlive,evtol,chemistry='freechem',
                  GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False):
         
         self.Nlive=Nlive
@@ -41,17 +42,14 @@ class Retrieval:
         self.K2166=target.K2166
         self.parameters=parameters
         self.chemistry=chemistry # freechem/equchem/quequchem
-        self.species, self.species_hill =self.get_species(param_dict=self.parameters.params,chemistry=self.chemistry)
+        self.species_names=species_names
+        self.species_pRT, self.species_hill =self.get_pRT_hill(species_names)
 
         # if companion, load in primary spectrum as well 
         if self.target.primary_label==False:
-            #self.target_primary=Target(f'{self.target.name[:-1]}A')
-            self.target_primary=Target('ROXs12A')
+            self.target_primary=Target(f'{self.target.name[:-1]}A')
+            #self.target_primary=Target('ROXs12A')
             self.primary_wave,self.primary_flux,self.primary_err=self.target_primary.load_spectrum()
-            #primary_name=f'{self.target.name[:-1]}A'
-            #primary_file=pathlib.Path(f'./{primary_name}/{primary_name}_spectrum.txt')
-            #primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
-            #self.primary_flux = np.reshape(primary_flux,(7,3,2048))
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
         self.n_params = len(parameters.free_params)
@@ -101,35 +99,19 @@ class Retrieval:
         self.color1=target.color1
         self.color2=target.color2
 
-    def get_species(self,param_dict,chemistry): # get pRT species name from parameters dict
+    def get_pRT_hill(self,species_names): # get pRT species name and hill notations
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
-        species=[]
-        hill=[] # hill notation
-        if chemistry=='freechem':
-            self.chem_species=[]
-            for par in param_dict:
-                if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
-                    if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
-                               'log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio',
-                               'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']: # skip
-                        pass
-                    else:
-                        self.chem_species.append(par)
-            for chemspec in self.chem_species:
-                species.append(species_info.loc[chemspec[4:],'pRT_name'])
-                hill.append(species_info.loc[chemspec[4:],'Hill_notation'])
-        elif chemistry in ['equchem','quequchem']:
-            self.chem_species=['H2O','12CO','13CO','C18O','C17O','CH4','NH3',
-                         'HCN','H2(18)O','H2S','CO2','HF','OH'] # HF, OH not in pRT chem equ table
-            for chemspec in self.chem_species:
-                species.append(species_info.loc[chemspec,'pRT_name'])
-                hill.append(species_info.loc[chemspec,'Hill_notation'])
-        return species, hill
+        species_pRT=[] # pRT names
+        species_hill=[] # hill notation
+        for species_i in species_names:
+            species_pRT.append(species_info.loc[species_i,'pRT_name'])
+            species_hill.append(species_info.loc[species_i,'Hill_notation'])
+        return species_pRT, species_hill
 
     def get_atmosphere_objects(self,redo=False,broader=True,for_species=None):
 
         atmosphere_objects=[]
-        species=self.species if for_species==None else for_species
+        species=self.species_pRT if for_species==None else for_species
         if for_species!=None:
             species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
             species = [species_info.loc[species,'pRT_name']]
@@ -199,7 +181,7 @@ class Retrieval:
         self.params_dict,self.model_flux=self.get_params_and_spectrum()
         figs.summary_plot(self)
         if self.chemistry in ['equchem','quequchem']:
-            figs.VMR_plot(self)
+            figs.VMRs_all(self)
         if self.primary_label==False: 
             figs.plot_spectrum_split(self,plot_components=True)
         else:
@@ -286,7 +268,7 @@ class Retrieval:
             self.params_dict['phi_ij']=self.LogLike.phi
             self.params_dict['s2_ij']=self.LogLike.s2
             if self.callback_label=='final_':
-                self.params_dict['chi2']=self.LogLike.chi2_0_red # save reduced chi^2 of fiducial model
+                self.params_dict['chi2']=self.LogLike.chi2_red # save reduced chi^2 of fiducial model
                 self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
             if self.primary_label==False:
                 self.params_dict['phi_ij_comp']=self.model_object.phi_components
@@ -446,12 +428,13 @@ class Retrieval:
         CCF_results=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict.pickle')
         if CCF_results.exists():
             with open(CCF_results,'rb') as file:
-                CCF_ACF_dict=pickle.load(file)
+                ccf_acf_dict=pickle.load(file)
 
         if isinstance(molecules, list)==False:
             molecules=[molecules] # if only one, make list so that it works in the for loop
 
         RVs=np.arange(-500,500,1) # km/s
+        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
 
         for j,molecule in enumerate(molecules):
 
@@ -460,20 +443,20 @@ class Retrieval:
                 exclusion_dict=self.params_dict.copy()
                 if self.chemistry=='freechem':
                     exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
-                elif self.chemistry in ['equchem','quequchem']:
-                    if molecule=='13CO':
-                        exclusion_dict['log_C12_13_ratio']=14 # exclude molecule from model
-                    elif molecule=='H2(18)O':
-                        exclusion_dict['log_O16_18_ratio']=14 # exclude molecule from model
-                    else:
-                        continue
-
+                   
                 # necessary for cross-correlation:
                 # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
                 # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
                 # must still be shaped correctly and interpolated
                 self.parameters.params=exclusion_dict
-                exclusion_model,exclusion_model_wl=pRT_spectrum(self,interpolate=False).make_spectrum()
+                exclusion_model_object=pRT_spectrum(self,interpolate=False)
+                if self.chemistry in ['equchem','quequchem']:
+                    prt_name = species_info.loc[molecule,'pRT_name']
+                    exclusion_model_object.mass_fractions[prt_name].fill(0.0)
+               # prt_name = species_info.loc[molecule,'pRT_name']
+                #exclusion_model_object.mass_fractions[prt_name].fill(0.0)
+                
+                exclusion_model,exclusion_model_wl=exclusion_model_object.make_spectrum()
 
                 self.parameters.params=orig_params_dict        
                 model_flux_broad,_=pRT_spectrum(self,interpolate=False).make_spectrum()
@@ -525,7 +508,7 @@ class Retrieval:
                 self.parameters.params=orig_params_dict
 
             else:
-                CCF_norm,ACF_norm,SNR = CCF_ACF_dict[molecule]
+                CCF_norm,ACF_norm,SNR = ccf_acf_dict[molecule]
 
             CCF_list.append(CCF_norm)
             ACF_list.append(ACF_norm)
@@ -585,7 +568,7 @@ class Retrieval:
             self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
             ex_model=pRT_spectrum(self).make_spectrum()      
             lnL = self.LogLike(ex_model, self.Cov) # call function to generate chi2
-            chi2_ex = self.LogLike.chi2_0_red # reduced chi^2
+            chi2_ex = self.LogLike.chi2_red # reduced chi^2
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
             print(f'sigma_{molecule}=',sigma)
             bayes_dict[f'lnBm_{molecule}']=lnB
@@ -643,13 +626,7 @@ class Retrieval:
             print('\n ----------------- Main retrieval exists. ----------------- \n')
         self.evaluate() # created and saves self.params_dict
 
-        if self.chemistry=='freechem':
-            ccf_molecules=[]
-            for molec in self.chem_species:
-                ccf_molecules.append(molec[4:]) # without log_
-        else:
-            ccf_molecules=self.chem_species
-        ccf_dict=self.cross_correlation(ccf_molecules)
+        ccf_dict=self.cross_correlation(self.species_names) # cross-corr all species
         self.params_dict.update(ccf_dict)
         with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
             pickle.dump(self.params_dict,file)

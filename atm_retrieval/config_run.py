@@ -4,6 +4,7 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     import getpass
     import os
     import numpy as np
+    import pandas as pd
     import warnings
     warnings.filterwarnings("ignore", message="Mean of empty slice") # ignore warning for empty orders
     warnings.filterwarnings("ignore", message="All-NaN slice encountered") # ignore warning for empty orders
@@ -14,18 +15,24 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
         from mpi4py import MPI 
         comm = MPI.COMM_WORLD # important for MPI
         rank = comm.Get_rank() # important for MPI
-        from atm_retrieval.retrieval import Retrieval
-        from atm_retrieval.parameters import Parameters
-        from atm_retrieval.target import Target
         import matplotlib
         matplotlib.use('Agg') # disable interactive plotting
     elif getpass.getuser() == "natalie": # when testing from my laptop
         os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
-        from retrieval import Retrieval
-        from parameters import Parameters
-        from target import Target
+    from retrieval import Retrieval
+    from parameters import Parameters
+    from target import Target
 
     target = Target(target)
+    species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+
+    if target.name in ['2M0355','2M1425','test','test_corr','testsys']:
+        species_names= ['H2O','12CO','13CO','C18O','C17O','CH4','NH3','HCN','HF','H2(18)O','H2S']
+    elif target.name in ['ROXs12A']:
+        species_names= ['H2O','12CO','13CO','C18O','C17O','HF','H2(18)O','Na','Ti',
+                        'OH','CN','Fe','Sc','Si','Mg','V','K','Al','Mn','TiH','Cs','Ni','Rb']
+    elif target.name in ['ROXs12B']:
+        species_names= ['H2O','12CO','13CO','C18O','C17O','CH4','NH3','HCN','HF','H2(18)O','H2S']     
 
     constant_params={} # add if needed
     free_params = {'rv': ([-20,20],r'$v_{\rm rad}$'),
@@ -56,8 +63,7 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
                 'Fe/H': ([-1.5,1.5], r'[Fe/H]'), 
                 'log_C12_13_ratio': ([1,12], r'log $\mathrm{^{12}C/^{13}C}$'), 
                 'log_O16_18_ratio': ([1,12], r'log $\mathrm{^{16}O/^{18}O}$'), 
-                'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$'),
-                'log_HF':([-12,-1],r'log HF')}
+                'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$')}
             
         if chem=='quequchem': # quenched equilibrium chemistry
             chemistry.update({'log_Pqu_CO_CH4': ([-6,2], r'log P$_{qu}$(CO,CH$_4$,H$_2$O)'),
@@ -66,52 +72,9 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
         
     # if free chemistry, define VMRs
     if chem=='freechem': 
-        chemistry={'log_H2O':([-12,-1],r'log H$_2$O'),
-                'log_12CO':([-12,-1],r'log $^{12}$CO'),
-                'log_13CO':([-12,-1],r'log $^{13}$CO'),
-                'log_C18O':([-12,-1],r'log C$^{18}$O'),
-                'log_C17O':([-12,-1],r'log C$^{17}$O'),
-                'log_HF':([-12,-1],r'log HF'),
-                'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O')}
-        if target.name in ['2M0355','2M1425','test','test_corr','testsys','ROXs12B']:
-            cool_chemistry={'log_CH4':([-12,-1],r'log CH$_4$'),
-                            'log_NH3':([-12,-1],r'log NH$_3$'),
-                            'log_HCN':([-12,-1],r'log HCN'),
-                            'log_H2S':([-12,-1],r'log H$_2$S')}
-            chemistry.update(cool_chemistry)
-        if target.name in ['ROXs12A','ROXs12B']:
-            hot_chemistry={'log_Ca':([-12,-1],r'log Ca'),
-                        'log_Na':([-12,-1],r'log Na'),
-                        'log_Ti':([-12,-1],r'log Ti'),
-                        'log_OH':([-12,-1],r'log OH'),
-                        'log_CN':([-12,-1],r'log CN'),
-                        'log_Fe':([-12,-1],r'log Fe'),
-                        'log_Sc':([-12,-1],r'log Sc'),
-                        'log_Si':([-12,-1],r'log Si'),
-                        'log_Mg':([-12,-1],r'log Mg'),
-                        'log_V':([-12,-1],r'log V'),
-                        'log_K':([-12,-1],r'log K'),
-                        'log_Al':([-12,-1],r'log Al'),
-                        'log_Mn':([-12,-1],r'log Mn'),
-                        'log_TiH':([-12,-1],r'log TiH'),
-                        'log_Cs':([-12,-1],r'log Cs'),
-                        'log_Ba':([-12,-1],r'log Ba'),
-                        'log_Ni':([-12,-1],r'log Ni'),
-                        'log_Rb':([-12,-1],r'log Rb')}
-            chemistry.update(hot_chemistry)
-
-    if target.name in ['2M0355','2M1425'] and chem=='freechem': # um alte ergebnisse noch zu plotten wo reihenfolge anders war...
-            chemistry={'log_H2O':([-12,-1],r'log H$_2$O'),
-            'log_12CO':([-12,-1],r'log $^{12}$CO'),
-            'log_13CO':([-12,-1],r'log $^{13}$CO'),
-            'log_C18O':([-12,-1],r'log C$^{18}$O'),
-            'log_C17O':([-12,-1],r'log C$^{17}$O'),
-            'log_CH4':([-12,-1],r'log CH$_4$'),
-            'log_NH3':([-12,-1],r'log NH$_3$'),
-            'log_HCN':([-12,-1],r'log HCN'),
-            'log_HF':([-12,-1],r'log HF'),
-            'log_H2(18)O':([-12,-1],r'log H$_2^{18}$O'),
-            'log_H2S':([-12,-1],r'log H$_2$S')}
+        chemistry={}
+        for species_i in species_names:
+            chemistry[species_i]=([-12,-1],rf"log {species_info.loc[species_i,'mathtext_name']}")
         
     if cloud_mode=='gray':
         cloud_props={'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'),  
@@ -135,7 +98,7 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     cube = np.random.rand(parameters.n_params)
     parameters(cube)
 
-    retrieval=Retrieval(target=target,parameters=parameters,
+    retrieval=Retrieval(target=target,parameters=parameters,species_names=species_names,
                         Nlive=Nlive,evtol=evtol,chemistry=chem,PT_type=PT_type)
 
     return retrieval

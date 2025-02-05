@@ -36,6 +36,8 @@ class Target:
             self.fwhm = 3.4720016645787855 # Gaussian FWHM in pixels
             if self.name=='testsys':
                 self.primary_label=False
+            self.airmass_obs = 1.42
+            self.airmass_std = 1.31
         elif self.name=='2M1425':
             self.ra="14h25m27.9845344257s"
             self.dec="-36d50m23.248617541s"
@@ -45,6 +47,8 @@ class Target:
             self.color1='lightcoral' # color of retrieval output
             self.color2='lightpink'
             self.fwhm = 5.397255188786233 # Gaussian FWHM in pixels
+            self.airmass_obs = 1.13
+            self.airmass_std = 1.03
         elif self.name=='ROXs12B':
             self.primary_label=False
             self.ra="16h26m28.0396675056s"
@@ -206,6 +210,10 @@ class Target:
     
         wl,fl0,err=self.load_spec_file(target) # target object
         wlt,flt,continuum=self.load_spec_file(target_tel) # molecfit for telluric correction
+
+        # scale tellurics because airmass of standard star was different than science target
+        # transm_scaled = transm ** (airmass_obs / airmass_std)
+        flt=flt**(self.airmass_obs/self.airmass_std)
         
         fl=np.copy(fl0) # keep for later comparison
         zero_mask=np.where(fl==0)[0] # indices where flux is zero
@@ -215,7 +223,8 @@ class Target:
         fl0[zero_mask]=np.nan
 
         # mask deepest tellurics: use telluric model because it has a flat baseline
-        tel_mask=np.where(flt/np.nanmedian(flt)<0.7)[0]
+        tel_mask= flt/np.nanmedian(flt)<0.7
+        tel_mask = np.convolve(tel_mask, np.ones(10), mode='same') > 0 # grow mask by n pixels
         fl[tel_mask]=np.nan
         err[tel_mask]=np.nan
         fl0_masked=np.copy(fl0)
@@ -401,6 +410,7 @@ class Target:
         axins.set_xlabel('Wavelength [nm]')
         plt.subplots_adjust(wspace=0, hspace=0)
         fig.savefig(f'{self.name}/observations_{self.name}.jpg',bbox_inches='tight')
+        plt.close()
             
     
 

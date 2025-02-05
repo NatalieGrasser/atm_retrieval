@@ -1,4 +1,3 @@
-from re import S
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -15,6 +14,7 @@ import pickle
 import pathlib
 from scipy.optimize import nnls
 from scipy.ndimage import gaussian_filter
+import gc
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -28,6 +28,8 @@ elif getpass.getuser() == "natalie": # when testing from my laptop
     path_tables = '/home/natalie/fastchem_tables'
 
 class pRT_spectrum:
+
+    gc_n=0
 
     def __init__(self,
                  retrieval_object,
@@ -46,7 +48,7 @@ class pRT_spectrum:
         self.data_wave=retrieval_object.data_wave
         self.target=retrieval_object.target
         self.coords = SkyCoord(ra=self.target.ra, dec=self.target.dec, frame='icrs')
-        self.species=retrieval_object.species
+        self.species_pRT=retrieval_object.species_pRT
         self.spectral_resolution=spectral_resolution
         self.chemistry=retrieval_object.chemistry
         self.atmosphere_objects=retrieval_object.atmosphere_objects
@@ -62,7 +64,7 @@ class pRT_spectrum:
         self.int_opa_cloud = np.zeros_like(self.pressure)
         self.gravity = 10**self.params['log_g'] 
         self.contribution=contribution
-        self.cloud_mode=None#retrieval_object.cloud_mode
+        self.cloud_mode=retrieval_object.cloud_mode
 
         # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
@@ -71,19 +73,15 @@ class pRT_spectrum:
         self.add_cloud_scat_as_abs=False
 
         if self.chemistry=='freechem': # use free chemistry with defined VMRs
-            self.mass_fractions, self.CO, self.FeH = self.free_chemistry(self.species,self.params)
+            self.mass_fractions, self.CO, self.FeH = self.free_chemistry(self.species_pRT,self.params)
             self.MMW = self.mass_fractions['MMW']
 
         if self.chemistry in ['equchem','quequchem']: # use equilibium chemistry
-            #self.abunds = self.abundances(self.pressure,self.temperature,self.params['Fe/H'],self.params['C/O'])
-            #self.mass_fractions = self.get_abundance_dict(self.species,self.abunds)
             self.species_hill = retrieval_object.species_hill
-            self.mass_fractions = self.equ_chemistry(self.species,self.params)
+            self.mass_fractions = self.equ_chemistry(self.species_pRT,self.params)
             # update mass_fractions with isotopologue ratios
-            self.mass_fractions = self.get_isotope_mass_fractions(self.species,self.mass_fractions,self.params) 
-            #self.MMW = self.abunds['MMW']
+            self.mass_fractions = self.get_isotope_mass_fractions(self.species_pRT,self.mass_fractions,self.params) 
             self.MMW = self.mass_fractions['MMW']
-            #self.VMRs = self.get_VMR_values(self.mass_fractions)
 
         self.spectrum_orders=[]
         self.n_orders=retrieval_object.n_orders
@@ -114,38 +112,6 @@ class pRT_spectrum:
             name=species_info.loc[species_info["pRT_name"]==pRT_name]['name'].values[0]
             VMR_dict[name]=mass_fractions[pRT_name]*MMW/mass
         return VMR_dict
-
-    def get_abundance_dict(self,species,abunds): # does not inlcude isotopes
-        mass_fractions = {}
-        for specie in species:
-            if specie in ['H2O_main_iso','H2O_pokazatel_main_iso']:
-                mass_fractions[specie] = abunds['H2O']
-            elif specie=='CO_main_iso':
-                mass_fractions[specie] = abunds['CO']
-            elif specie in ['CH4_main_iso','CH4_hargreaves_main_iso']:
-                mass_fractions[specie] = abunds['CH4']
-            elif specie=='HCN_main_iso':
-                mass_fractions[specie] = abunds['HCN']
-            elif specie=='NH3_coles_main_iso':
-                mass_fractions[specie] = abunds['NH3']
-            elif specie=='HF_main_iso':
-                if "log_HF" in self.params:
-                    mass_fractions[specie] = self.params['log_HF'] # ACHTUNG: is vmr, not mass fraction
-                else:
-                    mass_fractions[specie] = 1e-12 #abunds['HF'] not in pRT chem equ table
-                #species_info = pd.read_csv(os.path.join('species_info.csv'))
-                #mass=species_info.loc[species_info["name"]=='HF']['mass'].values[0]
-                #mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers)*mass/self.abunds['MMW'] #abunds['HF'] not in pRT chem equ table, include here
-                #mass_fractions[specie] = self.params['log_HF']*mass/self.abunds['MMW'] # add HF manually, convert VMR
-            elif specie=='H2S_ExoMol_main_iso':
-                mass_fractions[specie] = abunds['H2S']
-            elif specie=='OH_main_iso':
-                mass_fractions[specie] = 1e-12*np.ones(self.n_atm_layers) #abunds['OH'] not in pRT chem equ table
-            elif specie=='CO2_main_iso':
-                mass_fractions[specie] = abunds['CO2']
-        mass_fractions['H2'] = abunds['H2']
-        mass_fractions['He'] = abunds['He']
-        return mass_fractions
     
     def read_species_info(self,species,info_key):
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -200,7 +166,7 @@ class pRT_spectrum:
         return mass_fractions
     
     # https://github.com/samderegt/retrieval_base/blob/Restructuring/retrieval_base/model_components/chemistry.py
-    def equ_chemistry(self,line_species,params):
+    def equ_chemistry(self,species_pRT,params):
         species_info = pd.read_csv(os.path.join('species_info.csv'))
 
         def load_interp_tables():
@@ -218,10 +184,8 @@ class pRT_spectrum:
 
             from scipy.interpolate import RegularGridInterpolator
             self.interp_tables = {}
-            for species_i, hill_i in zip([*line_species, 'MMW'], [*self.species_hill, 'MMW']):
+            for species_i, hill_i in zip([*species_pRT, 'MMW'], [*self.species_hill, 'MMW']):
                 key = 'MMW' if species_i=='MMW' else 'log_VMR'
-                if species_i == 'HF_main_iso_new':
-                    continue
                 arr = load_hdf5(f'{hill_i}.hdf5', key=key)  # Load equchem abundance tables
                 
                 # Generate interpolation functions
@@ -262,10 +226,6 @@ class pRT_spectrum:
                 else:
                     self.MMW = arr_i.copy() # Mean-molecular weight
 
-            # add these separately, not in table
-            for species_i in ['HF']:
-                self.VMRs[species_i] = np.ones(self.n_atm_layers)*10**params[f"log_{species_i}"]
-
         def VMR_to_MF():
             MMW = 0.
             for species_i, VMR_i in self.VMRs.items():
@@ -275,9 +235,9 @@ class pRT_spectrum:
             # Convert to mass-fractions using mass-ratio
             self.mass_fractions = {'MMW': MMW * np.ones(self.n_atm_layers)}
             for species_i, VMR_i in self.VMRs.items():            
-                line_species_i = self.read_species_info(species_i, 'pRT_name')
+                species_pRT_i = self.read_species_info(species_i, 'pRT_name')
                 mass_i = self.read_species_info(species_i, 'mass')
-                self.mass_fractions[line_species_i] = VMR_i * mass_i/MMW
+                self.mass_fractions[species_pRT_i] = VMR_i * mass_i/MMW
 
         def get_H2(): # get H2 abundance as the remainder of the total VMR
 
@@ -297,20 +257,25 @@ class pRT_spectrum:
         VMR_to_MF()
 
         if self.chemistry=='quequchem':
-            for species in ['CO','H2O','CH4']:
-                Pqu=10**self.params['log_Pqu_CO_CH4'] # is in log
-                idx=find_nearest(self.pressure,Pqu)
-                quenched_fraction=self.mass_fractions[species][idx]
-                self.mass_fractions[species][:idx]=quenched_fraction
-            for species in ['NH3','HCN']:    
-                Pqu=10**self.params[f'log_Pqu_{species}'] # is in log
-                idx=find_nearest(self.pressure,Pqu)
-                quenched_fraction=self.mass_fractions[species][idx]
-                self.mass_fractions[species][:idx]=quenched_fraction
-
+            for species in self.mass_fractions.keys():
+                if any(sub in species for sub in ['H2O_','CO_','CH4_']):
+                    Pqu=10**self.params['log_Pqu_CO_CH4'] # is in log
+                    idx=find_nearest(self.pressure,Pqu)
+                    quenched_fraction=self.mass_fractions[species][idx]
+                    self.mass_fractions[species][:idx]=quenched_fraction
+                elif 'NH3_' in species:
+                    Pqu=10**self.params[f'log_Pqu_NH3'] # is in log
+                    idx=find_nearest(self.pressure,Pqu)
+                    quenched_fraction=self.mass_fractions[species][idx]
+                    self.mass_fractions[species][:idx]=quenched_fraction
+                elif 'HCN_' in species:
+                    Pqu=10**self.params[f'log_Pqu_HCN'] # is in log
+                    idx=find_nearest(self.pressure,Pqu)
+                    quenched_fraction=self.mass_fractions[species][idx]
+                    self.mass_fractions[species][:idx]=quenched_fraction
         return self.mass_fractions
     
-    def free_chemistry(self,line_species,params):
+    def free_chemistry(self,species_pRT,params):
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         VMR_He = 0.15
         VMR_wo_H2 = 0 + VMR_He  # Total VMR without H2, starting with He
@@ -318,17 +283,17 @@ class pRT_spectrum:
         C, O, H = 0, 0, 0
 
         for species_i in species_info.index:
-            line_species_i = self.read_species_info(species_i,'pRT_name')
+            species_pRT_i = self.read_species_info(species_i,'pRT_name')
             mass_i = self.read_species_info(species_i, 'mass')
             COH_i  = self.read_species_info(species_i, 'COH')
 
             if species_i in ['H2', 'He']:
                 continue
-            if line_species_i in line_species:
+            if species_pRT_i in species_pRT:
                 VMR_i = 10**(params[f'log_{species_i}'])*np.ones(self.n_atm_layers) #  use constant, vertical profile
 
                 # Convert VMR to mass fraction using molecular mass number
-                mass_fractions[line_species_i] = mass_i * VMR_i
+                mass_fractions[species_pRT_i] = mass_i * VMR_i
                 VMR_wo_H2 += VMR_i
 
                 # Record C, O, and H bearing species for C/O and metallicity
@@ -349,8 +314,8 @@ class pRT_spectrum:
             MMW += mass_i
         MMW *= np.ones(self.n_atm_layers)
         
-        for line_species_i in mass_fractions.keys():
-            mass_fractions[line_species_i] /= MMW # Turn the molecular masses into mass fractions
+        for species_pRT_i in mass_fractions.keys():
+            mass_fractions[species_pRT_i] /= MMW # Turn the molecular masses into mass fractions
         mass_fractions['MMW'] = MMW # pRT requires MMW in mass fractions dictionary
         CO = C/O if np.sum(O)!=0 else np.inf
         log_CH_solar = 8.46 - 12 # Asplund et al. (2021)
@@ -359,19 +324,24 @@ class pRT_spectrum:
         FeH = np.nanmean(FeH)
 
         return mass_fractions, CO, FeH
-
-    def gray_cloud_opacity(self): # like in deRegt+2024
-        def give_opacity(wave_micron=self.wave_micron,pressure=self.pressure):
-            opa_gray_cloud = np.zeros((len(self.wave_micron),len(self.pressure))) # gray cloud = independent of wavelength
-            opa_gray_cloud[:,self.pressure>10**(self.params['log_P_base_gray'])] = 0 # [bar] constant below cloud base
-            #opa_gray_cloud[:,self.pressure>10**(self.params['log_P_base_gray'])] =10**(self.params['log_opa_base_gray'])
-            # Opacity decreases with power-law above the base
-            above_clouds = (self.pressure<=10**(self.params['log_P_base_gray']))
-            opa_gray_cloud[:,above_clouds]=(10**(self.params['log_opa_base_gray']))*(self.pressure[above_clouds]/10**(self.params['log_P_base_gray']))**self.params['fsed_gray']
-            if self.params.get('cloud_slope') is not None:
-                opa_gray_cloud *= (self.wave_micron[:,None]/1)**self.params['cloud_slope']
-            return opa_gray_cloud
-        return give_opacity
+    
+    def gray_cloud_opacity(self,wave_micron,pressure): # like in deRegt+2024
+        if 'opa_gray_cloud' in locals():
+            opa_gray_cloud.fill(0)  # Reset the array to avoid recreating it
+        else:
+            opa_gray_cloud = np.zeros((len(wave_micron),len(pressure))) # gray cloud = independent of wavelength
+        P_base_gray = 10**(self.params['log_P_base_gray'])
+        opa_base_gray = 10**(self.params['log_opa_base_gray'])
+        opa_gray_cloud[:,pressure>P_base_gray] = 0 # [bar] constant below cloud base
+        # Opacity decreases with power-law above the base
+        opa_gray_cloud[:,pressure<=P_base_gray]=opa_base_gray*(pressure[pressure<=P_base_gray]/P_base_gray)**self.params['fsed_gray']
+        if self.params.get('cloud_slope') is not None:
+            opa_gray_cloud *= (wave_micron[:,None]/1)**self.params['cloud_slope']
+        pRT_spectrum.gc_n+=1
+        if pRT_spectrum.gc_n>20: # make it more efficient by not running it every time
+            gc.collect()
+            pRT_spectrum.gc_n=0      
+        return opa_gray_cloud
     
     def make_spectrum(self):
 
@@ -406,7 +376,7 @@ class pRT_spectrum:
 
             elif self.cloud_mode == 'gray': # Gray cloud opacity
                 self.wave_micron = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
-                self.give_absorption_opacity=self.gray_cloud_opacity() # fsed_gray only needed here, not in calc_flux
+                self.give_absorption_opacity=self.gray_cloud_opacity # fsed_gray only needed here, not in calc_flux
 
             atmosphere.calc_flux(self.temperature,
                             self.mass_fractions,

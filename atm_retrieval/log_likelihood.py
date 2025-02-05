@@ -26,7 +26,7 @@ class LogLikelihood:
     def __call__(self, m_flux, Cov, **kwargs):
 
         self.ln_L   = 0.0
-        self.chi2_0 = 0.0
+        self.chi2_red = np.zeros((self.n_orders, self.n_dets)) # reduced chi2
         self.phi = np.ones((self.n_orders, self.n_dets, self.N_phi)) # store linear flux-scaling terms
         self.s2  = np.ones((self.n_orders, self.n_dets)) # uncertainty-scaling
         self.m_flux_phi = np.nan * np.ones_like(self.d_flux) # scaled model flux
@@ -69,10 +69,8 @@ class LogLikelihood:
 
                 # Add this order/detector to the total log-likelihood
                 self.ln_L += -1/2*(logdet_cov_0+logdet_MT_inv_cov_0_M+(N_d-self.N_phi+self.alpha-1)*np.log(chi2_0))
-                self.chi2_0 += chi2_0
-
-        # Reduced chi-squared
-        self.chi2_0_red = self.chi2_0 / self.N_d
+                self.chi2_red[i,j] = chi2_0/self.s2[i,j]/self.N_d
+                #print('log chi2_0=',np.log(chi2_0))
 
         if np.isfinite(self.ln_L)==False:
             print('ERROR: Not finite lnL')
