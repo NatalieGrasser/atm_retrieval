@@ -74,7 +74,7 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     if chem=='freechem': 
         chemistry={}
         for species_i in species_names:
-            chemistry[species_i]=([-12,-1],rf"log {species_info.loc[species_i,'mathtext_name']}")
+            chemistry[f"log_{species_i}"]=([-12,-1],rf"log {species_info.loc[species_i,'mathtext_name']}")
         
     if cloud_mode=='gray':
         cloud_props={'log_opa_base_gray': ([-10,3], r'log $\kappa_{\mathrm{cl},0}$'),  

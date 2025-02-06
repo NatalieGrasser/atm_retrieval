@@ -171,7 +171,7 @@ class Target:
                 self.separation[i,j] = separation_ij  
                 err_ij = self.err[i,j,mask_ij]  
                 #self.err_eff[i,j] = np.sqrt(1/2*(err_ij[None,:]**2 + err_ij[:,None]**2)) # arithmetic mean of squared flux-errors
-                self.err_eff[i,j] = np.nanmedian(err_ij) # more stable
+                self.err_eff[i,j] = np.nanmedian(err_ij) if err_ij.size != 0 else np.nan # more stable
         return self.separation,self.err_eff
     
     def load_spec_file(self,file):

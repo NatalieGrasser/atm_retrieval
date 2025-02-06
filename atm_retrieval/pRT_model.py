@@ -15,15 +15,14 @@ import pathlib
 from scipy.optimize import nnls
 from scipy.ndimage import gaussian_filter
 import gc
+from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
-    from atm_retrieval.cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
     import matplotlib
     matplotlib.use('Agg') # disable interactive plotting
     path_tables = '/net/lem/data2/regt/fastchem_tables'
 elif getpass.getuser() == "natalie": # when testing from my laptop
-    from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
     os.environ['pRT_input_data_path'] = "/home/natalie/.local/lib/python3.8/site-packages/petitRADTRANS/input_data_std/input_data"
     path_tables = '/home/natalie/fastchem_tables'
 
@@ -32,39 +31,33 @@ class pRT_spectrum:
     gc_n=0
 
     def __init__(self,
-                 retrieval_object,
+                 retr_obj,
                  spectral_resolution=100_000,  
                  contribution=False, # only for plotting atmosphere.contr_em
                  interpolate=True):
         
-        self.primary_label=retrieval_object.primary_label
+        inherit_attributes = ['primary_label','data_wave','target','species_pRT',
+                              'chemistry','atmosphere_objects','lbl_opacity_sampling',
+                              'n_atm_layers','pressure','PT_type','cloud_mode']
+        for attr in inherit_attributes:  # list of attributes to pass down
+            setattr(self, attr, getattr(retr_obj, attr))
+
         if self.primary_label==False:
-            self.primary_wave=retrieval_object.primary_wave
-            self.primary_flux=retrieval_object.primary_flux
-            self.data_flux = retrieval_object.data_flux
-            self.data_err = retrieval_object.data_err
+            self.primary_wave=retr_obj.primary_wave
+            self.primary_flux=retr_obj.primary_flux
+            self.data_flux = retr_obj.data_flux
+            self.data_err = retr_obj.data_err
 
-        self.params=retrieval_object.parameters.params
-        self.data_wave=retrieval_object.data_wave
-        self.target=retrieval_object.target
+        self.params=retr_obj.parameters.params
+        self.spectral_resolution= spectral_resolution
         self.coords = SkyCoord(ra=self.target.ra, dec=self.target.dec, frame='icrs')
-        self.species_pRT=retrieval_object.species_pRT
-        self.spectral_resolution=spectral_resolution
-        self.chemistry=retrieval_object.chemistry
-        self.atmosphere_objects=retrieval_object.atmosphere_objects
-        self.lbl_opacity_sampling=retrieval_object.lbl_opacity_sampling
         self.interpolate=interpolate
-
-        self.n_atm_layers=retrieval_object.n_atm_layers
-        self.pressure = retrieval_object.pressure
-        self.PT_type=retrieval_object.PT_type
         self.temperature = self.make_pt() #P-T profile
 
         self.give_absorption_opacity=None
         self.int_opa_cloud = np.zeros_like(self.pressure)
         self.gravity = 10**self.params['log_g'] 
         self.contribution=contribution
-        self.cloud_mode=retrieval_object.cloud_mode
 
         # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
@@ -77,14 +70,14 @@ class pRT_spectrum:
             self.MMW = self.mass_fractions['MMW']
 
         if self.chemistry in ['equchem','quequchem']: # use equilibium chemistry
-            self.species_hill = retrieval_object.species_hill
+            self.species_hill = retr_obj.species_hill
             self.mass_fractions = self.equ_chemistry(self.species_pRT,self.params)
             # update mass_fractions with isotopologue ratios
             self.mass_fractions = self.get_isotope_mass_fractions(self.species_pRT,self.mass_fractions,self.params) 
             self.MMW = self.mass_fractions['MMW']
 
         self.spectrum_orders=[]
-        self.n_orders=retrieval_object.n_orders
+        self.n_orders=retr_obj.n_orders
 
     def abundances(self,press, temp, feh, C_O):
         COs = np.ones_like(press)*C_O
