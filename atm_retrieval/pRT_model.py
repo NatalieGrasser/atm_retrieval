@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from scipy.interpolate import CubicSpline
-from petitRADTRANS.poor_mans_nonequ_chem import interpol_abundances
 from PyAstronomy.pyasl import fastRotBroad, helcorr
 from astropy import constants as const
 from astropy import units as u
@@ -34,7 +33,8 @@ class pRT_spectrum:
                  retr_obj,
                  spectral_resolution=100_000,  
                  contribution=False, # only for plotting atmosphere.contr_em
-                 interpolate=True):
+                 interpolate=True,
+                 leave_out=None):
         
         inherit_attributes = ['primary_label','data_wave','target','species_pRT',
                               'chemistry','atmosphere_objects','lbl_opacity_sampling',
@@ -58,6 +58,7 @@ class pRT_spectrum:
         self.int_opa_cloud = np.zeros_like(self.pressure)
         self.gravity = 10**self.params['log_g'] 
         self.contribution=contribution
+        self.leave_out = np.array(leave_out) # leave out certain species in equchem for CCF
 
         # add_cloud_scat_as_abs, sigma_lnorm, fsed, Kzz only relevant for physical clouds (e.g. MgSiO3)
         self.sigma_lnorm=None
@@ -72,38 +73,24 @@ class pRT_spectrum:
         if self.chemistry in ['equchem','quequchem']: # use equilibium chemistry
             self.species_hill = retr_obj.species_hill
             self.mass_fractions = self.equ_chemistry(self.species_pRT,self.params)
-            # update mass_fractions with isotopologue ratios
+            # update mass_fractions with isotopolog ratios
             self.mass_fractions = self.get_isotope_mass_fractions(self.species_pRT,self.mass_fractions,self.params) 
             self.MMW = self.mass_fractions['MMW']
+            # get new VMR dict, updated with isotopologs
+            self.VMR_dict = self.get_VMR_dict(self.mass_fractions)
 
         self.spectrum_orders=[]
         self.n_orders=retr_obj.n_orders
 
-    def abundances(self,press, temp, feh, C_O):
-        COs = np.ones_like(press)*C_O
-        fehs = np.ones_like(press)*feh
-        mass_fractions = interpol_abundances(COs,fehs,temp,press)
-        if self.chemistry=='quequchem':
-            for species in ['CO','H2O','CH4']:
-                Pqu=10**self.params['log_Pqu_CO_CH4'] # is in log
-                idx=find_nearest(self.pressure,Pqu)
-                quenched_fraction=mass_fractions[species][idx]
-                mass_fractions[species][:idx]=quenched_fraction
-            for species in ['NH3','HCN']:    
-                Pqu=10**self.params[f'log_Pqu_{species}'] # is in log
-                idx=find_nearest(self.pressure,Pqu)
-                quenched_fraction=mass_fractions[species][idx]
-                mass_fractions[species][:idx]=quenched_fraction
-        return mass_fractions
-
-    def get_VMR_values(self,mass_fractions):
+    def get_VMR_dict(self,mass_fractions):
         species_info = pd.read_csv(os.path.join('species_info.csv'))
         VMR_dict={}
         MMW=self.MMW
         for pRT_name in mass_fractions.keys():
-            mass=species_info.loc[species_info["pRT_name"]==pRT_name]['mass'].values[0]
-            name=species_info.loc[species_info["pRT_name"]==pRT_name]['name'].values[0]
-            VMR_dict[name]=mass_fractions[pRT_name]*MMW/mass
+            if pRT_name!='MMW':
+                mass=species_info.loc[species_info["pRT_name"]==pRT_name]['mass'].values[0]
+                name=species_info.loc[species_info["pRT_name"]==pRT_name]['name'].values[0]
+                VMR_dict[name]=mass_fractions[pRT_name]*MMW/mass
         return VMR_dict
     
     def read_species_info(self,species,info_key):
@@ -132,6 +119,12 @@ class pRT_spectrum:
         self.C13_12_ratio = 10**(-params.get('log_C12_13_ratio',-12))
         self.O18_16_ratio = 10**(-params.get('log_O16_18_ratio',-12))
         self.O17_16_ratio = 10**(-params.get('log_O16_17_ratio',-12))
+
+        isotopes = ['13CO','C17O','C18O','H2(18)O']
+        ratios = ['C13_12_ratio','O17_16_ratio','O18_16_ratio','O18_16_ratio']
+        for i,isotope in enumerate(isotopes):
+            if isotope in [self.leave_out]:
+                setattr(self, ratios[i], 0)          
 
         for species_i in species:
             if (species_i=='CO_main_iso'): # 12CO mass fraction
@@ -216,6 +209,8 @@ class pRT_spectrum:
                 if pRT_name_i != 'MMW':
                     species_i=species_info.loc[species_info["pRT_name"]==pRT_name_i]['name'].values[0]
                     self.VMRs[species_i] = 10**arr_i # log10(VMR)
+                    if species_i in self.leave_out:
+                        self.VMRs[species_i].fill(0)
                 else:
                     self.MMW = arr_i.copy() # Mean-molecular weight
 
@@ -318,28 +313,27 @@ class pRT_spectrum:
 
         return mass_fractions, CO, FeH
     
-    def gray_cloud_opacity(self,wave_micron,pressure): # like in deRegt+2024
-        if 'opa_gray_cloud' in locals():
-            opa_gray_cloud.fill(0)  # Reset the array to avoid recreating it
-        else:
-            opa_gray_cloud = np.zeros((len(wave_micron),len(pressure))) # gray cloud = independent of wavelength
+    def gray_cloud_opacity(self,wave_micron,pressure): # gray cloud = independent of wavelength
         P_base_gray = 10**(self.params['log_P_base_gray'])
         opa_base_gray = 10**(self.params['log_opa_base_gray'])
-        opa_gray_cloud[:,pressure>P_base_gray] = 0 # [bar] constant below cloud base
-        # Opacity decreases with power-law above the base
-        opa_gray_cloud[:,pressure<=P_base_gray]=opa_base_gray*(pressure[pressure<=P_base_gray]/P_base_gray)**self.params['fsed_gray']
         if self.params.get('cloud_slope') is not None:
+            opa_gray_cloud = np.zeros((len(wave_micron),len(pressure)))
+            opa_gray_cloud[:,pressure>P_base_gray] = 0 # [bar] constant below cloud base
+            opa_gray_cloud[:,pressure<=P_base_gray]=opa_base_gray*(pressure[pressure<=P_base_gray]/P_base_gray)**self.params['fsed_gray']
             opa_gray_cloud *= (wave_micron[:,None]/1)**self.params['cloud_slope']
-        pRT_spectrum.gc_n+=1
-        if pRT_spectrum.gc_n>20: # make it more efficient by not running it every time
-            gc.collect()
-            pRT_spectrum.gc_n=0      
+        else:
+            opa_gray_cloud = np.zeros(len(pressure)) # no need for wavelength dimension
+            opa_gray_cloud[pressure>P_base_gray] = 0 # [bar] constant below cloud base
+            opa_gray_cloud[pressure<=P_base_gray]=opa_base_gray*(pressure[pressure<=P_base_gray]/P_base_gray)**self.params['fsed_gray']     
+        #pRT_spectrum.gc_n+=1
+        #if pRT_spectrum.gc_n>20: # make it more efficient by not running it every time
+            #gc.collect()
+            #pRT_spectrum.gc_n=0      
         return opa_gray_cloud
     
     def make_spectrum(self):
 
         spectrum_orders=[]
-        self.wlshift_orders=[]
         waves_orders=[]
         self.contr_em_orders=[]
         self.phi_components=np.full(shape=(7,3,8),fill_value=np.nan)
@@ -368,7 +362,6 @@ class pRT_spectrum:
                 self.add_cloud_scat_as_abs=True
 
             elif self.cloud_mode == 'gray': # Gray cloud opacity
-                self.wave_micron = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
                 self.give_absorption_opacity=self.gray_cloud_opacity # fsed_gray only needed here, not in calc_flux
 
             atmosphere.calc_flux(self.temperature,
@@ -390,7 +383,6 @@ class pRT_spectrum:
             v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
                             ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
             wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
-            self.wlshift_orders.append(wl_shifted)
             waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
             spec = np.interp(waves_even, wl_shifted, flux)
             spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
@@ -583,7 +575,6 @@ class pRT_spectrum:
                 atmosphere=pickle.load(file)
 
         if self.cloud_mode == 'gray': # Gray cloud opacity
-            self.wave_micron = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
             self.give_absorption_opacity=self.gray_cloud_opacity() # fsed_gray only needed here, not in calc_flux
 
         atmosphere.calc_flux(self.temperature,

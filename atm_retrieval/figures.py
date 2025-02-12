@@ -1,7 +1,6 @@
 import os
 import cloud_cond as cloud_cond
 from pRT_model import pRT_spectrum
-  
 import numpy as np
 import corner
 import matplotlib.pyplot as plt
@@ -23,6 +22,11 @@ def scale_between(ymin,ymax,arr):
     scaled_arr=scale*(arr-np.nanmin(arr))+ymin
     return scaled_arr
 
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx
+
 def plot_spectrum_inset(retr_obj,inset=True,fs=10,**kwargs):
 
     wave=retr_obj.data_wave
@@ -34,7 +38,6 @@ def plot_spectrum_inset(retr_obj,inset=True,fs=10,**kwargs):
         ax=kwargs.get('ax')
     else:
         fig,ax=plt.subplots(2,1,figsize=(10,2.5),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
-        #fig,ax=plt.subplots(2,1,figsize=(9.5,3),dpi=200,gridspec_kw={'height_ratios':[2,0.7]})
 
     for order in range(7):
         # add error for scale
@@ -103,7 +106,7 @@ def plot_spectrum_inset(retr_obj,inset=True,fs=10,**kwargs):
 
     plt.subplots_adjust(wspace=0, hspace=0)
     if 'ax' not in kwargs:
-        name = 'bestfit_spectrum_inset' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}bestfit_spectrum_inset'
+        name = 'bestfit_inset' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}bestfit_inset'
         fig.savefig(f'{retr_obj.output_dir}/{name}.pdf', bbox_inches='tight')
         plt.close()
 
@@ -113,11 +116,9 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
         opacities={}
 
         for spec in overplot_species:
-            from retrieval import Retrieval
+            from retr import Retrieval
             from parameters import Parameters
             from pRT_model import pRT_spectrum
-            #opa_orders=[]
-            #wave_orders=[]
 
             # create spectrum containing only selected species
             parameters_species = {} #retr_obj.params_dict.copy()
@@ -129,24 +130,23 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
             if f'log_{spec}' in retr_obj.params_dict.keys():
                 parameters_species[f'log_{spec}']=retr_obj.params_dict[f'log_{spec}']
             #else:
-                #parameters_species[f'log_{spec}']=-4 # check species that isn't in retrieval
+                #parameters_species[f'log_{spec}']=-4 # check species that isn't in retr
             parameters_species = Parameters({}, parameters_species)
             parameters_species.param_priors['log_l']=[-3,0]
-            retrieval_species = Retrieval(target=retr_obj.target,parameters=parameters_species, 
+            retr_species = Retrieval(target=retr_obj.target,parameters=parameters_species, 
                                           species_names=retr_obj.species_names,
                                         Nlive=retr_obj.Nlive,evtol=retr_obj.evtol,
                                     chemistry='freechem',PT_type=retr_obj.PT_type)            
             if f'log_{spec}' not in retr_obj.params_dict.keys():
-                retrieval_species.atmosphere_objects = retrieval_species.get_atmosphere_objects(for_species=spec)
-                parameters_species.params[f'log_{spec}']=-4 # check species that isn't in retrieval
-                retrieval_species.species = [spec]
-            retrieval_species.primary_label=True # to avoid problems
-            retrieval_species.model_object=pRT_spectrum(retrieval_species)
-            spec_flux=retrieval_species.model_object.make_spectrum()
+                retr_species.atmosphere_objects = retr_species.get_atmosphere_objects(for_species=spec)
+                parameters_species.params[f'log_{spec}']=-4 # check species that isn't in retr
+                retr_species.species = [spec]
+            retr_species.primary_label=True # to avoid problems
+            retr_species.model_object=pRT_spectrum(retr_species)
+            spec_flux=retr_species.model_object.make_spectrum()
             for order in range(7):
                 for det in range(3):
                     spec_flux[order,det]/=np.median(spec_flux[order,det])
-            #print(spec_flux)
             
             #for order in range(7):
             if False:
@@ -165,16 +165,15 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
                     wave_cm, opas = atm.get_opa(T)
                     wave_orders.append(wave_cm*1e7)
                     opa_orders.append(opas[spec].flatten())
-                #opacities[spec]=opa_orders
             opacities[spec] = spec_flux
         retr_obj.opacities=opacities
 
-    retrieval=retr_obj
-    residuals=(retrieval.data_flux-retrieval.model_flux)
+    retr=retr_obj
+    residuals=(retr.data_flux-retr.model_flux)
     figsize=(10,13)
     gridspec_kw={'height_ratios':[2,0.9,0.57]*6+[2,0.9]}
     if plot_components==True:
-        phi_comp=retrieval.model_object.phi_components
+        phi_comp=retr.model_object.phi_components
         print('Avg phi star=',np.nanmean(np.nansum(phi_comp.reshape(7*3,8)[:,:-1],axis=1)))
         print('Avg phi BD  =',np.nanmean(phi_comp.reshape(7*3,8)[:,-1]))
         #figsize=(9,15)
@@ -183,8 +182,8 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
     x=0
     
     for order in range(7): 
-        min_array=[np.nanmin([retrieval.data_flux[order],retrieval.model_flux[order]])]
-        max_array=[np.nanmax([retrieval.data_flux[order],retrieval.model_flux[order]])]
+        min_array=[np.nanmin([retr.data_flux[order],retr.model_flux[order]])]
+        max_array=[np.nanmax([retr.data_flux[order],retr.model_flux[order]])]
         ax1=ax[x]
         ax2=ax[x+1]
         
@@ -192,41 +191,38 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
             ax3=ax[x+2] #for spacing
         for det in range(3):
             
-            ax1.plot(retrieval.data_wave[order,det],retrieval.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
-            ax1.plot(retrieval.data_wave[order,det],retrieval.model_flux[order,det],lw=0.8,alpha=0.8,c=retr_obj.color1,label='model')
-            ax1.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
+            ax1.plot(retr.data_wave[order,det],retr.data_flux[order,det],lw=0.8,alpha=1,c='k',label='data')
+            ax1.plot(retr.data_wave[order,det],retr.model_flux[order,det],lw=0.8,alpha=0.8,c=retr_obj.color1,label='model')
+            ax1.set_xlim(np.nanmin(retr.data_wave[order])-1,np.nanmax(retr.data_wave[order])+1)
             if plot_components==True:
                 prim_c='orange'
                 sec_c='dodgerblue'
-                #prim_flx=phi_comp[order,det][0]*retrieval.primary_flux[order,det]
-                #prim_flx= np.sum(phi_comp[order,det][:-1])*retrieval.primary_broadened[order][det]
-                #sec_flx = phi_comp[order,det][1]*retrieval.model_object.secondary_flux[order,det]
-                prim_flx= retrieval.model_object.primary_broadened[order,det]
-                sec_flx = retrieval.model_object.secondary_flux[order,det]
-                ax1.plot(retrieval.data_wave[order,det], prim_flx, label='A',lw=0.8, c=prim_c)
-                ax1.plot(retrieval.data_wave[order,det], sec_flx,lw=0.8, label='B', c=sec_c)
-                #plt.plot(self.data_wave[order][det], np.sum(phi_comp[:-1])*self.primary_broadened[order][det], label='A_broad',c='orange')
+                prim_flx= retr.model_object.primary_broadened[order,det]
+                sec_flx = retr.model_object.secondary_flux[order,det]
+                ax1.plot(retr.data_wave[order,det], prim_flx, label='A',lw=0.8, c=prim_c)
+                ax1.plot(retr.data_wave[order,det], sec_flx,lw=0.8, label='B', c=sec_c)
                 if np.isfinite(phi_comp[order,det].all()) and np.isfinite(prim_flx).any() and np.isfinite(sec_flx).any():
                     min_array.append(np.nanmin([prim_flx,sec_flx]))
                     max_array.append(np.nanmax([prim_flx,sec_flx]))
-            ax2.plot(retrieval.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retr_obj.color1,label='residuals')
-            ax2.set_xlim(np.nanmin(retrieval.data_wave[order])-1,np.nanmax(retrieval.data_wave[order])+1)
+            ax2.plot(retr.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c=retr_obj.color1,label='residuals')
+            ax2.set_xlim(np.nanmin(retr.data_wave[order])-1,np.nanmax(retr.data_wave[order])+1)
 
             # add error for scale
-            if retrieval.callback_label=='final_':
-                lower=retrieval.data_flux[order,det]-retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
-                upper=retrieval.data_flux[order,det]+retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det]
-                ax1.fill_between(retrieval.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
-                errmean=np.nanmean(retrieval.data_err[order,det]*retrieval.params_dict['s2_ij'][order,det])
-                if np.nansum(retrieval.data_flux[order])!=0: # skip empty orders
-                    ax2.errorbar(np.min(retrieval.data_wave[order,det])-0.3, 0, yerr=errmean, 
+            if retr.callback_label=='final_':
+                lower=retr.data_flux[order,det]-retr.data_err[order,det]*retr.params_dict['s2_ij'][order,det]
+                upper=retr.data_flux[order,det]+retr.data_err[order,det]*retr.params_dict['s2_ij'][order,det]
+                ax1.fill_between(retr.data_wave[order,det],lower,upper,color='k',alpha=0.15,label=f'1 $\sigma$')
+                err = retr.data_err[order,det] if np.all(np.isnan(retr.data_err[order,det]))==False else 0
+                errmean=np.nanmean(err*retr.params_dict['s2_ij'][order,det])
+                if np.nansum(retr.data_flux[order])!=0: # skip empty orders
+                    ax2.errorbar(np.min(retr.data_wave[order,det])-0.3, 0, yerr=errmean, 
                                  ecolor=retr_obj.color1, elinewidth=1, capsize=2)
             
             if x==0 and det==0:
                 ncol=2
                 lines = [Line2D([0], [0], color='k',linewidth=2,label='Data'),
                         #mpatches.Patch(color='k',alpha=0.15,label='1$\sigma$'),
-                        Line2D([0], [0], color=retrieval.color1, linewidth=2,label='Bestfit')]
+                        Line2D([0], [0], color=retr.color1, linewidth=2,label='Bestfit')]
                 if plot_components==True:
                     lines.append(Line2D([0], [0], color=prim_c,linewidth=2,label='A'))
                     lines.append(Line2D([0], [0], color=sec_c,linewidth=2,label='B'))
@@ -234,21 +230,20 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
                 leg=ax1.legend(handles=lines,fontsize=12,ncol=ncol,bbox_to_anchor=(0.47,1.4),loc='upper center')
                 leg.get_frame().set_linewidth(0.0)
 
-            ax2.plot([np.min(retrieval.data_wave[order,det]),np.max(retrieval.data_wave[order,det])],[0,0],lw=0.8,c='k')
+            ax2.plot([np.min(retr.data_wave[order,det]),np.max(retr.data_wave[order,det])],[0,0],lw=0.8,c='k')
 
             if overplot_species!=None:
                 colors=['b','r','g','y']
-                #wl_shifted=retrieval.model_object.wlshift_orders
                 for i,species in enumerate(overplot_species):
                     opas=opacities[species]
                     #ymax=np.nanmax(residuals[order])
                     #ymin=np.nanmin(residuals[order])
                     #opa=opas[order]
                     #opa=scale_between(ymin,ymax,opa)
-                    ax1.plot(retrieval.data_wave[order,det],opas[order,det],lw=0.8,c=colors[i])
+                    ax1.plot(retr.data_wave[order,det],opas[order,det],lw=0.8,c=colors[i])
 
-        #min1=np.nanmin(np.array([retrieval.data_flux[order]-retrieval.data_err[order],retrieval.model_flux[order]]))
-        #max1=np.nanmax(np.array([retrieval.data_flux[order]+retrieval.data_err[order],retrieval.model_flux[order]]))
+        #min1=np.nanmin(np.array([retr.data_flux[order]-retr.data_err[order],retr.model_flux[order]]))
+        #max1=np.nanmax(np.array([retr.data_flux[order]+retr.data_err[order],retr.model_flux[order]]))
         min1=np.nanmin(np.array(min_array))
         max1=np.nanmax(np.array(max_array))
         ax1.set_ylim(min1,max1)
@@ -272,7 +267,7 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
     fig.tight_layout()
     plt.subplots_adjust(wspace=0,hspace=0)
     if plot_components==False:
-        name = 'bestfit_spectrum' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}bestfit_spectrum'
+        name = 'bestfit_split' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}bestfit_split'
     else:
         name = 'components' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}components'
     fig.savefig(f'{retr_obj.output_dir}/{name}.pdf')
@@ -315,7 +310,7 @@ def plot_pt(retr_obj,fs=12,**kwargs):
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     #file=np.loadtxt('t1400g562nc_m0.0.dat')
     if retr_obj.target.name in ['test','test_corr']:
-        from retrieval import Retrieval
+        from retr import Retrieval
         from parameters import Parameters
         from testspec import test_parameters
         test_par = Parameters({}, test_parameters)
@@ -347,8 +342,8 @@ def plot_pt(retr_obj,fs=12,**kwargs):
         t_zhang=PT_Zhang[:,1]
         ax.plot(t_zhang,p_zhang,linestyle='dashdot',c='cornflowerblue',linewidth=2)
 
-    if 'retr_obj2' in kwargs: # if compare two retrievals, specify object name in legend
-        object_label=f'{retr_obj.target.name} retrieval'
+    if 'retr_obj2' in kwargs: # if compare two retrs, specify object name in legend
+        object_label=f'{retr_obj.target.name} $P$-$T$'
         contr_label=f'{retr_obj.target.name} contribution'
     else:
         object_label='$P$-$T$ profile'
@@ -405,11 +400,10 @@ def plot_pt(retr_obj,fs=12,**kwargs):
     if retr_obj.target.name=='2M0355':
         lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
     
-    if 'retr_obj2' in kwargs: # compare two retrievals
+    if 'retr_obj2' in kwargs: # compare two retrs
         retr_obj2=kwargs.get('retr_obj2')
-        object_label2=f'{retr_obj2.target.name} retrieval'
+        object_label2=f'{retr_obj2.target.name} retr'
         xmin2,xmax2=plot_temperature(retr_obj2,ax,object_label2)
-        #lines = lines[:1]+[lines[-1]]+lines[1:-1] # move object2 to second position in legend instead of last
         xmin=np.nanmin([xmin,xmin2])
         xmax=np.nanmax([xmax,xmax2])
         summed_contr2=retr_obj2.summed_contr
@@ -418,12 +412,10 @@ def plot_pt(retr_obj,fs=12,**kwargs):
                 lw=1.5,alpha=0.8,color=retr_obj2.color2)
         lines.append(Line2D([0], [0], color=retr_obj2.color2, alpha=0.8,linewidth=1.5, 
                             linestyle='--',label=f'{retr_obj2.target.name} contribution'))
-        #if retr_obj2.target.name=='2M0355':
-            #lines.append(Line2D([0], [0], color='cornflowerblue', linewidth=2, linestyle='dashdot',label='Zhang+2022'))
     
     if 'retr_obj3' in kwargs:
         retr_obj3=kwargs.get('retr_obj3')
-        object_label3=f'{retr_obj3.target.name} retrieval'
+        object_label3=f'{retr_obj3.target.name} retr'
         xmin3,xmax3=plot_temperature(retr_obj3,ax,object_label3)
         xmin=np.nanmin([xmin,xmin2,xmin3])
         xmax=np.nanmax([xmax,xmax2,xmax3])
@@ -451,8 +443,7 @@ def plot_pt(retr_obj,fs=12,**kwargs):
         retr_objects=[retr_obj,retr_obj2,retr_obj3]
         for r,l in zip(retr_objects,legend_labels):
             lines.append(Line2D([0], [0], color=r.color1,linewidth=2,linestyle='-',label=l))
-            #lines.append(Line2D([0], [0], color=r.color2, alpha=0.8,linewidth=1.5, 
-                            #linestyle='--',label=f'{l} cont.'))
+            #lines.append(Line2D([0], [0], color=r.color2, alpha=0.8,linewidth=1.5, linestyle='--',label=f'{l} cont.'))
             
     lines.append(comparison_pt)
     
@@ -467,49 +458,50 @@ def plot_pt(retr_obj,fs=12,**kwargs):
         fig.savefig(f'{retr_obj.output_dir}/{name}.pdf')
         plt.close()
 
-def get_plotposterior_labels(retr_obj,param_names,posterior_dict):
+def get_plotposterior_labels(retr_obj,param_names,get_medians=False):
     param_labels = [] # mathtext  
-    plot_posterior=np.empty((len(param_names),len(posterior_dict[list(posterior_dict.keys())[0]][0]))).T
+    medians = []
+    plot_posterior=np.empty((len(param_names),len(retr_obj.posterior[list(retr_obj.posterior.keys())[0]][0]))).T
     for i,key in enumerate(param_names):
-        param_labels.append(retr_obj.parameters.free_params[key][1]) 
-        plot_posterior[:,i]=posterior_dict[key][0].T
-    return plot_posterior, param_labels
+        param_labels.append(retr_obj.posterior[key][1]) 
+        plot_posterior[:,i]=np.array(retr_obj.posterior[key][0]).T
+        medians.append((retr_obj.get_quantiles(retr_obj.posterior[key][0]))[0])
+    if get_medians==True:
+        return plot_posterior, param_labels, medians
+    else:
+        return plot_posterior, param_labels
 
 def cornerplot(retr_obj,getfig=False,figsize=(20,20),fs=12,plot_label='',
-            only_abundances=False,only_params=None,not_abundances=False):
+            only_abundances=False,only_params=None,not_abundances=False,ratios=False):
     
-    posterior=retr_obj.posterior
     param_names = []
-    param_labels = [] # mathtext
     if only_abundances==True: # plot only abundances
         plot_label='_abunds'
         for key in retr_obj.species_names:
             param_names.append(f"log_{key}")
-            param_labels.append(retr_obj.parameters.free_params[f"log_{key}"][1]) 
 
     elif only_params is not None: # keys of specified parameters to plot
         param_names = only_params
-        for key in only_params:
-            param_labels.append(retr_obj.parameters.free_params[key][1]) 
 
     elif not_abundances==True: # plot all except abundances
         plot_label='_rest'
         set_diff = np.setdiff1d(list(retr_obj.parameters.free_params.keys()),[f'log_{s}' for s in retr_obj.species_names])
         for key in set_diff:
             param_names.append(key)
-            param_labels.append(retr_obj.parameters.free_params[key][1]) 
+
+    elif ratios==True:
+        figsize=(9,9)
+        plot_label='_ratios'
+        if retr_obj.chemistry in ['equchem','quequchem']:
+            param_names= ['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
+        elif retr_obj.chemistry=='freechem':
+            param_names= ['C/O','C/H','log_12CO/13CO','log_12CO/C17O','log_12CO/C18O','log_H2O/H2(18)O']
     
     else: # all params: avoid, could be too big
         plot_label='_all'
         param_names= list(retr_obj.parameters.free_params.keys())
-        param_labels = list(retr_obj.parameters.param_mathtext.values())
 
-    plot_posterior=np.empty((len(param_names),len(posterior[list(posterior.keys())[0]][0]))).T
-    medians = []
-    for i,key in enumerate(param_names):
-        plot_posterior[:,i]=posterior[key][0].T
-        medians.append((retr_obj.get_quantiles(retr_obj.posterior[key][0]))[0])
-
+    plot_posterior, param_labels, medians = get_plotposterior_labels(retr_obj,param_names,get_medians=True)
     fig = plt.figure(figsize=figsize) # fix size to avoid memory issues
     fig = corner.corner(plot_posterior, 
                         labels=param_labels, 
@@ -579,7 +571,7 @@ def make_all_plots(retr_obj,only_abundances=False,only_params=None,split_corner=
     opacity_plot(retr_obj)
     if retr_obj.chemistry=='freechem':
         comp_equ=True # compare with what equchem abundances would be like
-        ratios_cornerplot(retr_obj) # already in equchem cornerplot by default
+        cornerplot(retr_obj,ratios=True) # plot ratios, already in equchem cornerplot by default
         if split_corner: # split corner plot to avoid massive files
             cornerplot(retr_obj,only_abundances=True)
             cornerplot(retr_obj,not_abundances=True)
@@ -588,7 +580,7 @@ def make_all_plots(retr_obj,only_abundances=False,only_params=None,split_corner=
     elif retr_obj.chemistry in ['equchem','quequchem']:
         comp_equ=False
         if split_corner: # split corner plot to avoid massive files
-            only_params=['rv','vsini','log_g','C/O','Fe/H','log_HF',
+            only_params=['rv','vsini','log_g','C/O','Fe/H',
                          'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
             if retr_obj.chemistry=='quequchem':
                 for val in ['log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']:
@@ -598,8 +590,8 @@ def make_all_plots(retr_obj,only_abundances=False,only_params=None,split_corner=
             cornerplot(retr_obj,only_params=only_params2,plot_label='2')
         else: # avoid this though
             cornerplot(retr_obj,only_params=only_params)
-    VMRs_selected(retr_obj)
-    VMRs_all(retr_obj,comp_equ=comp_equ)
+    VMR_plot(retr_obj,molecules='all',comp_equ=comp_equ) # show all (without errors)
+    VMR_plot(retr_obj,comp_equ=comp_equ) # show most abundant (with errors)
     if retr_obj.primary_label==False:
         plot_spectrum_split(retr_obj,plot_components=True)
     
@@ -608,12 +600,10 @@ def summary_plot(retr_obj,**kwargs):
     fs=13
     figsize=(17,17)
     if retr_obj.chemistry in ['equchem','quequchem']:
-        only_params=['rv','vsini','log_g','T0','C/O','Fe/H','log_HF',
+        only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
                  'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
     if retr_obj.chemistry=='freechem':
         only_params=['rv','vsini','log_g','T0']
-
-        # plot 6 most abundant species
         abunds=[]
         param_names=[]
         species=retr_obj.species_names
@@ -621,7 +611,7 @@ def summary_plot(retr_obj,**kwargs):
             abunds.append(retr_obj.params_dict[f'log_{spec}'])
             param_names.append(f"log_{spec}")
         abunds, param_names = zip(*sorted(zip(abunds, param_names)))
-        only_params.extend(param_names[-7:][::-1]) # get largest 6
+        only_params.extend(param_names[-7:][::-1]) # get most abundant species
     if 'show_params' in kwargs:
         only_params=kwargs.get('show_params')
         figsize=(15,15)
@@ -641,7 +631,6 @@ def summary_plot(retr_obj,**kwargs):
                 bbox_inches="tight",dpi=200)
     plt.close()
 
-
 def double_opacity_plot(retr_obj,retr_obj2,n1=6,n2=7):
     fig,axes=plt.subplots(2,1,figsize=(6,5),dpi=200)
     l1 = opacity_plot(retr_obj,n=n1,ax=axes[0])
@@ -654,17 +643,15 @@ def double_opacity_plot(retr_obj,retr_obj2,n1=6,n2=7):
     legend.get_frame().set_alpha(None)
     legend.get_frame().set_facecolor((0, 0, 0, 0))
     legend.get_frame().set_edgecolor((0, 0, 0, 0))
-    name = f'comparison/opacities_both'
     fig.tight_layout()
     plt.subplots_adjust(wspace=0,hspace=0)
-    fig.savefig(f'{retr_obj.output_dir}/{name}.pdf',
-                bbox_inches="tight",dpi=200)
+    fig.savefig(f'{retr_obj.output_dir}/comparison/opacities_both.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def opacity_plot(retr_obj,only_params=None,n=6,smallrange=False,**kwargs):
-    Kband=retr_obj.target.K2166
+def opacity_plot(retr_obj,only_params=None,n=7,smallrange=False,**kwargs): # n most abundant species
 
-    # plot n most abundant species
+    species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+    Kband=retr_obj.target.K2166
     only_params=[]
     abunds=[]
     pRT_names=[]
@@ -672,38 +659,27 @@ def opacity_plot(retr_obj,only_params=None,n=6,smallrange=False,**kwargs):
     species=retr_obj.species_names
 
     if retr_obj.chemistry=='freechem':
-        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         for spec in species:
             abunds.append(retr_obj.params_dict[f"log_{spec}"])
         
-    elif retr_obj.chemistry in ['equchem','quequchem']:
-        species_info = pd.read_csv(os.path.join('species_info.csv'))
+    elif retr_obj.chemistry in ['equchem','quequchem']: # use VMRs where emission contribution is maximal
         for spec in species:
-            model_object=pRT_spectrum(retr_obj)    
-            mass_fractions=model_object.mass_fractions
-            MMW=model_object.MMW
-            for spec in retr_obj.species:
-                mass=species_info.loc[species_info["pRT_name"]==spec]['mass'].values[0]
-                abunds.append(np.median(mass_fractions[spec]*MMW/mass)) # take median of abundance
+            abunds.append(np.median(retr_obj.VMR_dict[spec],axis=0)[find_nearest(retr_obj.pressure,10**retr_obj.params_dict['log_P_maxcont'])])
                 
     abunds, species = zip(*sorted(zip(abunds, species)))
-    only_params=species[-n:][::-1] # get largest 6
-    abunds = abunds[-n:][::-1] # get largest 6
+    only_params=species[-n:][::-1] # get largest n
+    abunds = abunds[-n:][::-1] # get largest n
     VMRs=[]
     colors=[]
-    if retr_obj.chemistry=='freechem':
-        for i,par in enumerate(only_params):
-            pRT_names.append(species_info.loc[par,'pRT_name'])
-            labels.append(species_info.loc[par,'mathtext_name'])
+    for i,par in enumerate(only_params):
+        pRT_names.append(species_info.loc[par,'pRT_name'])
+        labels.append(species_info.loc[par,'mathtext_name'])
+        colors.append(species_info.loc[only_params[i],'color'])
+        if retr_obj.chemistry=='freechem':
             VMRs.append(10**retr_obj.params_dict[f"log_{only_params[i]}"])
-            colors.append(species_info.loc[only_params[i],'color'])
-    elif retr_obj.chemistry in ['equchem','quequchem']:
-        for i,par in enumerate(only_params):
-            pRT_names.append(species_info.loc[species_info["name"]==par]['pRT_name'].values[0])
-            labels.append(species_info.loc[species_info["name"]==par]['mathtext_name'].values[0])
-            colors.append(species_info.loc[species_info["name"]==par]['color'].values[0])
+        elif retr_obj.chemistry in ['equchem','quequchem']:
             VMRs.append(abunds[i])
-    
+
     wlen_range=np.array([np.min(Kband),np.max(Kband)])*1e-3 # nm to microns
     atmosphere = Radtrans(line_species=pRT_names,
                         rayleigh_species = ['H2', 'He'],
@@ -713,11 +689,7 @@ def opacity_plot(retr_obj,only_params=None,n=6,smallrange=False,**kwargs):
                         lbl_opacity_sampling=10)
     
     # use temperature at maximum contribution
-    summed_contr = retr_obj.summed_contr
-    idx=np.where(summed_contr == np.max(summed_contr))[0][0]
-    T = np.array([retr_obj.model_object.temperature[idx]]).reshape(1)
-    print("Temperature at maximum contribution = ",T)
-    wave_cm, opas = atmosphere.get_opa(T)
+    wave_cm, opas = atmosphere.get_opa(np.array([retr_obj.params_dict['T_maxcont']]).reshape(1))
     wave_nm = wave_cm*1e7
     if smallrange==False:
         ymin,ymax=5e-8,5e2
@@ -731,9 +703,6 @@ def opacity_plot(retr_obj,only_params=None,n=6,smallrange=False,**kwargs):
     lines=[]
     line_props=[]
     for i,m in enumerate(pRT_names):
-        #abund=10**retr_obj.params_dict[only_params[i]]
-        #col=species_info.loc[f'{only_params[i][4:]}','color']
-        #print(names[i],abund)
         spec,=ax.plot(wave_nm,opas[m]*VMRs[i],lw=0.5,c=colors[i])
         lines.append(Line2D([0],[0],color=spec.get_color(),
                         linewidth=2,label=labels[i]))
@@ -745,7 +714,7 @@ def opacity_plot(retr_obj,only_params=None,n=6,smallrange=False,**kwargs):
     ax.set_yscale('log')
     ax.set_ylabel('Opacity [cm$^2$/g]')
     ax.set_xlabel("Wavelength [nm]")
-    ax.set_xlim(np.min(retr_obj.target.K2166),np.max(retr_obj.target.K2166))
+    ax.set_xlim(np.min(Kband),np.max(Kband))
     ax.set_ylim(ymin,ymax)
     if 'ax' in kwargs:
         return line_props
@@ -760,74 +729,51 @@ def opacity_plot(retr_obj,only_params=None,n=6,smallrange=False,**kwargs):
         plt.close()
     del opas # to avoid memory issues
 
-def CCF_plot(retr_obj,molecule,RVs,CCF_norm,ACF_norm,noiserange=50):
-    SNR=CCF_norm[np.where(RVs==0)[0][0]]
-    fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
-    for ax in (ax1,ax2):
-        ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-        ax.set_xlim(np.min(RVs),np.max(RVs))
-        ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
-        ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
-    ax1.plot(RVs,CCF_norm,color=retr_obj.color1,label='CCF')
-    ax1.plot(RVs,ACF_norm,color=retr_obj.color1,linestyle='dashed',alpha=0.5,label='ACF')
-    ax1.set_ylabel('S/N')
-    ax1.legend(loc='upper right')
-    if retr_obj.chemistry=='freechem':
-        molecule_name=retr_obj.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
-    elif retr_obj.chemistry in ['equchem','quequchem']:
-        if molecule=='13CO':
-            molecule_name=r'$^{13}$CO'
-        elif molecule=='H2(18)O':
-            molecule_name=r'log H$_2^{18}$O'
-    molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
-    #molecule_label=f'{molecule_name}'
-    ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
-    ax2.plot(RVs,CCF_norm-ACF_norm,color=retr_obj.color1)
-    ax2.set_ylabel('CCF-ACF')
-    ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
-    fig.tight_layout()
-    plt.subplots_adjust(wspace=0, hspace=0)
-    fig.savefig(f'{retr_obj.output_dir}/CCF_{molecule}.pdf')
-    plt.close()
-
-def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,**kwargs): # compare cornerplot+PT of two retrievals
+def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,ratios_logg=False,figsize=12,**kwargs):
 
     legend_labels=kwargs.get('legend_labels',None)
-    num=2 # number of retrievals
+    num=2 # number of retrs
+    suffix=''
     # can only compare freechem+freechem or freechem+equchem/quequchem(+equchem/quequchem)
     if retr_obj1.chemistry=='freechem' and retr_obj2.chemistry=='freechem':
 
         if 'show_params' in kwargs:
             only_params=kwargs.get('show_params')
+        elif ratios_logg==True:
+            suffix = 'ratios_'
+            with_pt=False
+            figsize=9
+            only_params= ['log_g','C/O','C/H','log_12CO/13CO','log_H2O/H2(18)O']
         else:
+            suffix = 'abunds_'
             only_params=['log_H2O','log_12CO','log_13CO','log_CH4','log_H2S','log_HF','log_H2(18)O','log_NH3']
 
-        posterior1, labels = get_plotposterior_labels(retr_obj1,only_params,retr_obj1.posterior)
-        posterior2, _ = get_plotposterior_labels(retr_obj2,only_params,retr_obj2.posterior)
+        posterior1, labels = get_plotposterior_labels(retr_obj1,only_params)
+        posterior2, _ = get_plotposterior_labels(retr_obj2,only_params)
 
     elif retr_obj1.chemistry=='freechem' and retr_obj2.chemistry in ['equchem','quequchem']:
 
         only_params=['C/O','C/H','log_12CO/13CO','log_12CO/C17O','log_12CO/C18O','log_H2O/H2(18)O']
-        posterior1, labels = get_plotposterior_labels(retr_obj1,only_params,retr_obj1.posterior)
+        posterior1, labels = get_plotposterior_labels(retr_obj1,only_params)
 
-        # add log_O16_18_ratio (last one) to equchem again, bc freechem has C18O and H218O ratios
+        # add log_O16_18_ratio to equchem again, bc freechem has C18O and H218O ratios
         only_params=['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
-        posterior2, labels = get_plotposterior_labels(retr_obj2,only_params,retr_obj2.posterior)
+        posterior2, labels = get_plotposterior_labels(retr_obj2,only_params)
 
         if 'retr_obj3' in kwargs: # quequchem
             num=3
             retr_obj3=kwargs.get('retr_obj3')
-            posterior3, labels = get_plotposterior_labels(retr_obj3,only_params,retr_obj3.posterior)
+            posterior3, labels = get_plotposterior_labels(retr_obj3,only_params)
 
-    figsize=13
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     
     def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
         ranges = [(np.min([np.min(posterior1[:, i]),np.min(posterior2[:, i])]), 
                    np.max([np.max(posterior1[:, i]),np.max(posterior2[:, i])])) for i in range(posterior1.shape[1])]
-        #ranges[3] = (-11,-4.7) # increase range for CH4 to make better visible
-        #ranges[4] = (-11,-3.5) # increase range for H2S to make better visible
-        #ranges[6] = (-12,-4.7) # increase range for H218O to make better visible
+        if retr_obj.target.name=='2M1425' and suffix =='abunds_':
+            ranges[3] = (-11,-4.7) # increase range for CH4 to make better visible
+            ranges[4] = (-11,-3.5) # increase range for H2S to make better visible
+            ranges[6] = (-12,-4.7) # increase range for H218O to make better visible
         fig = corner.corner(posterior, 
                         labels=labels, 
                         title_kwargs={'fontsize': fs},
@@ -887,7 +833,7 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,**kwargs): # compa
             elif len(enum)==3:
                 y_title=1.47
                 y=y_title-0.12-(0.13*(run+0.2))
-            if run == 0: # first retrieval, add parameter name
+            if run == 0: # first retr, add parameter name
                 fig.axes[j].text(0.5, y_title, s[0], fontsize=fs,
                                 ha='center', va='bottom',
                                 transform=fig.axes[j].transAxes,
@@ -914,442 +860,16 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,**kwargs): # compa
     comparison_dir=pathlib.Path(f'{retr_obj1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
 
-    fig.savefig(f'{comparison_dir}/cornerplot_{num}.pdf',bbox_inches="tight",dpi=200)
+    fig.savefig(f'{comparison_dir}/cornerplot_{suffix}{num}.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def compare_two_CCFs(retr_obj1,retr_obj2,molecules,noiserange=100):
+def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,**kwargs):
 
-    RVs=np.arange(-500,500,1) # km/s
-    comparison_dir=pathlib.Path(f'{retr_obj1.output_dir}/comparison') # store output in separate folder
-    comparison_dir.mkdir(parents=True, exist_ok=True)
-
-    for i,molecule in enumerate(molecules):
-
-        CCF_norm1=retr_obj1.CCF_list[i]
-        ACF_norm1=retr_obj1.ACF_list[i]
-        SNR1=CCF_norm1[np.where(RVs==0)[0][0]]
-        CCF_norm2=retr_obj2.CCF_list[i]
-        ACF_norm2=retr_obj2.ACF_list[i]
-        SNR2=CCF_norm2[np.where(RVs==0)[0][0]]
-
-        fig,(ax1,ax2)=plt.subplots(2,1,figsize=(5,3.5),dpi=200,gridspec_kw={'height_ratios':[3,1]})
-        for ax in (ax1,ax2):
-            ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-            ax.set_xlim(np.min(RVs),np.max(RVs))
-            ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
-            ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
-        ax1.plot(RVs,CCF_norm1,color=retr_obj1.color1,label=f'{retr_obj1.target.name}')
-        ax1.plot(RVs,ACF_norm1,color=retr_obj1.color1,linestyle='dashed',alpha=0.5)
-
-        ax1.plot(RVs,CCF_norm2,color=retr_obj2.color1,label=f'{retr_obj2.target.name}')
-        ax1.plot(RVs,ACF_norm2,color=retr_obj2.color1,linestyle='dashed',alpha=0.5)
-
-        lines = [Line2D([0], [0], color=retr_obj1.color1,linewidth=2,label=f'{retr_obj1.target.name}'),
-                 Line2D([0], [0], color=retr_obj2.color1,linewidth=2,label=f'{retr_obj2.target.name}'),
-                 Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
-                 Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
-        ax1.legend(handles=lines,fontsize=9,loc='upper right')
-        ax1.set_ylabel('S/N')
-
-        molecule_label=str(retr_obj1.parameters.param_mathtext[f'log_{molecule}'][4:]) # remove log_
-        ax1.text(0.05, 0.9, molecule_label,transform=ax1.transAxes,fontsize=14,verticalalignment='top')
-
-        ax2.plot(RVs,CCF_norm1-ACF_norm1,color=retr_obj1.color1)
-        ax2.plot(RVs,CCF_norm2-ACF_norm2,color=retr_obj2.color1)
-        ax2.set_ylabel('CCF-ACF')
-        ax2.set_xlabel(r'$v_{\rm rad}$ (km/s)')
-        fig.tight_layout()
-        plt.subplots_adjust(wspace=0, hspace=0)
-
-        filename=f'CCF_{molecule}_2.pdf'
-        fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
-        plt.close()
-
-def ratios_cornerplot(retr_obj,fs=10,**kwargs):
-
-    if retr_obj.chemistry in ['equchem','quequchem']:
-        labels=['C/O','[Fe/H]',r'log $^{12}$C/$^{13}$C',r'log $^{16}$O/$^{17}$O',r'log $^{16}$O/$^{18}$O']
-    elif retr_obj.chemistry=='freechem':
-        labels=['C/O','[C/H]',r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',
-                r'log $^{12}$CO/C$^{18}$O',r'log H$_2^{16}$O/H$_2^{18}$O']
-    
-    fig = plt.figure(figsize=(8,8)) # fix size to avoid memory issues
-    fig = corner.corner(retr_obj.ratios_posterior,
-                        labels=labels, 
-                        title_kwargs={'fontsize':fs},
-                        label_kwargs={'fontsize':fs*0.8},
-                        color=retr_obj.color1,
-                        linewidths=0.5,
-                        fill_contours=True,
-                        quantiles=[0.16,0.5,0.84],
-                        title_quantiles=[0.16,0.5,0.84],
-                        show_titles=True,
-                        hist_kwargs={'density': False,
-                                'fill': True,
-                                'alpha': 0.5,
-                                'edgecolor': 'k',
-                                'linewidth': 1.0},
-                        fig=fig,
-                        quiet=True)
-    titles = [axi.title.get_text() for axi in fig.axes]
-    
-    if 'retr_obj2' in kwargs: # compare two retrievals
-        retr_obj2=kwargs.get('retr_obj2')
-        corner.corner(retr_obj2.ratios_posterior, 
-                        labels=labels, 
-                        title_kwargs={'fontsize':fs},
-                        label_kwargs={'fontsize':fs*0.8},
-                        color=retr_obj2.color1,
-                        linewidths=0.5,
-                        fill_contours=True,
-                        quantiles=[0.16,0.5,0.84],
-                        title_quantiles=[0.16,0.5,0.84],
-                        show_titles=True,
-                        hist_kwargs={'density': False,
-                                'fill': True,
-                                'alpha': 0.5,
-                                'edgecolor': 'k',
-                                'linewidth': 1.0},
-                        fig=fig,
-                        quiet=True)
-        titles2 = [axi.title.get_text() for axi in fig.axes]
-
-        for run,titles_list,color in zip([0,1],[titles,titles2],[retr_obj.color1,retr_obj2.color1]):
-            # add new titles
-            for j, title in enumerate(titles_list):
-                if title == '':
-                    continue
-                
-                # first only the name of the parameter
-                s = title.split('=')
-                if run == 0: # first retrieval, add parameter name
-                    fig.axes[j].text(0.5, 1.45, s[0], fontsize=fs,
-                                    ha='center', va='bottom',
-                                    transform=fig.axes[j].transAxes,
-                                    color='k',
-                                    weight='normal')
-                # add parameter value with custom color and spacing
-                fig.axes[j].text(0.5, 1.45-(0.2*(run+1)), s[1], fontsize=fs,
-                                ha='center', va='bottom',
-                                transform=fig.axes[j].transAxes,
-                                color=color,
-                                weight='normal')
-                
-        for i, axi in enumerate(fig.axes):
-            fig.axes[i].title.set_visible(False) # remove original titles   
-        comparison_dir=pathlib.Path(f'{retr_obj.output_dir}/comparison') # store output in separate folder
-        comparison_dir.mkdir(parents=True, exist_ok=True)
-        filename=f'{comparison_dir}/ratios_2.pdf'
-
-    else:
-        for i, title in enumerate(titles):
-            if len(title) > 1: # change 30 to 1 if you want all titles to be split
-                title_split = title.split('=')
-                titles[i] = title_split[0] + '\n ' + title_split[1]
-            fig.axes[i].title.set_text(titles[i])
-        name1=f'{retr_obj.output_dir}/ratios.pdf'
-        name2=f'{retr_obj.output_dir}/{retr_obj.callback_label}ratios.pdf'
-        filename = name1 if retr_obj.callback_label=='final_' else name2
-
-    for i, axi in enumerate(fig.axes):
-        fig.axes[i].xaxis.label.set_fontsize(fs)
-        fig.axes[i].yaxis.label.set_fontsize(fs)
-        fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
-        fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
-
-    plt.subplots_adjust(wspace=0,hspace=0)
-    fig.savefig(filename,bbox_inches="tight",dpi=200)
-    plt.close()
-
-def VMRs_all(retr_obj,fs=10,comp_equ=False,**kwargs):
-
-    #prefix=retr_obj.callback_label if retr_obj.callback_label=='final_' else ''
-    prefix=''
-    suffix=''
-    output_dir=retr_obj.output_dir
-    fig,ax=plt.subplots(1,1,figsize=(6,4),dpi=200)
-    species_info = pd.read_csv(os.path.join('species_info.csv'))
-    molecules=retr_obj.species_names
-    alpha=0.6 if 'retr_obj2' in kwargs or comp_equ==True else 1
-    legend_labels=0
-    xmin,xmax=1e-11,1.3
-    chemleg=[] # legend for chemistry
-
-    def plot_VMRs(retr_obj,ax,ax2):
-        if retr_obj.chemistry=='freechem':
-            linestyle='dashed'
-            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.5,label='Free'))
-        elif retr_obj.chemistry=='equchem':
-            linestyle='solid'
-            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.2,label='Equ'))
-        elif retr_obj.chemistry=='quequchem':
-            linestyle='dotted'
-            chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.2,label='Quench'))
-        mass_fractions=retr_obj.model_object.mass_fractions
-        MMW=retr_obj.model_object.MMW
-        params=retr_obj.parameters.params
-        for species in molecules:
-            name=species_info.loc[species_info["name"]==species]['pRT_name'].values[0]
-            mass=species_info.loc[species_info["name"]==species]['mass'].values[0]
-            label=species_info.loc[species_info["name"]==species]['mathtext_name'].values[0]
-            color=species_info.loc[species_info["name"]==species]['color'].values[0]
-            if retr_obj.chemistry=='freechem':
-                VMR=mass_fractions[name]*MMW/mass
-                label=label if legend_labels==0 else '_nolegend_' 
-                ax.plot(VMR,pressure,label=label,linestyle=linestyle,c=color)
-            elif retr_obj.chemistry in ['equchem','quequchem']:
-                if species not in ['H2(18)O','13CO','C18O','C17O']:
-                    VMR=mass_fractions[name]*MMW/mass
-                    label=label if legend_labels==0 else '_nolegend_'
-                    ax.plot(VMR,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
-                else:  
-                    H2Oname=species_info.loc[species_info["name"]=='H2O']['pRT_name'].values[0]
-                    VMR_H2O=mass_fractions[H2Oname]*MMW/species_info.loc[species_info["name"]=='H2O']['mass'].values[0]
-                    COname=species_info.loc[species_info["name"]=='12CO']['pRT_name'].values[0]
-                    VMR_12CO=mass_fractions[COname]*MMW/species_info.loc[species_info["name"]=='12CO']['mass'].values[0]
-                    if species=='H2(18)O':                        
-                        VMR_H218O=10**(-params.get('log_O16_18_ratio',-12))*VMR_H2O
-                        label=r'H$_2^{18}$O' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_H218O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
-                    elif species=='13CO':
-                        VMR_13CO=10**(-params.get('log_C12_13_ratio',-12))*VMR_12CO
-                        label=r'$^{13}$CO' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_13CO,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
-                    elif species=='C18O':
-                        VMR_C18O=10**(-params.get('log_O16_18_ratio',-12))*VMR_12CO
-                        label=r'C$^{18}$O' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_C18O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
-                    elif species=='C17O':
-                        VMR_C17O=10**(-params.get('log_O16_17_ratio',-12))*VMR_12CO
-                        label=r'C$^{17}$O' if legend_labels==0 else '_nolegend_'
-                        ax.plot(VMR_C17O,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
-
-        summed_contr=retr_obj.summed_contr
-        contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-        ax2.plot(contribution_plot,np.log10(retr_obj.model_object.pressure)[::-1],
-                    lw=1,alpha=alpha*0.5,color=retr_obj.color1,linestyle=linestyle)
-        ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
-
-    pressure=retr_obj.model_object.pressure
-    ax2 = ax.inset_axes([0,0,1,1]) # [x0, y0, width, height] , for emission contribution
-
-    plot_VMRs(retr_obj,ax=ax,ax2=ax2)
-    legend_labels=1 # only make legend labels once 
-
-    # compare freechem VMRs to equilibrium chemistry with other retrieved params remainig equal
-    if comp_equ==True:
-        from retrieval import Retrieval
-        from parameters import Parameters
-        parameters_equ = retr_obj.params_dict
-        parameters_equ.update({'C/O': retr_obj.params_dict['C/O'],
-                        'Fe/H': retr_obj.params_dict['C/H'],
-                        'log_C12_13_ratio': retr_obj.params_dict['log_12CO/13CO'],
-                        'log_O16_18_ratio': retr_obj.params_dict['log_H2O/H2(18)O'],
-                        'log_O16_17_ratio': retr_obj.params_dict['log_12CO/C17O']})
-        parameters_equ = Parameters({}, parameters_equ)
-        parameters_equ.param_priors['log_l']=[-3,0]
-        retrieval_equ = Retrieval(target=retr_obj.target,parameters=parameters_equ, 
-                                  species_names=retr_obj.species_names,
-                                  Nlive=retr_obj.Nlive,evtol=retr_obj.evtol,
-                                chemistry='equchem',PT_type=retr_obj.PT_type)
-        retrieval_equ.primary_label=True # to avoid problems
-        retrieval_equ.model_object=pRT_spectrum(retrieval_equ,contribution=True)
-        retrieval_equ.model_object.make_spectrum() # to get emission contribution
-        retrieval_equ.summed_contr=np.nanmean(retrieval_equ.model_object.contr_em_orders,axis=0) # average over all orders
-        plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
-
-    if 'retr_obj2' in kwargs: # compare two retrievals
-        prefix=''
-        suffix='_2'
-        retr_obj2=kwargs.get('retr_obj2')
-        plt.gca().set_prop_cycle(None) # reset color cycle
-        plot_VMRs(retr_obj2,ax=ax,ax2=ax2)
-        comparison_dir=pathlib.Path(f'{retr_obj.output_dir}/comparison') # store output in separate folder
-        comparison_dir.mkdir(parents=True, exist_ok=True)
-        output_dir=comparison_dir
-
-    if 'retr_obj3' in kwargs: # compare three retrievals
-        suffix='_3'
-        retr_obj3=kwargs.get('retr_obj3')
-        plt.gca().set_prop_cycle(None) # reset color cycle
-        plot_VMRs(retr_obj3,ax=ax,ax2=ax2)
-
-    leg=ax.legend(fontsize=fs*0.8,loc='lower left')
-    for lh in leg.legend_handles:
-        lh.set_alpha(1)
-    for line in leg.get_lines():
-        line.set_linestyle('-')
-    ax.add_artist(leg)
-    if comp_equ==True:
-        leg2=ax.legend(handles=chemleg,fontsize=fs*0.8,loc='upper left')
-        ax.add_artist(leg2)
-    
-    ax2.axis('off')
-    ax2.set_facecolor('none')
-    ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
-        ylim=(np.max(pressure),np.min(pressure)),xlim=(xmin,xmax))   
-    ax.tick_params(labelsize=fs)
-    ax.set_xlabel('VMR', fontsize=fs)
-    ax.set_ylabel('Pressure [bar]', fontsize=fs)
-    fig.tight_layout()
-    callback_suffix = retr_obj.callback_label if retr_obj.callback_label=='live_' else ''
-    fig.savefig(f'{output_dir}/{prefix}VMRs_all{callback_suffix}{suffix}.pdf')
-    plt.close()
-
-def CCFs_molecules(retr_obj1,retr_obj2,molecules,noiserange=100):
-
-    RVs=np.arange(-500,500,1) # km/s
-    comparison_dir=pathlib.Path(f'{retr_obj1.output_dir}/comparison') # store output in separate folder
-    comparison_dir.mkdir(parents=True, exist_ok=True)
-
-    fig,ax=plt.subplots(len(molecules),1,figsize=(5,len(molecules)*1.5),dpi=200)
-    for i in range(len(molecules)):
-        ax[i].axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-        ax[i].set_xlim(np.min(RVs),np.max(RVs))
-        ax[i].axvline(x=0,color='k',lw=0.6,alpha=0.3)
-        ax[i].axhline(y=0,color='k',lw=0.6,alpha=0.3)
-
-    for i,molecule in enumerate(molecules):
-
-        CCF_norm1=retr_obj1.CCF_list[i]
-        ACF_norm1=retr_obj1.ACF_list[i]
-        SNR1=CCF_norm1[np.where(RVs==0)[0][0]]
-        CCF_norm2=retr_obj2.CCF_list[i]
-        ACF_norm2=retr_obj2.ACF_list[i]
-        SNR2=CCF_norm2[np.where(RVs==0)[0][0]]
-
-        ax[i].plot(RVs,CCF_norm1,color=retr_obj1.color1,label=f'{retr_obj1.target.name}')
-        ax[i].plot(RVs,ACF_norm1,color=retr_obj1.color1,linestyle='dashed',alpha=0.5)
-        ax[i].plot(RVs,CCF_norm2,color=retr_obj2.color1,label=f'{retr_obj2.target.name}')
-        ax[i].plot(RVs,ACF_norm2,color=retr_obj2.color1,linestyle='dashed',alpha=0.5)
-        ax[i].set_ylabel('S/N')
-        molecule_label=str(retr_obj1.parameters.param_mathtext[f'log_{molecule}'][4:]) # remove log_
-        ax[i].text(0.05, 0.9, molecule_label,transform=ax[i].transAxes,fontsize=14,verticalalignment='top')
-
-    lines = [Line2D([0], [0], color=retr_obj1.color1,linewidth=2,label=f'{retr_obj1.target.name}'),
-                 Line2D([0], [0], color=retr_obj2.color1,linewidth=2,label=f'{retr_obj2.target.name}'),
-                 Line2D([0], [0], color='k',linewidth=2,alpha=0.5,label='CCF'),
-                 Line2D([0], [0], color='k',linestyle='--',linewidth=2,alpha=0.2,label='ACF')]
-    ax[0].legend(handles=lines,fontsize=9,loc='upper right')
-    ax[len(molecules)-1].set_xlabel(r'$v_{\rm rad}$ (km/s)')
-    fig.tight_layout()
-    plt.subplots_adjust(wspace=0, hspace=0)
-    filename=f'CCFs_{len(molecules)}.pdf'
-    fig.savefig(f'{comparison_dir}/{filename}',bbox_inches="tight",dpi=200)
-    plt.close()
-
-def compare_metall_logg(retr_obj1,retr_obj2,fs=12,only_params=['log_g'],**kwargs):
-    
-    labels=list(retr_obj1.parameters.param_mathtext.values())
-    indices=[]
-    for key in only_params:
-        idx=list(retr_obj1.parameters.params).index(key)
-        indices.append(idx)
-    posterior1=np.array([retr_obj1.posterior[:,i] for i in indices]).T
-    posterior2=np.array([retr_obj2.posterior[:,i] for i in indices]).T
-    labels=np.array([labels[i] for i in indices])
-
-    # add C/O and C/H
-    total_posterior1=np.hstack([posterior1,retr_obj1.ratios_posterior[:,0:1],
-                                retr_obj1.ratios_posterior[:,1:2],
-                                retr_obj1.ratios_posterior[:,2:3],
-                                retr_obj1.ratios_posterior[:,5:6]]) 
-    total_posterior2=np.hstack([posterior2,retr_obj2.ratios_posterior[:,0:1],
-                                retr_obj2.ratios_posterior[:,1:2],
-                                retr_obj2.ratios_posterior[:,2:3],
-                                retr_obj2.ratios_posterior[:,5:6]])
-    labels=np.hstack([labels,'C/O','[C/H]',r'log $^{12}$CO/$^{13}$CO',r'log H$_2^{16}$O/H$_2^{18}$O'])
-    
-    fig = plt.figure(figsize=(8,8)) # fix size to avoid memory issues
-
-    figsize=8
-    fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
-
-    def plot_corner(posterior,retr_obj,labels,fig,getfig=False):
-        ranges = [(np.min([np.min(total_posterior1[:, i]),np.min(total_posterior2[:, i])]), 
-                   np.max([np.max(total_posterior1[:, i]),np.max(total_posterior2[:, i])])) for i in range(total_posterior2.shape[1])]
-        ranges[0] = (4.6,5.02) # increase range for logg to make better visible
-        ranges[4] = (2,8)
-        fig = corner.corner(posterior, 
-                        labels=labels, 
-                        title_kwargs={'fontsize': fs},
-                        label_kwargs={'fontsize': fs*0.8},
-                        color=retr_obj.color1,
-                        linewidths=0.5,
-                        fill_contours=True,
-                        quantiles=[0.16,0.5,0.84],
-                        title_quantiles=[0.16,0.5,0.84],
-                        show_titles=True,
-                        plot_contours=True,
-                        hist_kwargs={'density': False,
-                                    'fill': True,
-                                    'alpha': 0.5,
-                                    'edgecolor': 'k',
-                                    'linewidth': 1.0},
-                        fig=fig,
-                        quiet=True,
-                        range=ranges)
-        
-        titles = [axi.title.get_text() for axi in fig.axes]
-        if getfig:
-            return fig,titles
-        else:
-            return titles
-        
-    fig,titles1=plot_corner(total_posterior1,retr_obj1,labels,fig,getfig=True)
-    titles2=plot_corner(total_posterior2,retr_obj2,labels,fig)
-    enum=[0,1]
-    titles_list=[titles1,titles2]
-    colors_list=[retr_obj1.color1,retr_obj2.color1]
-
-    for i, axi in enumerate(fig.axes):
-        fig.axes[i].title.set_visible(False) # remove original titles
-        fig.axes[i].xaxis.label.set_fontsize(fs)
-        fig.axes[i].yaxis.label.set_fontsize(fs)
-        fig.axes[i].tick_params(axis='both', which='major', labelsize=fs*0.8)
-        fig.axes[i].tick_params(axis='both', which='minor', labelsize=fs*0.8)
-        
-    for run,titles_list,color in zip(enum,titles_list,colors_list):
-        # add new titles
-        for j, title in enumerate(titles_list):
-            if title == '':
-                continue
-            
-            # first only the name of the parameter
-            s = title.split('=')
-            if len(enum)==2:
-                y_title=1.45
-                y=y_title-(0.2*(run+1))
-            elif len(enum)==3:
-                y_title=1.47
-                y=y_title-0.12-(0.13*(run+0.2))
-            if run == 0: # first retrieval, add parameter name
-                fig.axes[j].text(0.5, y_title, s[0], fontsize=fs,
-                                ha='center', va='bottom',
-                                transform=fig.axes[j].transAxes,
-                                color='k',
-                                weight='normal')
-            # add parameter value with custom color and spacing
-            fig.axes[j].text(0.5, y, s[1], fontsize=fs,
-                            ha='center', va='bottom',
-                            transform=fig.axes[j].transAxes,
-                            color=color,
-                            weight='normal')
-
-    plt.subplots_adjust(wspace=0, hspace=0)
-    comparison_dir=pathlib.Path(f'{retr_obj1.output_dir}/comparison') # store output in separate folder
-    comparison_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(f'{comparison_dir}/cornerplot_ratios_logg.pdf',bbox_inches="tight",dpi=200)
-    plt.close()
-
-def VMRs_selected(retr_obj,fs=10,n=6,molecules=None,comp_equ=False,**kwargs):
-
-    #prefix=retr_obj.callback_label if retr_obj.callback_label=='final_' else ''
-    prefix=''
+    prefix = retr_obj.callback_label if retr_obj.callback_label=='live_' else ''
     suffix=''
     output_dir=retr_obj.output_dir
     fig,ax=plt.subplots(1,1,figsize=(5,3.5),dpi=200)
-    species_info = pd.read_csv(os.path.join('species_info.csv'))
+    species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
     alpha=0.6 if 'retr_obj2' in kwargs or comp_equ==True else 1
     legend_labels=0
     xmin,xmax=1e-10,1e-2
@@ -1358,28 +878,33 @@ def VMRs_selected(retr_obj,fs=10,n=6,molecules=None,comp_equ=False,**kwargs):
 
     # plot n most abundant species
     if molecules==None:
+        suffix='_few'
         abunds=[]
         species=retr_obj.species_names
+        
         if retr_obj.chemistry=='freechem':
-            for i,spec in enumerate(species):
-                abunds.append(retr_obj.params_dict[f"log_{spec}"])
-        elif retr_obj.chemistry in ['equchem','quequchem']:
             for spec in species:
-                model_object=pRT_spectrum(retr_obj)    
-                mass_fractions=model_object.mass_fractions
-                MMW=model_object.MMW
-                for spec in retr_obj.species:
-                    mass=species_info.loc[species_info["pRT_name"]==spec]['mass'].values[0]
-                    abunds.append(np.median(mass_fractions[spec]*MMW/mass)) # take median of abundance            
+                abunds.append(retr_obj.params_dict[f"log_{spec}"])
+        
+        elif retr_obj.chemistry in ['equchem','quequchem']: # use VMRs where emission contribution is maximal
+            for spec in species:
+                abunds.append(np.median(retr_obj.VMR_dict[spec],axis=0)[find_nearest(retr_obj.pressure,10**retr_obj.params_dict['log_P_maxcont'])])
+
         abunds, species = zip(*sorted(zip(abunds, species)))
         molecules=species[-n:][::-1] # get n largest
+    elif molecules=='all':
+        suffix='_all'
+        molecules = retr_obj.species_names
 
     def plot_VMRs(retr_obj,ax,ax2):
+        offset= [-10**(-0.5),0,10**(-0.5)] # slight vertical offset for overlapping species
+        off_i=0
         
         if retr_obj.chemistry=='freechem' and 'retr_obj2' not in kwargs:
             linestyle='dashed'
             chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.7,label='Free'))
-        elif retr_obj.chemistry=='freechem' and 'retr_obj2' in kwargs:    
+        elif retr_obj.chemistry=='freechem' and 'retr_obj2' in kwargs:  
+            linestyle='dashed'
             chemleg.append(Line2D([0], [0], marker='o',color='k',markerfacecolor='k',linewidth=2,alpha=0.7,label='Free'))
         elif retr_obj.chemistry=='equchem':
             linestyle='solid'
@@ -1388,48 +913,52 @@ def VMRs_selected(retr_obj,fs=10,n=6,molecules=None,comp_equ=False,**kwargs):
             linestyle='dotted'
             chemleg.append(Line2D([0], [0], color='k',linestyle=linestyle,linewidth=2,alpha=0.3,label='Quench'))
 
-        if retr_obj.chemistry=='freechem':
-            contribution_plot=retr_obj.summed_contr/np.max(retr_obj.summed_contr)*(xmax-xmin)+xmin
-            ax2.plot(contribution_plot,retr_obj.model_object.pressure[::-1],
-                    lw=1,alpha=0.3,color=retr_obj.color1,linestyle='dashdot')
-            ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
-            ax2.set_ylim(np.min(pressure),np.max(pressure))
-            contr_max=pressure[np.where(retr_obj.summed_contr==np.max(retr_obj.summed_contr))[0]]
-            ax2.set_yscale('log')
+        contribution_plot=retr_obj.summed_contr/np.max(retr_obj.summed_contr)*(xmax-xmin)+xmin
+        ax2.plot(contribution_plot,retr_obj.model_object.pressure[::-1],
+                lw=1,alpha=0.3,color=retr_obj.color1,linestyle=linestyle)
+        ax2.set_xlim(np.min(contribution_plot),np.max(contribution_plot))
+        ax2.set_ylim(np.min(pressure),np.max(pressure))
+        contr_max=pressure[np.where(retr_obj.summed_contr==np.max(retr_obj.summed_contr))[0]]
+        ax2.set_yscale('log')
 
         for species in molecules:
-            color=species_info.loc[species_info["name"]==species]['color'].values[0]
-            label=species_info.loc[species_info["name"]==species]['mathtext_name'].values[0]
+            color=species_info.loc[species,'color']
+            label=species_info.loc[species,'mathtext_name']
             if retr_obj.chemistry=='freechem':
                 label=label if legend_labels==0 else '_nolegend_' 
                 VMR=10**retr_obj.params_dict[f'log_{species}']
                 sm3,sm2,sm1,median,sp1,sp2,sp3 = 10**np.array(np.percentile(retr_obj.posterior[f'log_{species}'][0],[0.2,2.3,15.9,50.0,84.1,97.7,99.8], axis=-1))
                 if 'retr_obj2' not in kwargs:
                     ax.plot(np.ones_like(pressure)*VMR,pressure,label=label,linestyle=linestyle,c=color)
-                    ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.1) # 95% confidence interval
+                    if suffix!='_all': # only show errors when not showing all species, or will be cluttered
+                        ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.1) # 95% confidence interval
                 else: # plot only as point to avoid cluttering
-                    ax.scatter(VMR,contr_max, color=color,s=13)
-                    ax.plot([sm2,sp2],[contr_max,contr_max], color=color,lw=1.5)
+                    if (retr_obj.target.name=='2M0355' and species in ['HF','NH3','CH4']) or (retr_obj.target.name=='2M1425' and species in ['HF','NH3','H2S']):
+                        ax.scatter(VMR,contr_max+offset[off_i], color=color,s=13)
+                        ax.plot([sm2,sp2],[contr_max+offset[off_i],contr_max+offset[off_i]], color=color,lw=1.5)
+                        off_i+=1
+                    else:
+                        ax.scatter(VMR,contr_max, color=color,s=13)
+                        ax.plot([sm2,sp2],[contr_max,contr_max], color=color,lw=1.5)
             elif retr_obj.chemistry in ['equchem','quequchem']:
                 label=label if legend_labels==0 else '_nolegend_'
-                if comp_equ==False:
+                if comp_equ==False: # compare with actual retrievals
                     sm3,sm2,sm1,median,sp1,sp2,sp3=np.percentile(retr_obj.VMR_dict[species], [0.2,2.3,15.9,50.0,84.1,97.7,99.8], axis=0)
                     ax.plot(median,pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
                     if retr_obj.chemistry=='equchem':
                         ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.1) # 95% confidence interval
                     elif retr_obj.chemistry=='quequchem':
                         ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.05,hatch='x') # 95% confidence interval
-                else:
-                    ax.plot(retr_obj.model_object.VMRs[species],pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
-
+                else: # compare with computed equchem based on same params
+                    ax.plot(retr_obj.model_object.VMR_dict[species],pressure,label=label,alpha=alpha,linestyle=linestyle,c=color)
     
     ax2 = ax.inset_axes([0,0,1,1]) # [x0, y0, width, height] , for emission contribution
-
     plot_VMRs(retr_obj,ax=ax,ax2=ax2)
     legend_labels=1 if 'retr_obj2' not in kwargs else 0 # only make legend labels once 
 
     # compare freechem VMRs to equilibrium chemistry with other retrieved params remaining equal
     if comp_equ==True:
+        #suffix+='_compequ'
         from retrieval import Retrieval
         from parameters import Parameters
 
@@ -1441,15 +970,16 @@ def VMRs_selected(retr_obj,fs=10,n=6,molecules=None,comp_equ=False,**kwargs):
                         'log_O16_17_ratio': retr_obj.params_dict['log_12CO/C17O']})
         parameters_equ = Parameters({}, parameters_equ)
         parameters_equ.param_priors['log_l']=[-3,0]
-        retrieval_equ = Retrieval(target=retr_obj.target,parameters=parameters_equ, 
+        retr_equ = Retrieval(target=retr_obj.target,parameters=parameters_equ, 
                                   species_names=retr_obj.species_names,
                                   Nlive=retr_obj.Nlive,evtol=retr_obj.evtol,
                                 chemistry='equchem',PT_type=retr_obj.PT_type)
-        retrieval_equ.model_object=pRT_spectrum(retrieval_equ)
-        plot_VMRs(retrieval_equ,ax=ax,ax2=ax2)
+        retr_equ.model_object=pRT_spectrum(retr_equ,contribution=True)
+        retr_equ.model_flux0=retr_equ.model_object.make_spectrum() # to get contr_em
+        retr_equ.summed_contr=np.nanmean(retr_equ.model_object.contr_em_orders,axis=0) # average over all orders
+        plot_VMRs(retr_equ,ax=ax,ax2=ax2)
 
-    if 'retr_obj2' in kwargs: # compare two retrievals
-        prefix=''
+    if 'retr_obj2' in kwargs: # compare two retrs
         suffix='_2'
         retr_obj2=kwargs.get('retr_obj2')
         plt.gca().set_prop_cycle(None) # reset color cycle
@@ -1459,13 +989,14 @@ def VMRs_selected(retr_obj,fs=10,n=6,molecules=None,comp_equ=False,**kwargs):
         comparison_dir.mkdir(parents=True, exist_ok=True)
         output_dir=comparison_dir
 
-    if 'retr_obj3' in kwargs: # compare three retrievals
+    if 'retr_obj3' in kwargs: # compare three retrs
         suffix='_3'
         retr_obj3=kwargs.get('retr_obj3')
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retr_obj3,ax=ax,ax2=ax2)
 
-    leg=ax.legend(fontsize=fs*0.8,ncol=int(math.ceil(len(molecules)/2)),loc='lower left')
+    leg_fs = fs*0.8 if '_all' not in suffix else fs*0.6
+    leg=ax.legend(fontsize=leg_fs,ncol=int(math.ceil(len(molecules)/2)),loc='lower left')
     for lh in leg.legend_handles:
         lh.set_alpha(1)
     for line in leg.get_lines():
@@ -1485,107 +1016,63 @@ def VMRs_selected(retr_obj,fs=10,n=6,molecules=None,comp_equ=False,**kwargs):
     ax.set_xlabel('VMR', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)
     fig.tight_layout()
-    fig.savefig(f'{output_dir}/{prefix}VMRs_selected{suffix}.pdf')
+    fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
+    #fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.svg')
     plt.close()
 
-def CCF_plot_all(retr_obj,molecules,RVs,noiserange=100,vertical_layout=True,**kwargs):
+def CCF_plot_all(retr_obj,molecules,noiserange=100,**kwargs): # plot all CCFs
 
-    # plot all CCFs in one big figure
-    
-    figname='CCFs_all' if 'retr_obj2' not in kwargs else 'comparison/CCFs_both'
+    species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+    RVs=np.arange(-500,500,1) # km/s
+    number=len(molecules)
+    nrows=number//2+number%2
+    ncols=2 if len(molecules) >1 else 1
+    figsize = (5,nrows*1.3)
+    if len(molecules)==1:
+        figname = f'CCF_{molecules}' if isinstance(molecules, list)==False else f'CCF_{molecules[0]}'
+        figsize= (4,2.5)
+    else:
+        figname='CCFs_all' if 'retr_obj2' not in kwargs else 'comparison/CCFs_both'
 
-    if vertical_layout==True:
-        number=len(molecules)
-        nrows=number//2+number%2
-        fig,axes = plt.subplots(nrows,2,figsize=(5,nrows*1.3),dpi=200,sharex=True)
-        for j,molecule in enumerate(molecules):
+    fig,axes = plt.subplots(nrows,ncols,figsize=figsize,dpi=200,sharex=True)
+    for j,molecule in enumerate(molecules):
+        if len(molecules)==1:
+            ax=axes
+            molecules=[molecules] if isinstance(molecules, list)==False else molecules
+        else:
             ax=axes[j//2,j%2]
-            CCF_norm,_,SNR = retr_obj.ccf_acf_dict[molecule]
-            if j%2==1:
-                ax.yaxis.set_label_position("right")
-                ax.yaxis.tick_right()
+        CCF_norm,_,SNR = retr_obj.ccf_acf_dict[molecule]
+        if j%2==1:
+            ax.yaxis.set_label_position("right")
+            ax.yaxis.tick_right()
 
-            ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-            ax.set_xlim(-300,300)
-            ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
-            ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
-            ax.plot(RVs,CCF_norm,color=retr_obj.color1,label='CCF')
-            if 'retr_obj2' in kwargs: 
-                retr_obj2=kwargs.get('retr_obj2')
-                CCF_norm2,_,SNR2 = retr_obj2.ccf_acf_dict[molecule]
-                ax.plot(RVs,CCF_norm2,color=retr_obj2.color1,label='CCF')
-            if retr_obj.chemistry=='freechem':
-                molecule_name=retr_obj.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
-            elif retr_obj.chemistry in ['equchem','quequchem']:
-                if molecule=='13CO':
-                    molecule_name=r'$^{13}$CO'
-                elif molecule=='H2(18)O':
-                    molecule_name=r'log H$_2^{18}$O'
-            if 'retr_obj2' in kwargs:
-                molecule_label=f'{molecule}'
-            else:
-                molecule_label=f'{molecule}\nS/N={np.round(SNR,decimals=1)}'
-            ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
-
-        # in case of odd number, remove last plot
-        if len(molecules)%2==1:
-            axes[-1,-1].axis('off')
-
-        if 'retr_obj2' in kwargs:
+        ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
+        ax.set_xlim(-300,300)
+        ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
+        ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
+        ax.plot(RVs,CCF_norm,color=retr_obj.color1,label='CCF')
+        mathtext_label = species_info.loc[molecule,'mathtext_name']
+        if 'retr_obj2' in kwargs: 
+            retr_obj2=kwargs.get('retr_obj2')
+            CCF_norm2,_,SNR2 = retr_obj2.ccf_acf_dict[molecule]
+            ax.plot(RVs,CCF_norm2,color=retr_obj2.color1,label='CCF')
+            molecule_label=f'{mathtext_label}'
             lines = [Line2D([0], [0], color=retr_obj.color1, linewidth=2,label=retr_obj.target.name),
-                Line2D([0], [0], color=retr_obj2.color1, linewidth=2,label=retr_obj2.target.name)]
+            Line2D([0], [0], color=retr_obj2.color1, linewidth=2,label=retr_obj2.target.name)]
             leg=axes[0,0].legend(handles=lines,fontsize=11,ncol=2,bbox_to_anchor=(1,1.4),loc='upper center')
             leg.get_frame().set_linewidth(0.0)
             leg.get_frame().set_alpha(None)
             leg.get_frame().set_facecolor((0, 0, 0, 0))
             leg.get_frame().set_edgecolor((0, 0, 0, 0))
+        else:
+            molecule_label=f'{mathtext_label}\nS/N={np.round(SNR,decimals=1)}'
+        ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
 
-        plt.subplots_adjust(wspace=0, hspace=0)
+    # in case of odd number, remove last plot
+    if len(molecules)%2==1 and len(molecules)!=1:
+        axes[-1,-1].axis('off')
 
-
-    else:
-        number=len(molecules)
-        ncols=number//2+number%2
-        fig,axes = plt.subplots(2,ncols,figsize=(ncols*2,4),dpi=200,sharex=True,constrained_layout=True)
-
-        for j,molecule in enumerate(molecules):
-            ax = axes[j%2,j//2]
-            CCF_norm,_,SNR = retr_obj.ccf_acf_dict[molecule]
-
-            ax.axvspan(-noiserange,noiserange,color='k',alpha=0.05)
-            #ax.set_xlim(np.min(RVs),np.max(RVs))
-            ax.set_xlim(-300,300)
-            ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
-            ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
-            ax.plot(RVs,CCF_norm,color=retr_obj.color1,label='CCF')
-            if 'retr_obj2' in kwargs: 
-                retr_obj2=kwargs.get('retr_obj2')
-                CCF_norm2,_,SNR2 = retr_obj2.ccf_acf_dict[molecule]
-                ax.plot(RVs,CCF_norm2,color=retr_obj2.color1,label='CCF')
-            if retr_obj.chemistry=='freechem':
-                molecule_name=retr_obj.parameters.param_mathtext[f'log_{molecule}'][4:] # remove log_
-            elif retr_obj.chemistry in ['equchem','quequchem']:
-                if molecule=='13CO':
-                    molecule_name=r'$^{13}$CO'
-                elif molecule=='H2(18)O':
-                    molecule_name=r'log H$_2^{18}$O'
-            if 'retr_obj2' in kwargs:
-                molecule_label=f'{molecule_name}'
-            else:
-                molecule_label=f'{molecule_name}\nS/N={np.round(SNR,decimals=1)}'
-            ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
-
-        # in case of odd number, remove last plot
-        if len(molecules)%2==1:
-            axes[-1,-1].axis('off')
-
-        if 'retr_obj2' in kwargs:
-            lines = [Line2D([0], [0], color=retr_obj.color1, linewidth=2,label=retr_obj.target.name),
-                Line2D([0], [0], color=retr_obj2.color1, linewidth=2,label=retr_obj2.target.name)]
-            leg=axes[0,(int(len(molecules)/2)//2)].legend(handles=lines,fontsize=12,ncol=2,bbox_to_anchor=(0.47,1.4),loc='upper center')
-            leg.get_frame().set_linewidth(0.0)
-        fig.tight_layout()
-
+    plt.subplots_adjust(wspace=0, hspace=0)
     fig.supxlabel(r'$v_{\rm rad}$ [km/s]')
     fig.supylabel('S/N')
     fig.savefig(f'{retr_obj.output_dir}/{figname}.pdf', bbox_inches='tight')

@@ -45,7 +45,6 @@ class Retrieval:
 
         self.n_orders, self.n_dets, _ = self.data_flux.shape # shape (orders,detectors,pixels)
         self.n_params = len(parameters.free_params)
-
         self.output_name=f'{chemistry}_{PT_type}_N{Nlive}_ev{evtol}' # output folder name
         self.cwd = os.getcwd()
         self.output_dir = pathlib.Path(f'{self.cwd}/{self.target.name}/{self.output_name}')
@@ -177,7 +176,7 @@ class Retrieval:
         self.params_dict,self.model_flux=self.get_params_and_spectrum()
         figs.summary_plot(self)
         if self.chemistry in ['equchem','quequchem']:
-            figs.VMRs_all(self)
+            figs.VMR_plot(self)
         if self.primary_label==False: 
             figs.plot_spectrum_split(self,plot_components=True)
         else:
@@ -188,7 +187,7 @@ class Retrieval:
         # save posterior as dictionary with key: (posterior, mathtext)
         prefix = self.callback_label if self.callback_label!='final_' else ''
         post=pathlib.Path(f'{self.output_dir}/{prefix}posterior_dict.pickle')
-        if post.exists() and getpass.getuser() == "natalie": # save time on my laptop
+        if post.exists():
             with open(post,'rb') as file:
                 self.posterior=pickle.load(file)
         else:
@@ -208,6 +207,7 @@ class Retrieval:
             self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
             if self.prefix=='pmn_':
                 self.lnZ = stats['nested importance sampling global log-evidence']
+                print(f"\nFinal lnZ = {self.lnZ}\n")
             else: # when doing exclusion retrievals
                 self.lnZ_ex = stats['nested importance sampling global log-evidence']
 
@@ -237,15 +237,11 @@ class Retrieval:
             for order in range(self.n_orders):
                 for det in range(self.n_dets):
                     self.model_flux[order,det]=phi_ij[order,det]*self.model_flux0[order,det] # scale model accordingly
-
-            # get isotope and element ratios and save them in final params dict
-            self.get_ratios()
+            self.get_ratios() 
 
         else:
-                
-            # make dict of constant params + evaluated params + their errors
+            # create dict of constant params + evaluated params + their errors
             self.params_dict=self.parameters.constant_params.copy() # initialize dict with constant params
-
             for key in self.parameters.param_keys:
                 median,minus_err,plus_err = self.get_quantiles(self.posterior[key][0])
                 self.params_dict[key]= median # add median of evaluated params (more robust than bestfit)
@@ -256,17 +252,28 @@ class Retrieval:
             self.model_object=pRT_spectrum(self,contribution=True)
             self.model_flux0=self.model_object.make_spectrum()
             self.summed_contr=np.nanmean(self.model_object.contr_em_orders,axis=0) # average over all orders
-            
-            # get isotope and element ratios and save them in final params dict
-            self.get_ratios()
+            self.idx_maxcont=np.where(self.summed_contr == np.max(self.summed_contr))[0][0]
+            self.params_dict['T_maxcont'] = self.model_object.temperature[self.idx_maxcont] # temperature at max emission contribution
+            self.params_dict['log_P_maxcont'] = np.log10(self.pressure[self.idx_maxcont]) # pressure at max emission contribution
+            self.get_ratios() # save isotope & element ratios in final params dict
 
+            # save abundances of species at maximum emission contribution
+            if self.chemistry in ['equchem','quequchem']:
+                for species_i in self.species_names:
+                    minus,median,plus=np.percentile(np.log10(np.array(self.VMR_dict[species_i])[:,self.idx_maxcont]), [15.9,50.0,84.1], axis=0)
+                    self.params_dict[f'log_{species_i}'] = median
+                    self.params_dict[f'log_{species_i}_err'] = (minus-median,plus-median)
+            
             # get scaling parameters phi_ij and s2_ij of bestfit model through likelihood
-            self.log_likelihood = self.LogLike(self.model_flux0, self.Cov)
+            #self.log_likelihood = self.LogLike(self.model_flux0, self.Cov)
+            lnL = self.PMN_lnL()
             self.params_dict['phi_ij']=self.LogLike.phi
             self.params_dict['s2_ij']=self.LogLike.s2
             if self.callback_label=='final_':
                 self.params_dict['chi2']=self.LogLike.chi2_red # save reduced chi^2 of fiducial model
                 self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
+                self.params_dict['lnL']=lnL
+                
             if self.primary_label==False:
                 self.params_dict['phi_ij_comp']=self.model_object.phi_components
 
@@ -295,6 +302,11 @@ class Retrieval:
             bounds_array.append(bounds)
         bounds_array=np.array(bounds_array)
 
+        # one value for each parameters = one sample
+        all_samples = np.empty((len(self.posterior[list(self.posterior.keys())[0]][0]),len(list(self.parameters.free_params.keys()))))
+        for k,key in enumerate(list(self.parameters.free_params.keys())):
+            all_samples[:,k] = self.posterior[key][0]
+
         temp_dist=pathlib.Path(f'{self.output_dir}/temperature_dist.npy')
         VMR_dict=pathlib.Path(f'{self.output_dir}/VMR_dict.pickle')
 
@@ -312,16 +324,16 @@ class Retrieval:
             stop=10
             temperature_distribution=[] # for each of the n_atm_layers
             VMRs=[]
-            for j,sample in enumerate(self.posterior):
+            for j,sample in enumerate(all_samples):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
                 self.parameters(cube)
                 model_object=pRT_spectrum(self)
                 temperature_distribution.append(np.array(model_object.temperature))
-                VMRs.append(model_object.VMRs)
+                VMRs.append(model_object.VMR_dict)
                 # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
                 if getpass.getuser()=="natalie" and j>stop: 
-                    remaining=len(self.posterior)-(j+1)
+                    remaining=len(all_samples)-(j+1)
                     temperature_distribution+=[self.model_object.temperature]*remaining
                     break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
@@ -343,8 +355,8 @@ class Retrieval:
             mathtext = [r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',
                         r'log $^{12}$CO/C$^{18}$O',r'log H$_2$O/H$_2^{18}$O']
             for i,(m1,m2) in enumerate([['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]): # isotope ratios    
-                p1=self.posterior[:,list(self.parameters.params).index(f'log_{m1}')]
-                p2=self.posterior[:,list(self.parameters.params).index(f'log_{m2}')]
+                p1=self.posterior[f'log_{m1}'][0]
+                p2=self.posterior[f'log_{m2}'][0]
                 log_ratio=p1-p2
                 median,minus_err,plus_err=self.get_quantiles(log_ratio)
                 self.params_dict[f'log_{m1}/{m2}']=median
@@ -355,7 +367,8 @@ class Retrieval:
             CH_distribution=[]
             temperature_distribution=[] # for each of the n_atm_layers
             stop=10
-            for j,sample in enumerate(self.posterior):
+
+            for j,sample in enumerate(all_samples):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
                 self.parameters(cube)
@@ -365,7 +378,7 @@ class Retrieval:
                 temperature_distribution.append(np.array(model_object.temperature))
                 # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
                 if getpass.getuser()=="natalie" and j>stop: 
-                    remaining=len(self.posterior)-(j+1)
+                    remaining=len(all_samples)-(j+1)
                     temperature_distribution+=[self.model_object.temperature]*remaining
                     CO_distribution+=[self.model_object.CO]*remaining
                     CH_distribution+=[self.model_object.FeH]*remaining
@@ -377,20 +390,18 @@ class Retrieval:
             median,minus_err,plus_err=self.get_quantiles(CO_distribution)
             self.params_dict['C/O']=median
             self.params_dict['C/O_err']=(minus_err,plus_err)
-            self.posterior['C/O'] = (CO_distribution,'C/O')
+            self.posterior['C/O'] = (np.array(CO_distribution),'C/O')
 
             median,minus_err,plus_err=self.get_quantiles(CH_distribution)
             self.params_dict['C/H']=median
             self.params_dict['C/H_err']=(minus_err,plus_err)
-            self.posterior['C/H'] = (CH_distribution,'[C/H]')
+            self.posterior['C/H'] = (np.array(CH_distribution),'[C/H]')
 
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
-                #np.save(f'{self.output_dir}/ratios_posterior.npy',self.ratios_posterior)
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
-                # overwrite posterior dict with ratio posteriors
-                post=pathlib.Path(f'{self.output_dir}/posterior_dict.pickle')
+                post=pathlib.Path(f'{self.output_dir}/posterior_dict.pickle') 
                 with open(post,'wb') as file:
-                    pickle.dump(self.posterior,file)
+                    pickle.dump(self.posterior,file) # overwrite with ratio posteriors
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',makefigs=True):
@@ -406,9 +417,7 @@ class Retrieval:
     def cross_correlation(self,molecules,noiserange=100): # can only be run after evaluate()
 
         ccf_dict={}
-        ccf_acf_dict={}
-        CCF_list=[]
-        ACF_list=[]
+        ccf_acf_dict={} # save cross-correlations and auto-correlations
         orig_params_dict=self.params_dict
         CCF_results=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict.pickle')
         if CCF_results.exists():
@@ -429,18 +438,14 @@ class Retrieval:
                 if self.chemistry=='freechem':
                     exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
                    
-                # necessary for cross-correlation:
-                # interpolate=False: not interpolated onto data_wave so that wl padding not cut off
-                # exclusion_model shape (n_orders,length of uninterpolated wavelengths)
-                # must still be shaped correctly and interpolated
+                # interpolate=False for CCF: not interpolated onto data_wave so that wl padding not cut off
                 self.parameters.params=exclusion_dict
-                exclusion_model_object=pRT_spectrum(self,interpolate=False)
                 if self.chemistry in ['equchem','quequchem']:
-                    prt_name = species_info.loc[molecule,'pRT_name']
-                    exclusion_model_object.mass_fractions[prt_name].fill(0.0)
-               # prt_name = species_info.loc[molecule,'pRT_name']
-                #exclusion_model_object.mass_fractions[prt_name].fill(0.0)
+                    exclusion_model_object=pRT_spectrum(self,interpolate=False,leave_out=molecule)
+                else:
+                    exclusion_model_object=pRT_spectrum(self,interpolate=False)
                 
+                # shape (n_orders,length of uninterpolated wavelengths), must still be interpolated 
                 exclusion_model,exclusion_model_wl=exclusion_model_object.make_spectrum()
 
                 self.parameters.params=orig_params_dict        
@@ -486,7 +491,6 @@ class Retrieval:
                 CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
                 ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
                 noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-                #noise=np.std((CCF_sum-ACF_sum)[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
                 CCF_norm = CCF_sum/noise # get ccf map in S/N units
                 ACF_norm = ACF_sum/noise
                 SNR=CCF_norm[np.where(RVs==0)[0][0]]
@@ -495,23 +499,20 @@ class Retrieval:
             else:
                 CCF_norm,ACF_norm,SNR = ccf_acf_dict[molecule]
 
-            CCF_list.append(CCF_norm)
-            ACF_list.append(ACF_norm)
             ccf_dict[f'SNR_{molecule}']=SNR
             ccf_acf_dict[molecule]=(CCF_norm,ACF_norm,SNR)
-            print(f'{molecule} S/N =',SNR)
-            #figs.CCF_plot(self,molecule,RVs,CCF_norm,ACF_norm,noiserange=noiserange)
-            
-            #figs.CCF_plot_all(self,molecule,RVs,CCF_norm,ACF_norm,ax=ax[j%2,j//2],noiserange=noiserange)
-              
-        #self.CCF_list=CCF_list
-        #self.ACF_list=ACF_list
+            print(f'{molecule} S/N =',np.round(SNR,decimals=2))
+
         self.ccf_acf_dict = ccf_acf_dict
-        figs.CCF_plot_all(self,molecules,RVs,noiserange=100)
+        figs.CCF_plot_all(self,molecules,noiserange=100)
 
         if CCF_results.exists()==False:
             with open(CCF_results,'wb') as CCF_results:
                 pickle.dump(ccf_acf_dict,CCF_results)
+
+        self.params_dict.update(ccf_dict)
+        with open(f'{self.output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
+            pickle.dump(self.params_dict,file)
 
         return ccf_dict
 
@@ -600,7 +601,7 @@ class Retrieval:
 
         retrieval_output_dir=self.output_dir # save end results here
 
-        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.Nlive} - ev: {self.evtol} ------- \n')
+        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.Nlive} - ev: {self.evtol} ------ \n')
 
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')

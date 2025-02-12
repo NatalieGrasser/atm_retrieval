@@ -3,54 +3,53 @@ from scipy.special import loggamma # gamma function
 
 class LogLikelihood:
 
-    def __init__(self,retrieval_object,scale_flux=True,scale_err=True,alpha=2,N_phi=1):
+    def __init__(self,retr_obj,scale_flux=True,scale_err=True,alpha=2,N_phi=1):
 
-        self.d_flux = retrieval_object.data_flux
-        self.d_mask = retrieval_object.mask_isfinite
-        self.n_orders = retrieval_object.n_orders
-        self.n_dets   = retrieval_object.n_dets
+        inherit_attributes = ['n_orders','n_dets','primary_label','data_flux','mask_isfinite']
+        for attr in inherit_attributes:  # list of attributes to pass down
+            setattr(self, attr, getattr(retr_obj, attr))
+
         self.scale_flux   = scale_flux
         self.scale_err    = scale_err
-        self.N_d      = self.d_mask.sum() # number of degrees of freedom / valid datapoints
-        self.N_params = retrieval_object.n_params
+        self.N_d_total    = self.mask_isfinite.sum() # number of degrees of freedom / valid datapoints
         self.alpha = alpha # from Ruffio+2019
         self.N_phi = N_phi # number of linear scaling parameters
-        self.primary_label = retrieval_object.primary_label
+
         if self.primary_label==False:
             self.mask_primary=np.empty((self.n_orders,self.n_dets,2048),dtype=bool)
             for i in range(self.n_orders):
                 for j in range(self.n_dets):
-                    mask_ij = np.isfinite(retrieval_object.primary_flux[i,j]) # only finite pixels
+                    mask_ij = np.isfinite(retr_obj.primary_flux[i,j]) # only finite pixels
                     self.mask_primary[i,j]=mask_ij
         
     def __call__(self, m_flux, Cov, **kwargs):
 
         self.ln_L   = 0.0
-        self.chi2_red = np.zeros((self.n_orders, self.n_dets)) # reduced chi2
+        self.chi2_0 = 0.0
         self.phi = np.ones((self.n_orders, self.n_dets, self.N_phi)) # store linear flux-scaling terms
         self.s2  = np.ones((self.n_orders, self.n_dets)) # uncertainty-scaling
-        self.m_flux_phi = np.nan * np.ones_like(self.d_flux) # scaled model flux
+        self.m_flux_phi = np.nan * np.ones_like(self.data_flux) # scaled model flux
 
         for i in range(self.n_orders): # Loop over all orders and detectors
             for j in range(self.n_dets):
 
                 if self.primary_label==False:
-                    mask_ij = self.d_mask[i,j,:] & self.mask_primary[i,j,:]
+                    mask_ij = self.mask_isfinite[i,j,:] & self.mask_primary[i,j,:]
                 else:
-                    mask_ij = self.d_mask[i,j,:] # mask out nans
-                N_d = mask_ij.sum() # Number of (valid) data points
+                    mask_ij = self.mask_isfinite[i,j,:] # mask out nans
+                N_d = mask_ij.sum() # Number of (valid) data points in this order/det pair
                 if N_d == 0:
                     continue
-                d_flux_ij = self.d_flux[i,j,mask_ij] # data flux
+                data_flux_ij = self.data_flux[i,j,mask_ij] # data flux
                 m_flux_ij = m_flux[i,j,mask_ij] # model flux
-                self.arrs = [d_flux_ij, m_flux_ij, Cov[i,j]]
+                self.arrs = [data_flux_ij, m_flux_ij, Cov[i,j]]
                 
                 if Cov[i,j].is_matrix:
                     Cov[i,j].get_cholesky() # Retrieve a Cholesky decomposition
                 if self.scale_flux: # Find the optimal phi-vector to match the observed spectrum
-                    self.m_flux_phi[i,j,mask_ij],self.phi[i,j]=self.get_flux_scaling(d_flux_ij, m_flux_ij, Cov[i,j])
+                    self.m_flux_phi[i,j,mask_ij],self.phi[i,j]=self.get_flux_scaling(data_flux_ij, m_flux_ij, Cov[i,j])
 
-                residuals_phi = (self.d_flux[i,j] - self.m_flux_phi[i,j]) # Residuals wrt scaled model
+                residuals_phi = (self.data_flux[i,j] - self.m_flux_phi[i,j]) # Residuals wrt scaled model
                 inv_cov_0_residuals_phi = Cov[i,j].solve(residuals_phi[mask_ij]) 
                 chi2_0 = np.dot(residuals_phi[mask_ij].T, inv_cov_0_residuals_phi) # Chi-squared for the optimal linear scaling
                 logdet_MT_inv_cov_0_M = 0
@@ -69,8 +68,9 @@ class LogLikelihood:
 
                 # Add this order/detector to the total log-likelihood
                 self.ln_L += -1/2*(logdet_cov_0+logdet_MT_inv_cov_0_M+(N_d-self.N_phi+self.alpha-1)*np.log(chi2_0))
-                self.chi2_red[i,j] = chi2_0/self.s2[i,j]/self.N_d
-                #print('log chi2_0=',np.log(chi2_0))
+                self.chi2_0 += chi2_0/self.s2[i,j]
+        
+        self.chi2_red = self.chi2_0/self.N_d_total
 
         if np.isfinite(self.ln_L)==False:
             print('ERROR: Not finite lnL')
@@ -80,10 +80,10 @@ class LogLikelihood:
         else:
             return self.ln_L
 
-    def get_flux_scaling(self, d_flux_ij, m_flux_ij, cov_ij): 
+    def get_flux_scaling(self, data_flux_ij, m_flux_ij, cov_ij): 
         # Solve for linear scaling parameter phi: (M^T * cov^-1 * M) * phi = M^T * cov^-1 * d
         lhs = np.dot(m_flux_ij.T, cov_ij.solve(m_flux_ij)) # Left-hand side
-        rhs = np.dot(m_flux_ij.T, cov_ij.solve(d_flux_ij)) # Right-hand side
+        rhs = np.dot(m_flux_ij.T, cov_ij.solve(data_flux_ij)) # Right-hand side
         phi_ij = rhs / lhs # Optimal linear scaling factor
         return np.dot(m_flux_ij, phi_ij), phi_ij # Return scaled model flux + scaling factors
 

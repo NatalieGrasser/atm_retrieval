@@ -30,7 +30,7 @@ class Target:
             self.dec = "+11d33m43.797034332s"
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
             self.fullname='2MASSJ03552337+1133437'    
-            self.standard_star_temp=15536 # lamTau
+            self.standard_star_temp=15536 # lam Tau
             self.color1='deepskyblue' # color of retrieval output
             self.color2='lightskyblue' 
             self.fwhm = 3.4720016645787855 # Gaussian FWHM in pixels
@@ -43,7 +43,7 @@ class Target:
             self.dec="-36d50m23.248617541s"
             self.JD=2459976.5        
             self.fullname='2MASSJ14252798-3650229'
-            self.standard_star_temp=10980 # betHya
+            self.standard_star_temp=10980 # bet Hya
             self.color1='lightcoral' # color of retrieval output
             self.color2='lightpink'
             self.fwhm = 5.397255188786233 # Gaussian FWHM in pixels
@@ -146,13 +146,12 @@ class Target:
                 if self.primary_label==True:
                     mask_ij = np.isfinite(self.fl[i,j]) # only finite pixels
                 else:
-                    #primary_name=f'{self.name[:-1]}A'
-                    primary_name='ROXs12A'
+                    primary_name=f'{self.name[:-1]}A'
+                    #primary_name='ROXs12A'
                     primary_file=pathlib.Path(f'{self.cwd}/{primary_name}/{primary_name}_spectrum.txt')
                     primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
                     primary_flux = np.reshape(primary_flux,(self.n_orders,self.n_dets,self.n_pixels))
                     mask_ij = np.isfinite(self.fl[i,j]) & np.isfinite(primary_flux[i,j]) & np.isfinite(self.err[i,j]) # include nans of primary
-                    #mask_ij = np.convolve(mask_ij, np.ones(7), mode='same') < 0 # grow mask by 7 pixels bc later we shift +-3 pixels
                     mask_ij2 = np.convolve(~np.array(mask_ij), np.ones(7), mode='same') > 0 # grow mask by 7 pixels bc later we shift +-3 pixels
                     mask_ij= ~mask_ij2
                 self.mask_isfinite[i,j]=mask_ij
@@ -166,12 +165,9 @@ class Target:
                 mask_ij = self.mask_isfinite[i,j] # Mask the arrays, on-the-spot is slower
                 wave_ij = self.wl[i,j,mask_ij]
                 separation_ij = np.abs(wave_ij[None,:]-wave_ij[:,None]) # wavelength separation
-                # velocity separation in km/s
-                #separation_ij = 2 *const.c.value*1e-3 * np.abs((wave_ij[None,:]-wave_ij[:,None])/(wave_ij[None,:]+wave_ij[:,None])) 
                 self.separation[i,j] = separation_ij  
                 err_ij = self.err[i,j,mask_ij]  
-                #self.err_eff[i,j] = np.sqrt(1/2*(err_ij[None,:]**2 + err_ij[:,None]**2)) # arithmetic mean of squared flux-errors
-                self.err_eff[i,j] = np.nanmedian(err_ij) if err_ij.size != 0 else np.nan # more stable
+                self.err_eff[i,j] = np.nanmedian(err_ij) if err_ij.size != 0 else np.nan
         return self.separation,self.err_eff
     
     def load_spec_file(self,file):
