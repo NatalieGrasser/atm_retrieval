@@ -41,8 +41,8 @@ def plot_spectrum_inset(retr_obj,inset=True,fs=10,**kwargs):
 
     for order in range(7):
         # add error for scale
-        errmean=np.nanmean(err[order]*retr_obj.params_dict['s2_ij'][order].reshape(3,1))
         if np.nansum(flux[order])!=0: # skip empty orders
+            errmean=np.nanmean(err[order]*retr_obj.params_dict['s2_ij'][order].reshape(3,1))
             #ax[1].fill_between([np.min(wave[order]),np.max(wave[order])],-errmean,errmean,color='k',alpha=0.15)
             ax[1].errorbar(np.min(wave[order])-5, 0, yerr=errmean, ecolor=retr_obj.color1, 
                            elinewidth=1, capsize=2)
@@ -273,7 +273,7 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
     fig.savefig(f'{retr_obj.output_dir}/{name}.pdf')
     plt.close()
 
-def plot_pt(retr_obj,fs=12,**kwargs):
+def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
 
     legend_labels=kwargs.get('legend_labels',None)
 
@@ -323,13 +323,13 @@ def plot_pt(retr_obj,fs=12,**kwargs):
         ax.plot(test_ret.model_object.temperature,test_ret.pressure,linestyle='dashdot',c='blueviolet',lw=2) 
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Input')
 
-    elif retr_obj.target.name in ['2M0355','2M1425']:
+    elif retr_obj.target.name in ['2M0355','2M1425'] and sb==True:
         file=np.loadtxt('t1600g562nc_m0.0.dat')
         pres=file[:,1] # bar
         temp=file[:,2] # K
         ax.plot(temp,pres,linestyle='dashdot',c='blueviolet',linewidth=2)
         comparison_pt=Line2D([0], [0], color='blueviolet', linewidth=2, linestyle='dashdot',label='Sonora Bobcat \n$T=1600\,$K, log$\,g=4.75$')
-    elif retr_obj.target.name in ['ROXs12A','ROXs12B']:
+    elif retr_obj.target.name in ['ROXs12A','ROXs12B'] and sb==True:
         file=np.loadtxt('t2400g562nc_m0.0.dat')
         pres=file[:,1] # bar
         temp=file[:,2] # K
@@ -438,15 +438,18 @@ def plot_pt(retr_obj,fs=12,**kwargs):
         ylim=(np.nanmax(retr_obj.model_object.pressure),
         np.nanmin(retr_obj.model_object.pressure)),xlim=(xmin,xmax))
     
+    if sb==True:
+        lines.append(comparison_pt)
+
     if legend_labels!=None:
         lines=[]
-        retr_objects=[retr_obj,retr_obj2,retr_obj3]
+        retr_objects=[retr_obj,retr_obj2]
+        if 'retr_obj3' in kwargs:
+            retr_objects.append(retr_obj3)
         for r,l in zip(retr_objects,legend_labels):
             lines.append(Line2D([0], [0], color=r.color1,linewidth=2,linestyle='-',label=l))
             #lines.append(Line2D([0], [0], color=r.color2, alpha=0.8,linewidth=1.5, linestyle='--',label=f'{l} cont.'))
-            
-    lines.append(comparison_pt)
-    
+                
     ax.legend(handles=lines,fontsize=fs)
     ax.tick_params(labelsize=fs)
     ax.set_xlabel('Temperature [K]', fontsize=fs)
@@ -633,13 +636,25 @@ def summary_plot(retr_obj,**kwargs):
 
 def double_opacity_plot(retr_obj,retr_obj2,n1=6,n2=7):
     fig,axes=plt.subplots(2,1,figsize=(6,5),dpi=200)
-    l1 = opacity_plot(retr_obj,n=n1,ax=axes[0])
-    l2= opacity_plot(retr_obj2,n=n2,ax=axes[1],smallrange=True)
+    species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
+
+    l1 = opacity_plot(retr_obj,n=n1,ax=axes[0],smallrange=True,addname=True)
+    l2= opacity_plot(retr_obj2,n=n2,ax=axes[1],smallrange=True,addname=True)
     merged = list(set(l1).union(l2))
-    lines=[]
+    colors=[]
+    labels=[]
     for col,lab in merged:
+        colors.append(col)
+        labels.append(lab)
+    show_species = ['H2O','12CO','13CO','HF','H2S','CH4','H2(18)O','NH3'] # legend should be in this order
+    mathtext=[]
+    for spec in show_species:
+        mathtext.append(species_info.loc[spec,'mathtext_name'])
+    labels, colors = list(zip(*sorted(zip(labels,colors), key=lambda x: mathtext.index(x[0]))))
+    lines=[]
+    for col,lab in zip(colors,labels):
         lines.append(Line2D([0],[0],color=col,linewidth=2,label=lab))
-    legend=axes[0].legend(handles=lines,ncol=(len(lines)//2+len(lines)%2),loc='upper center')
+    legend=axes[0].legend(handles=lines,ncol=(len(lines)//2+len(lines)%2),loc='lower center', bbox_to_anchor=(0.47, 1.0))
     legend.get_frame().set_alpha(None)
     legend.get_frame().set_facecolor((0, 0, 0, 0))
     legend.get_frame().set_edgecolor((0, 0, 0, 0))
@@ -648,7 +663,7 @@ def double_opacity_plot(retr_obj,retr_obj2,n1=6,n2=7):
     fig.savefig(f'{retr_obj.output_dir}/comparison/opacities_both.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def opacity_plot(retr_obj,only_params=None,n=7,smallrange=False,**kwargs): # n most abundant species
+def opacity_plot(retr_obj,only_params=None,n=7,smallrange=False,addname=False,**kwargs): # n most abundant species
 
     species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
     Kband=retr_obj.target.K2166
@@ -707,6 +722,14 @@ def opacity_plot(retr_obj,only_params=None,n=7,smallrange=False,**kwargs): # n m
         lines.append(Line2D([0],[0],color=spec.get_color(),
                         linewidth=2,label=labels[i]))
         line_props.append((spec.get_color(),labels[i]))
+
+    if addname==True:
+        from matplotlib import colors
+        fc=colors.to_rgba(retr_obj.color1)
+        fc = fc[:-1] + (0.5,) # <--- Change the alpha value of facecolor to be 0.7
+        ax.annotate(retr_obj.target.name, xy=(0.5, 0.88), xycoords='axes fraction',
+                    ha='center', va='center', c='k', fontsize=12, 
+                    bbox={'boxstyle':'round', 'fc':fc, 'ec':'k'})
         
     for order in range(7):
         for det in range(3):
@@ -734,6 +757,8 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,ratios_logg=False,
     legend_labels=kwargs.get('legend_labels',None)
     num=2 # number of retrs
     suffix=''
+    l, b, w, h = [0.58,0.65,0.39,0.39] # left, bottom, width, height for PT plot
+
     # can only compare freechem+freechem or freechem+equchem/quequchem(+equchem/quequchem)
     if retr_obj1.chemistry=='freechem' and retr_obj2.chemistry=='freechem':
 
@@ -753,17 +778,25 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,ratios_logg=False,
 
     elif retr_obj1.chemistry=='freechem' and retr_obj2.chemistry in ['equchem','quequchem']:
 
-        only_params=['C/O','C/H','log_12CO/13CO','log_12CO/C17O','log_12CO/C18O','log_H2O/H2(18)O']
+        suffix='chems'
+        #only_params=['log_g','C/O','C/H','log_12CO/13CO','log_12CO/C17O','log_12CO/C18O','log_H2O/H2(18)O']
+        only_params=['log_g','C/O','C/H','log_12CO/13CO','log_H2O/H2(18)O']
+
         posterior1, labels = get_plotposterior_labels(retr_obj1,only_params)
 
         # add log_O16_18_ratio to equchem again, bc freechem has C18O and H218O ratios
-        only_params=['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
+        #only_params=['log_g','C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
+        only_params=['log_g','C/O','Fe/H','log_C12_13_ratio','log_O16_18_ratio']
         posterior2, labels = get_plotposterior_labels(retr_obj2,only_params)
+        figsize=8.5
+        legend_labels = ['Free','Equ']
+        l, b, w, h = [0.62,0.72,0.33,0.33] # left, bottom, width, height for PT plot
 
         if 'retr_obj3' in kwargs: # quequchem
             num=3
             retr_obj3=kwargs.get('retr_obj3')
             posterior3, labels = get_plotposterior_labels(retr_obj3,only_params)
+            legend_labels.append('quequ')
 
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     
@@ -849,13 +882,13 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,ratios_logg=False,
     plt.subplots_adjust(wspace=0, hspace=0)
 
     if with_pt==True:
-        l, b, w, h = [0.58,0.65,0.39,0.39] # left, bottom, width, height
+        
         ax_PT = fig.add_axes([l,b,w,h])
         if 'retr_obj3' not in kwargs:
-            plot_pt(retr_obj1,retr_obj2=retr_obj2,ax=ax_PT)
+            plot_pt(retr_obj1,retr_obj2=retr_obj2,ax=ax_PT,legend_labels=legend_labels,sb=False)
         else:
             plot_pt(retr_obj1,retr_obj2=retr_obj2,
-                    ax=ax_PT,retr_obj3=retr_obj3,legend_labels=legend_labels)
+                    ax=ax_PT,retr_obj3=retr_obj3,legend_labels=legend_labels,sb=False)
 
     comparison_dir=pathlib.Path(f'{retr_obj1.output_dir}/comparison') # store output in separate folder
     comparison_dir.mkdir(parents=True, exist_ok=True)
@@ -863,16 +896,71 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,ratios_logg=False,
     fig.savefig(f'{comparison_dir}/cornerplot_{suffix}{num}.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,**kwargs):
+def double_VMR_plot(name1,name2, **kwargs):
+    from config_run import init_retrieval
+    species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
+
+    if 'show_species' in kwargs:
+        show_species=kwargs.get('show_species')
+    else:
+        show_species=['H2O','12CO','13CO','CH4','H2S','NH3','HF','HCN']
+
+    # 2 VMR plots of 2 object comparing free vs equ chem
+    fig,axes=plt.subplots(2,1,figsize=(5,6),dpi=200)
+
+    def VMRs_free_equ(obj_name,ax):
+        free=init_retrieval(target=obj_name,PT_type='PTgrad',chem='freechem',Nlive=400,evtol=0.5)
+        free.evaluate(makefigs=False)
+        equ=init_retrieval(target=obj_name,PT_type='PTgrad',chem='equchem',Nlive=400,evtol=0.5)
+        equ.evaluate(makefigs=False)
+        legend_elements = VMR_plot(retr_obj=free,retr_obj2=equ,molecules=show_species,ax=ax,addname=True)
+        return legend_elements, free
+
+    l1, retr_obj = VMRs_free_equ(name1,ax=axes[0])
+    l2, _ = VMRs_free_equ(name2,ax=axes[1])
+    merged = list(set(l1).union(l2))
+    colors=[]
+    labels=[]
+    for col,lab in merged:
+        colors.append(col)
+        labels.append(lab)
+    mathtext=[]
+    for spec in show_species:
+        mathtext.append(species_info.loc[spec,'mathtext_name'])
+    labels, colors = list(zip(*sorted(zip(labels,colors), key=lambda x: mathtext.index(x[0]))))
+    lines=[]
+    for col,lab in zip(colors,labels):
+        lines.append(Line2D([0],[0],color=col,linewidth=2,label=lab))
+    # legend should be in order of species
+    legend=axes[0].legend(handles=lines,ncol=(len(lines)//2+len(lines)%2),loc='lower center', 
+                            bbox_to_anchor=(0.48, 1.0),fontsize=9)
+    legend.get_frame().set_alpha(None)
+    legend.get_frame().set_facecolor((0, 0, 0, 0))
+    legend.get_frame().set_edgecolor((0, 0, 0, 0))
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0,hspace=0)
+    axes[0].xaxis.set_ticks_position('top')
+    axes[0].set_xticklabels([])  # Remove x tick labels
+    yticklabels = axes[1].get_yticklabels()
+    yticklabels[1].set_visible(False) # to avoid overlap
+    fig.savefig(f'{retr_obj.output_dir}/comparison/VMRs_both.pdf',bbox_inches="tight",dpi=200)
+    plt.close()
+
+def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kwargs):
 
     prefix = retr_obj.callback_label if retr_obj.callback_label=='live_' else ''
     suffix=''
     output_dir=retr_obj.output_dir
-    fig,ax=plt.subplots(1,1,figsize=(5,3.5),dpi=200)
+
+    if 'ax' in kwargs:
+        ax=kwargs.get('ax')
+    else:
+        fig,ax=plt.subplots(1,1,figsize=(5,3.5),dpi=200)
+
     species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
     alpha=0.6 if 'retr_obj2' in kwargs or comp_equ==True else 1
     legend_labels=0
-    xmin,xmax=1e-10,1e-2
+    xmin,xmax=1e-10,10**(-2.5)
     chemleg=[] # legend for chemistry
     pressure=retr_obj.model_object.pressure
 
@@ -896,9 +984,12 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,**kwargs):
         suffix='_all'
         molecules = retr_obj.species_names
 
+    def log_spaced_values(center, num_values=4, log_range=1.0):
+        log_center = np.log10(center)
+        exponents = np.linspace(log_center - log_range / 2, log_center + log_range / 2, num_values)
+        return 10 ** exponents
+
     def plot_VMRs(retr_obj,ax,ax2):
-        offset= [-10**(-0.5),0,10**(-0.5)] # slight vertical offset for overlapping species
-        off_i=0
         
         if retr_obj.chemistry=='freechem' and 'retr_obj2' not in kwargs:
             linestyle='dashed'
@@ -920,6 +1011,8 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,**kwargs):
         ax2.set_ylim(np.min(pressure),np.max(pressure))
         contr_max=pressure[np.where(retr_obj.summed_contr==np.max(retr_obj.summed_contr))[0]]
         ax2.set_yscale('log')
+        offset = log_spaced_values(contr_max) # slight vertical offset for overlapping species
+        off_i=0
 
         for species in molecules:
             color=species_info.loc[species,'color']
@@ -933,9 +1026,9 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,**kwargs):
                     if suffix!='_all': # only show errors when not showing all species, or will be cluttered
                         ax.fill_betweenx(pressure,sm2,sp2,color=color,alpha=0.1) # 95% confidence interval
                 else: # plot only as point to avoid cluttering
-                    if (retr_obj.target.name=='2M0355' and species in ['HF','NH3','CH4']) or (retr_obj.target.name=='2M1425' and species in ['HF','NH3','H2S']):
-                        ax.scatter(VMR,contr_max+offset[off_i], color=color,s=13)
-                        ax.plot([sm2,sp2],[contr_max+offset[off_i],contr_max+offset[off_i]], color=color,lw=1.5)
+                    if (retr_obj.target.name=='2M0355' and species in ['HF','NH3','CH4','HCN']) or (retr_obj.target.name=='2M1425' and species in ['NH3','HF','H2S','HCN']):
+                        ax.scatter(VMR,offset[off_i], color=color,s=13)
+                        ax.plot([sm2,sp2],[offset[off_i],offset[off_i]], color=color,lw=1.5)
                         off_i+=1
                     else:
                         ax.scatter(VMR,contr_max, color=color,s=13)
@@ -995,30 +1088,44 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,**kwargs):
         plt.gca().set_prop_cycle(None) # reset color cycle
         plot_VMRs(retr_obj3,ax=ax,ax2=ax2)
 
-    leg_fs = fs*0.8 if '_all' not in suffix else fs*0.6
-    leg=ax.legend(fontsize=leg_fs,ncol=int(math.ceil(len(molecules)/2)),loc='lower left')
-    for lh in leg.legend_handles:
-        lh.set_alpha(1)
-    for line in leg.get_lines():
-        line.set_linestyle('-')
-    ax.add_artist(leg)
     if comp_equ==True or 'retr_obj2' in kwargs:
         leg2=ax.legend(handles=chemleg,fontsize=fs*0.8,loc='upper left')
         ax.add_artist(leg2)
+
+    if addname==True:
+        from matplotlib import colors
+        fc=colors.to_rgba(retr_obj.color1)
+        fc = fc[:-1] + (0.5,) # <--- Change the alpha value of facecolor to be 0.7
+        ax.annotate(retr_obj.target.name, xy=(0.11,0.08), xycoords='axes fraction',
+                    ha='center', va='center', c='k', fontsize=fs*1.1, 
+                    bbox={'boxstyle':'round', 'fc':fc, 'ec':'k'})
     
     ax2.axis('off')
     ax2.set_facecolor('none')
-    ax.set(xlabel='VMR', ylabel='Pressure [bar]',yscale='log',xscale='log',
+    ax.set(xlabel='Volume mixing ratio', ylabel='Pressure [bar]',yscale='log',xscale='log',
         ylim=(np.max(pressure),np.min(pressure)),xlim=(xmin,xmax))   
     ax.tick_params(labelsize=fs)
     ax.xaxis.set_major_locator(mticker.LogLocator(numticks=999))
     ax.xaxis.set_minor_locator(mticker.LogLocator(numticks=999, subs="auto"))
-    ax.set_xlabel('VMR', fontsize=fs)
+    ax.set_xlabel('Volume mixing ratio', fontsize=fs)
     ax.set_ylabel('Pressure [bar]', fontsize=fs)
-    fig.tight_layout()
-    fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
-    #fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.svg')
-    plt.close()
+    if 'ax' in kwargs:
+        handles, labels = ax.get_legend_handles_labels()
+        line_props=[]
+        for handle,label in zip(handles, labels):
+            line_props.append((handle.get_color(),label))
+        return line_props
+    else:
+        leg_fs = fs*0.8 if '_all' not in suffix else fs*0.6
+        leg=ax.legend(fontsize=leg_fs,ncol=int(math.ceil(len(molecules)/2)),loc='lower left')
+        for lh in leg.legend_handles:
+            lh.set_alpha(1)
+        for line in leg.get_lines():
+            line.set_linestyle('-')
+        ax.add_artist(leg)
+        fig.tight_layout()
+        fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
+        plt.close()
 
 def CCF_plot_all(retr_obj,molecules,noiserange=100,**kwargs): # plot all CCFs
 

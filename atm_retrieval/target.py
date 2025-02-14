@@ -7,6 +7,8 @@ from numpy.polynomial import polynomial as Poly
 from scipy import signal, optimize
 from scipy.interpolate import interp1d
 from matplotlib.lines import Line2D
+from astropy.coordinates import SkyCoord
+from PyAstronomy.pyasl import helcorr
 import warnings
 
 class Target:
@@ -68,6 +70,10 @@ class Target:
             self.color1='orange'
             self.color2='darkorange'
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
+
+        coords = SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
+        self.vbary = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
+                            ra2000=coords.ra.value,dec2000=coords.dec.value,jd=self.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
 
     def load_spectrum(self):
         self.cwd = os.getcwd()

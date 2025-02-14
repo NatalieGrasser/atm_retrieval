@@ -2,10 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from scipy.interpolate import CubicSpline
-from PyAstronomy.pyasl import fastRotBroad, helcorr
+from PyAstronomy.pyasl import fastRotBroad
 from astropy import constants as const
 from astropy import units as u
-from astropy.coordinates import SkyCoord
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter
@@ -50,9 +49,9 @@ class pRT_spectrum:
 
         self.params=retr_obj.parameters.params
         self.spectral_resolution= spectral_resolution
-        self.coords = SkyCoord(ra=self.target.ra, dec=self.target.dec, frame='icrs')
         self.interpolate=interpolate
         self.temperature = self.make_pt() #P-T profile
+        self.vbary = retr_obj.target.vbary
 
         self.give_absorption_opacity=None
         self.int_opa_cloud = np.zeros_like(self.pressure)
@@ -380,9 +379,7 @@ class pRT_spectrum:
             #flux = atmosphere.flux/np.nanmean(atmosphere.flux)
 
             # RV+bary shifting and rotational broadening
-            v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
-                            ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
-            wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
+            wl_shifted= wl*(1.0+(self.params['rv']-self.vbary)/const.c.to('km/s').value)
             waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
             spec = np.interp(waves_even, wl_shifted, flux)
             spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
@@ -592,9 +589,7 @@ class pRT_spectrum:
         flux=atmosphere.flux
 
         # RV+bary shifting and rotational broadening
-        v_bary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
-                        ra2000=self.coords.ra.value,dec2000=self.coords.dec.value,jd=self.target.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
-        wl_shifted= wl*(1.0+(self.params['rv']-v_bary)/const.c.to('km/s').value)
+        wl_shifted= wl*(1.0+(self.params['rv']-self.vbary)/const.c.to('km/s').value)
         waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
         spec = np.interp(waves_even, wl_shifted, flux)
         spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)

@@ -63,7 +63,7 @@ class LogLikelihood:
                     self.s2[i,j] = self.get_err_scaling(chi2_0, N_d) # Scale variance to maximize log-likelihood
                 logdet_cov_0 = Cov[i,j].get_logdet()  # Get log of determinant (log prevents over/under-flow)
 
-                # not same as in deRegt+2024, but taken from Ruffio+2019, Sam did not inlcude it
+                # from Ruffio+2019
                 self.ln_L += -1/2*(N_d-self.N_phi) * np.log(2*np.pi)+loggamma(1/2*(N_d-self.N_phi+self.alpha-1))
 
                 # Add this order/detector to the total log-likelihood

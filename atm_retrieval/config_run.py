@@ -29,10 +29,10 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     if target.name in ['2M0355','2M1425','test','test_corr','testsys']:
         species_names= ['H2O','12CO','13CO','C18O','C17O','CH4','NH3','HCN','HF','H2(18)O','H2S']
     elif target.name in ['ROXs12A']:
-        species_names= ['H2O','12CO','13CO','C18O','C17O','HF','H2(18)O','Na','Ti',
-                        'OH','CN','Fe','Sc','Si','Mg','V','K','Al','Mn','TiH','Cs','Ni','Rb']
+        species_names= ['H2O','12CO','13CO','HF','H2(18)O','Na','Ti','OH','Fe','Sc','K','Cs','Ni','Rb']
+        cloud_mode=None # no clouds at such high temperatures
     elif target.name in ['ROXs12B']:
-        species_names= ['H2O','12CO','13CO','C18O','C17O','CH4','NH3','HCN','HF','H2(18)O','H2S']     
+        species_names= ['H2O','12CO','13CO','CH4','HF','H2(18)O', 'FeH','TiH','CrH','Na','K','Ca','Mg','Fe','Sc','Ti']    
 
     constant_params={} # add if needed
     free_params = {'rv': ([-20,20],r'$v_{\rm rad}$'),
