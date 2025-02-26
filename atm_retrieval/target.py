@@ -33,8 +33,12 @@ class Target:
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
             self.fullname='2MASSJ03552337+1133437'    
             self.standard_star_temp=15536 # lam Tau
-            self.color1='deepskyblue' # color of retrieval output
-            self.color2='lightskyblue' 
+            if self.name in ['test','test_corr','testsys']:
+                self.color1='mediumseagreen' # color of retrieval output
+                self.color2='seagreen' 
+            else:
+                self.color1='deepskyblue' # color of retrieval output
+                self.color2='lightskyblue' 
             self.fwhm = 3.4720016645787855 # Gaussian FWHM in pixels
             if self.name=='testsys':
                 self.primary_label=False
@@ -72,7 +76,7 @@ class Target:
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
 
         coords = SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
-        self.vbary = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
+        self.vbary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
                             ra2000=coords.ra.value,dec2000=coords.dec.value,jd=self.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
 
     def load_spectrum(self):
@@ -134,14 +138,14 @@ class Target:
     
     def calc_resolution(self):
         # FWHM as determined in molecfit/model/BEST_FIT_PARAMETERS.fits
-        self.spec_resolution=np.zeros((7,3))
+        self.spectral_resolutions=np.zeros((7,3))
         for order in range(7):
             for det in range(3):
                 wave = self.wl[order,det]
                 pix_size = np.median(np.diff(wave))
                 fwhm = pix_size*self.fwhm
-                self.spec_resolution[order,det] = np.median(wave)/fwhm
-        return np.nanmedian(self.spec_resolution)
+                self.spectral_resolutions[order,det] = np.median(wave)/fwhm
+        return np.nanmedian(self.spectral_resolutions)
         
         
     def get_mask_isfinite(self):

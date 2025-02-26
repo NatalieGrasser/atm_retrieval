@@ -29,10 +29,11 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     if target.name in ['2M0355','2M1425','test','test_corr','testsys']:
         species_names= ['H2O','12CO','13CO','C18O','C17O','CH4','NH3','HCN','HF','H2(18)O','H2S']
     elif target.name in ['ROXs12A']:
-        species_names= ['H2O','12CO','13CO','HF','H2(18)O','Na','Ti','OH','Fe','Sc','K','Cs','Ni','Rb']
+        species_names= ['H2O','12CO','13CO','HF','H2(18)O','Na','Ti','OH','Fe','Sc','K','CN','Ca','Si']
         cloud_mode=None # no clouds at such high temperatures
     elif target.name in ['ROXs12B']:
-        species_names= ['H2O','12CO','13CO','CH4','HF','H2(18)O', 'FeH','TiH','CrH','Na','K','Ca','Mg','Fe','Sc','Ti']    
+        species_names= ['H2O','12CO','13CO', 'HF','H2(18)O']
+        #species_names= ['H2O','12CO','13CO', 'HF','H2(18)O','SH','Ca','OH','Sc','Ti']      
 
     constant_params={} # add if needed
     free_params = {'rv': ([-20,20],r'$v_{\rm rad}$'),
@@ -99,7 +100,7 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     parameters(cube)
 
     retrieval=Retrieval(target=target,parameters=parameters,species_names=species_names,
-                        Nlive=Nlive,evtol=evtol,chemistry=chem,PT_type=PT_type)
+                        Nlive=Nlive,evtol=evtol,chemistry=chem,PT_type=PT_type,cloud_mode=cloud_mode)
 
     return retrieval
 
@@ -113,7 +114,7 @@ if __name__ == '__main__':
     PT_type = sys.argv[3] # PTknot / PTgrad
     Nlive=int(sys.argv[4]) # number of live points (integer)
     evtol=float(sys.argv[5]) # evidence tolerance (float)
-    bayes_molecules=sys.argv[6] if len(sys.argv)>6 else None # bayes evidence retrievals on specified species
+    bayes_species=sys.argv[6] if len(sys.argv)>6 else None # bayes evidence retrievals on specified species
 
     retrieval=init_retrieval(target=target,PT_type=PT_type,chem=chem,Nlive=Nlive,evtol=evtol)
-    retrieval.run_retrieval(bayes_molecules=bayes_molecules)
+    retrieval.run_retrieval(bayes_species=bayes_species)

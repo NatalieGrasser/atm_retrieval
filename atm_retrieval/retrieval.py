@@ -5,6 +5,7 @@ import figures as figs
 from covariance import *
 from log_likelihood import *
 from target import Target
+from utils import *
 
 import numpy as np
 import pymultinest
@@ -17,6 +18,8 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning) # pRT warning
+from scipy.linalg import LinAlgWarning
+warnings.filterwarnings(action='ignore', category=LinAlgWarning, module='sklearn') # occasional
 warnings.simplefilter("error", RuntimeWarning)  # Convert warnings to exceptions
 #warnings.filterwarnings("ignore", category=np.linalg.LinAlgError) 
 
@@ -27,12 +30,14 @@ class Retrieval:
         
         self.Nlive=Nlive
         self.evtol=evtol
+        for attr in ['primary_label','color1','color2','K2166']:
+            setattr(self, attr, getattr(target, attr))
+            
         self.target = target
-        self.primary_label=self.target.primary_label
         self.data_wave,self.data_flux,self.data_err=target.load_spectrum()
+        self.spectral_resolution = target.calc_resolution()
         self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)    
         self.separation,self.err_eff=target.prepare_for_covariance()
-        self.K2166=target.K2166
         self.parameters=parameters
         self.chemistry=chemistry # freechem/equchem/quequchem
         self.species_names=species_names
@@ -86,8 +91,6 @@ class Retrieval:
         self.bestfit_params=None 
         self.posterior = None
         self.params_dict=None
-        self.color1=target.color1
-        self.color2=target.color2
 
     def get_pRT_hill(self,species_names): # get pRT species name and hill notations
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
@@ -113,9 +116,8 @@ class Retrieval:
             if self.target.name=='ROXs12B':
                 file=pathlib.Path('ROXs12B/atmosphere_objects.pickle')
             if file.exists() and redo==False:
-                with open(file,'rb') as file:
-                    atmosphere_objects=pickle.load(file)
-                    return atmosphere_objects
+                atmosphere_objects= load_pickle(file)
+                return atmosphere_objects
             else:
                 not_exists=True
         if for_species!=None or not_exists:
@@ -141,8 +143,7 @@ class Retrieval:
                 atmosphere.setup_opa_structure(self.pressure)
                 atmosphere_objects.append(atmosphere)
             if for_species==None:
-                with open(file,'wb') as file:
-                    pickle.dump(atmosphere_objects,file)
+                save_pickle(atmosphere_objects,file)
             return atmosphere_objects
 
     def PMN_lnL(self,cube=None,ndim=None,nparams=None):
@@ -188,8 +189,7 @@ class Retrieval:
         prefix = self.callback_label if self.callback_label!='final_' else ''
         post=pathlib.Path(f'{self.output_dir}/{prefix}posterior_dict.pickle')
         if post.exists():
-            with open(post,'rb') as file:
-                self.posterior=pickle.load(file)
+            self.posterior=load_pickle(post)
         else:
             analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
                                             outputfiles_basename=f'{self.output_dir}/{self.prefix}')  # set up analyzer object
@@ -202,8 +202,7 @@ class Retrieval:
                 idx=list(self.parameters.params).index(key)
                 posterior_dict[key]=(posterior[:,idx],self.parameters.free_params[key][1])
             self.posterior=posterior_dict
-            with open(post,'wb') as file:
-                pickle.dump(self.posterior,file)
+            save_pickle(self.posterior,post)
             self.bestfit_params = np.array(stats['modes'][0]['maximum a posterior']) # read params of best-fitting model, highest likelihood
             if self.prefix=='pmn_':
                 self.lnZ = stats['nested importance sampling global log-evidence']
@@ -222,8 +221,7 @@ class Retrieval:
 
         final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')
         if final_dict.exists():
-            with open(final_dict,'rb') as file:
-                self.params_dict=pickle.load(file)
+            self.params_dict=load_pickle(final_dict)
 
             for key in self.parameters.param_keys:
                 self.parameters.params[key]=self.params_dict[key] # set parameters to retrieved values
@@ -288,8 +286,7 @@ class Retrieval:
             spectrum[:,1]=self.model_flux.flatten()
 
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
-                with open(f'{self.output_dir}/params_dict.pickle','wb') as file:
-                    pickle.dump(self.params_dict,file)
+                save_pickle(self.params_dict,f'{self.output_dir}/params_dict.pickle')
                 np.savetxt(f'{self.output_dir}/bestfit_spectrum.txt',spectrum,delimiter=' ',header='wavelength(nm) flux')
         
         return self.params_dict,self.model_flux
@@ -316,8 +313,7 @@ class Retrieval:
 
         elif temp_dist.exists() and VMR_dict.exists() and self.chemistry in ['equchem','quequchem']:
             self.temp_dist=np.load(temp_dist)
-            with open(VMR_dict,'rb') as file:
-                self.VMR_dict=pickle.load(file)
+            self.VMR_dict= load_pickle(VMR_dict)
             
         elif self.chemistry in ['equchem','quequchem']:
 
@@ -347,14 +343,26 @@ class Retrieval:
 
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
-                with open(f'{self.output_dir}/VMR_dict.pickle','wb') as file:
-                    pickle.dump(self.VMR_dict,file)
+                save_pickle(self.VMR_dict,f'{self.output_dir}/VMR_dict.pickle')
 
         elif self.chemistry=='freechem':
 
-            mathtext = [r'log $^{12}$CO/$^{13}$CO',r'log $^{12}$CO/C$^{17}$O',
-                        r'log $^{12}$CO/C$^{18}$O',r'log H$_2$O/H$_2^{18}$O']
-            for i,(m1,m2) in enumerate([['12CO','13CO'],['12CO','C17O'],['12CO','C18O'],['H2O','H2(18)O']]): # isotope ratios    
+            mathtext = []
+            get_ratios = []
+            if 'log_13CO' in self.parameters.param_keys:
+                get_ratios.append(('12CO','13CO'))
+                mathtext.append(r'log $^{12}$CO/$^{13}$CO')
+            if 'log_C17O' in self.parameters.param_keys:
+                get_ratios.append(('12CO','C17O'))
+                mathtext.append(r'log $^{12}$CO/C$^{17}$O')
+            if 'log_C18O' in self.parameters.param_keys:
+                get_ratios.append(('12CO','C18O'))
+                mathtext.append(r'log $^{12}$CO/C$^{18}$O')
+            if 'log_H2(18)O' in self.parameters.param_keys:
+                get_ratios.append(('H2O','H2(18)O'))
+                mathtext.append(r'log H$_2$O/H$_2^{18}$O')
+
+            for i,(m1,m2) in enumerate(get_ratios): # isotope ratios    
                 p1=self.posterior[f'log_{m1}'][0]
                 p2=self.posterior[f'log_{m2}'][0]
                 log_ratio=p1-p2
@@ -400,8 +408,7 @@ class Retrieval:
             if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
                 post=pathlib.Path(f'{self.output_dir}/posterior_dict.pickle') 
-                with open(post,'wb') as file:
-                    pickle.dump(self.posterior,file) # overwrite with ratio posteriors
+                save_pickle(self.posterior,post) # overwrite with ratio posteriors
 
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',makefigs=True):
@@ -414,34 +421,33 @@ class Retrieval:
             else:
                 figs.summary_plot(self)
         
-    def cross_correlation(self,molecules,noiserange=100): # can only be run after evaluate()
+    def cross_correlation(self,ccf_species,noiserange=100): # can only be run after evaluate()
 
         ccf_dict={}
         ccf_acf_dict={} # save cross-correlations and auto-correlations
         orig_params_dict=self.params_dict
         CCF_results=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict.pickle')
         if CCF_results.exists():
-            with open(CCF_results,'rb') as file:
-                ccf_acf_dict=pickle.load(file)
+            ccf_acf_dict=load_pickle(CCF_results)
 
-        if isinstance(molecules, list)==False:
-            molecules=[molecules] # if only one, make list so that it works in the for loop
+        if isinstance(ccf_species, list)==False:
+            ccf_species=[ccf_species] # if only one, make list so that it works in the for loop
 
         RVs=np.arange(-500,500,1) # km/s
         species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
 
-        for j,molecule in enumerate(molecules):
+        for j,species_i in enumerate(ccf_species):
 
             if CCF_results.exists()==False:
-                # create final model without opacity from a certain molecule
+                # create final model without opacity from a certain specie
                 exclusion_dict=self.params_dict.copy()
                 if self.chemistry=='freechem':
-                    exclusion_dict[f'log_{molecule}']=-14 # exclude molecule from model
+                    exclusion_dict[f'log_{species_i}']=-14 # exclude from model
                    
                 # interpolate=False for CCF: not interpolated onto data_wave so that wl padding not cut off
                 self.parameters.params=exclusion_dict
                 if self.chemistry in ['equchem','quequchem']:
-                    exclusion_model_object=pRT_spectrum(self,interpolate=False,leave_out=molecule)
+                    exclusion_model_object=pRT_spectrum(self,interpolate=False,leave_out=species_i)
                 else:
                     exclusion_model_object=pRT_spectrum(self,interpolate=False)
                 
@@ -464,25 +470,28 @@ class Retrieval:
                         else:
                             wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
                             fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
+
+                            if self.primary_label==False: # remove primary to cc only w secondary
+                                fl_data-= self.model_object.primary_broadened[order,det,self.mask_isfinite[order,det]]
                             
                             wl_excl=exclusion_model_wl[order]
                             fl_excl=exclusion_model[order]*self.params_dict['phi_ij'][order,det]
                             fl_final=model_flux_broad[order]*self.params_dict['phi_ij'][order,det]
 
-                            # data minus model without certain molecule
+                            # data minus model without certain species
                             fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
                             residuals=fl_data-fl_excl_rebinned
                             residuals-=np.nanmean(residuals) # mean should be at zero
                             self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
                             cov_0_res=self.Cov[order,det].solve(residuals)
                             
-                            # excluded molecule template: complete final model minus final model w/o molecule
-                            molecule_template=fl_final-fl_excl
-                            molecule_template_rebinned=interp1d(wl_excl,molecule_template)(wl_data) # rebin for Cov
-                            molecule_template_rebinned-=np.nanmean(molecule_template_rebinned) # mean should be at zero
-                            cov_0_temp=self.Cov[order,det].solve(molecule_template_rebinned)
+                            # excluded species template: complete final model minus final model w/o species
+                            species_template=fl_final-fl_excl
+                            species_template_rebinned=interp1d(wl_excl,species_template)(wl_data) # rebin for Cov
+                            species_template_rebinned-=np.nanmean(species_template_rebinned) # mean should be at zero
+                            cov_0_temp=self.Cov[order,det].solve(species_template_rebinned)
                             wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
-                            template_shift=interp1d(wl_excl,molecule_template)(wl_shift) # interpolate template onto shifted wl
+                            template_shift=interp1d(wl_excl,species_template)(wl_shift) # interpolate template onto shifted wl
                             template_shift-=np.nanmean(template_shift) # mean should be at zero
 
                             CCF[order,det]=(template_shift.T).dot(cov_0_res)
@@ -493,84 +502,187 @@ class Retrieval:
                 noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
                 CCF_norm = CCF_sum/noise # get ccf map in S/N units
                 ACF_norm = ACF_sum/noise
+
                 SNR=CCF_norm[np.where(RVs==0)[0][0]]
                 self.parameters.params=orig_params_dict
 
             else:
-                CCF_norm,ACF_norm,SNR = ccf_acf_dict[molecule]
+                CCF_norm,ACF_norm,SNR = ccf_acf_dict[species_i]
 
-            ccf_dict[f'SNR_{molecule}']=SNR
-            ccf_acf_dict[molecule]=(CCF_norm,ACF_norm,SNR)
-            print(f'{molecule} S/N =',np.round(SNR,decimals=2))
+            ccf_dict[f'SNR_{species_i}']=SNR
+            ccf_acf_dict[species_i]=(CCF_norm,ACF_norm,SNR)
+            print(f'{species_i} S/N =',np.round(SNR,decimals=2))
 
         self.ccf_acf_dict = ccf_acf_dict
-        figs.CCF_plot_all(self,molecules,noiserange=100)
+        figs.CCF_plot_all(self,ccf_species,noiserange=100)
 
-        if CCF_results.exists()==False:
-            with open(CCF_results,'wb') as CCF_results:
-                pickle.dump(ccf_acf_dict,CCF_results)
+        if CCF_results.exists()==False and ccf_species==self.species_names:
+            save_pickle(ccf_acf_dict,CCF_results)
 
         self.params_dict.update(ccf_dict)
-        with open(f'{self.output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
-            pickle.dump(self.params_dict,file)
+        save_pickle(self.params_dict,f'{self.output_dir}/params_dict.pickle') # overwrite with CCF SNR
 
         return ccf_dict
 
-    def bayes_evidence(self,molecules,evidence_dict,retrieval_output_dir):
+    def CCF_residuals(self,ccf_species,noiserange=100): # can only be run after evaluate()
+
+        ccf_dict={}
+        ccf_acf_dict={} # save cross-correlations and auto-correlations
+        CCF_results=pathlib.Path(f'{self.output_dir}/CCF_residuals.pickle')
+        if CCF_results.exists():
+            ccf_acf_dict=load_pickle(CCF_results)
+
+        if isinstance(ccf_species, list)==False:
+            ccf_species=[ccf_species] # if only one, make list so that it works in the for loop
+
+        RVs=np.arange(-500,500,1) # km/s
+        for j,ccf_species_i in enumerate(ccf_species):
+
+            if CCF_results.exists()==False or (ccf_species_i not in ccf_acf_dict):
+
+                # create template with only selected species at equibilrium abundance
+                parameters_spec = self.params_dict
+                parameters_spec.update({'C/O': self.params_dict['C/O'],
+                                'Fe/H': self.params_dict['C/H']})
+                ratios_free,ratios_equ = get_ratios(self,equ_too=True)
+                for r,e in zip(ratios_free,ratios_equ):
+                    parameters_spec.update({e: self.params_dict[r]})
+                parameters_spec = Parameters({}, parameters_spec)
+                parameters_spec.param_priors['log_l']=[-3,0]
+                retr_spec = Retrieval(target=self.target,parameters=parameters_spec, 
+                                        species_names=self.species_names,Nlive=self.Nlive,
+                                        evtol=self.evtol,chemistry='equchem',
+                                        PT_type=self.PT_type,cloud_mode=self.cloud_mode)
+                retr_spec.primary_label=True
+                retr_spec.species_names = [ccf_species_i]
+                retr_spec.species_pRT, retr_spec.species_hill =retr_spec.get_pRT_hill(retr_spec.species_names)
+                retr_spec.atmosphere_objects = retr_spec.get_atmosphere_objects(for_species=ccf_species_i)
+                template_fluxes=pRT_spectrum(retr_spec).make_spectrum()
+                template_waves = self.data_wave
+                
+                cut = 2 # remove values on edge because they were problematic??
+                beta=1.0-RVs/const.c.to('km/s').value
+                CCF = np.zeros((self.n_orders,self.n_dets,len(RVs)))
+                ACF = np.zeros((self.n_orders,self.n_dets,len(RVs))) # auto-correlation
+
+                for order in range(self.n_orders):
+                    for det in range(self.n_dets):
+
+                        if np.isnan(self.data_flux[order,det]).all():
+                            pass # skip empty order/det, CCF and ACF remains 0 
+
+                        else:
+                            
+                            template_flux=template_fluxes[order][cut:-cut]
+                            template_wl = template_waves[order][cut:-cut]
+                            
+                            wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]]
+                            fl_data = self.data_flux[order,det,self.mask_isfinite[order,det]]-self.model_flux[order,det,self.mask_isfinite[order,det]]
+
+                            #if self.primary_label==False: # remove primary to cc only w secondary
+                                #fl_data-= self.model_object.primary_broadened[order,det,self.mask_isfinite[order,det]]
+                            template_flux = rem_cont(template_wl,template_flux)
+                            plt.plot(template_wl,template_flux,c='tab:blue')
+                            plt.plot(wl_data,fl_data,c='tab:orange')
+
+                            fl_data-=np.nanmedian(fl_data)
+                            self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                            cov_0_data=self.Cov[order,det].solve(fl_data)                            
+                            wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
+                            template_shift=interp1d(template_wl,template_flux)(wl_shift) # interpolate template onto shifted wl
+                            #template_shift-= np.nanmedian(template_shift)  
+                            template_shift = np.array([template_shift[:,i] - np.nanmedian(template_shift[:,i]) for i in range(template_shift.shape[1])]).T
+                            #print(order,det, np.nanmedian(template_shift),np.nanmedian(fl_data))
+                            cov_0_temp=self.Cov[order,det].solve(template_shift[:,0])
+                            CCF[order,det]=(template_shift.T).dot(cov_0_data)
+                            ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+
+                plt.savefig(f'./xccf/{ccf_species_i}.png')
+                plt.close()
+                CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
+                ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
+                noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
+                if noise==0:
+                    CCF_norm = np.full(CCF_sum.shape,-1)
+                    ACF_norm = np.full(CCF_sum.shape,-1)
+                else:
+                    CCF_norm = CCF_sum/noise # get ccf map in S/N units
+                    ACF_norm = ACF_sum/noise
+
+                SNR=CCF_norm[np.where(RVs==0)[0][0]]
+
+            else:
+                CCF_norm,ACF_norm,SNR = ccf_acf_dict[ccf_species_i]
+
+            ccf_dict[f'SNR_{ccf_species_i}']=SNR
+            ccf_acf_dict[ccf_species_i]=(CCF_norm,ACF_norm,SNR)
+            print(f'{ccf_species_i} S/N =',np.round(SNR,decimals=2))
+
+        self.ccf_acf_dict = ccf_acf_dict
+        figs.CCF_plot_all(self,ccf_species,noiserange=100,show_ACF=True)
+
+        if CCF_results.exists()==False and ccf_species==self.species_names:
+            save_pickle(ccf_acf_dict,CCF_results)
+
+        self.params_dict.update(ccf_dict)
+        #save_pickle(self.params_dict,f'{self.output_dir}/params_dict.pickle')
+
+        return ccf_dict
+
+    def bayes_evidence(self,bayes_species,evidence_dict,retrieval_output_dir):
 
         bayes_dict=evidence_dict
         self.output_dir=pathlib.Path(f'{self.output_dir}/evidence_retrievals') # store output in separate folder
         self.output_dir.mkdir(parents=True, exist_ok=True)
         print('\n ----------------- Current bayes_dict= ----------------- \n',bayes_dict)
 
-        if isinstance(molecules, list)==False:
-            molecules=[molecules] # if only one, make list so that it works in for loop
+        if isinstance(bayes_species, list)==False:
+            bayes_species=[bayes_species] # if only one, make list so that it works in for loop
 
-        for molecule in molecules: # exclude molecule from retrieval
+        for species_i in bayes_species: # exclude from retrieval
 
-            self.prefix=f'pmn_wo{molecule}_' 
-            finish=pathlib.Path(f'{self.output_dir}/final_wo{molecule}_posterior_dict.pickle')
+            self.prefix=f'pmn_wo{species_i}_' 
+            finish=pathlib.Path(f'{self.output_dir}/final_wo{species_i}_posterior_dict.pickle')
             if finish.exists():
-                print(f'\n ----------------- Evidence retrieval for {molecule} already done ----------------- \n')
+                print(f'\n ----------------- Evidence retrieval for {species_i} already done ----------------- \n')
                 setback_prior=False
             else:
-                print(f'\n ----------------- Starting evidence retrieval for {molecule} ----------------- \n')
+                print(f'\n ----------------- Starting evidence retrieval for {species_i} ----------------- \n')
                 setback_prior=True
                 if self.chemistry=='freechem':
-                    original_prior=self.parameters.param_priors[f'log_{molecule}']
-                    self.parameters.param_priors[f'log_{molecule}']=[-15,-14] # exclude from retrieval
+                    original_prior=self.parameters.param_priors[f'log_{species_i}']
+                    self.parameters.param_priors[f'log_{species_i}']=[-15,-14] # exclude from retrieval
                 elif self.chemistry in ['equchem','quequchem']:
-                    if molecule=='13CO':
+                    if species_i=='13CO':
                         key='log_C12_1S3_ratio'
-                    elif molecule=='H2(18)O':
+                    elif species_i=='H2(18)O':
                         key='log_O16_18_ratio'
                     original_prior=self.parameters.param_priors[key]
                     self.parameters.param_priors[key]=[14,15] # exclude from retrieval
 
-                self.callback_label=f'live_wo{molecule}_'
+                self.callback_label=f'live_wo{species_i}_'
                 self.PMN_run(N_live_points=self.N_live_points,evidence_tolerance=self.evidence_tolerance,resume=True)
             
-            self.callback_label=f'final_wo{molecule}_'
+            self.callback_label=f'final_wo{species_i}_'
             self.evaluate(callback_label=self.callback_label) # gets self.lnZ_ex
             ex_model=pRT_spectrum(self).make_spectrum()      
             lnL = self.LogLike(ex_model, self.Cov) # call function to generate chi2
             chi2_ex = self.LogLike.chi2_red # reduced chi^2
             lnB,sigma=self.compare_evidence(self.lnZ, self.lnZ_ex)
-            print(f'sigma_{molecule}=',sigma)
-            bayes_dict[f'lnBm_{molecule}']=lnB
-            bayes_dict[f'sigma_{molecule}']=sigma
-            bayes_dict[f'chi2_wo_{molecule}']=chi2_ex  
-            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save results at each step
-                pickle.dump(bayes_dict,file)
+            print(f'sigma_{species_i}=',sigma)
+            bayes_dict[f'lnBm_{species_i}']=lnB
+            bayes_dict[f'sigma_{species_i}']=sigma
+            bayes_dict[f'chi2_wo_{species_i}']=chi2_ex  
+            save_pickle(bayes_dict,f'{retrieval_output_dir}/evidence_dict.pickle') # save results at each step
 
             # set back param priors for next retrieval
             if setback_prior==True:
                 if self.chemistry=='freechem':
-                    self.parameters.param_priors[f'log_{molecule}']=original_prior 
+                    self.parameters.param_priors[f'log_{species_i}']=original_prior 
                 elif self.chemistry in ['equchem','quequchem']:
-                    if molecule=='13CO':
+                    if species_i=='13CO':
                         key='log_C12_13_ratio'
-                    elif molecule=='H2(18)O':
+                    elif species_i=='H2(18)O':
                         key='log_O16_18_ratio'
                     self.parameters.param_priors[key]=original_prior
             
@@ -597,7 +709,7 @@ class Retrieval:
             sigma=np.inf 
         return ln_B*sign,sigma*sign
 
-    def run_retrieval(self,**kwargs): 
+    def run_retrieval(self,bayes_species=None): 
 
         retrieval_output_dir=self.output_dir # save end results here
 
@@ -614,25 +726,21 @@ class Retrieval:
 
         ccf_dict=self.cross_correlation(self.species_names) # cross-corr all species
         self.params_dict.update(ccf_dict)
-        with open(f'{retrieval_output_dir}/params_dict.pickle','wb') as file: # overwrite with added CCF SNR
-            pickle.dump(self.params_dict,file)
+        save_pickle(self.params_dict,f'{retrieval_output_dir}/params_dict.pickle') # overwrite with added CCF SNR
     
-        print(self.params_dict)
-        if 'bayes_molecules' in kwargs:
-            bayes_molecules=kwargs.get('bayes_molecules')
+        print('Parameters:\n',self.params_dict)
+        if bayes_species!=None:
             evidence_dict=pathlib.Path(f'{retrieval_output_dir}/evidence_dict.pickle')
             if evidence_dict.exists()==False: # to avoid overwriting sigmas from other evidence retrievals
                 print('\n ----------------- Creating evidence dict ----------------- \n')
                 self.evidence_dict={}
             else:
                 print('\n ----------------- Continuing existing evidence dict ----------------- \n')
-                with open(evidence_dict,'rb') as file:
-                    self.evidence_dict=pickle.load(file)
+                self.evidence_dict= load_pickle(evidence_dict)
 
-            bayes_dict=self.bayes_evidence(bayes_molecules,evidence_dict=self.evidence_dict,retrieval_output_dir=retrieval_output_dir)
+            bayes_dict=self.bayes_evidence(bayes_species,evidence_dict=self.evidence_dict,retrieval_output_dir=retrieval_output_dir)
             print('\n ----------------- Final evidence dict ----------------- \n',bayes_dict)
-            with open(f'{retrieval_output_dir}/evidence_dict.pickle','wb') as file: # save new results in separate dict
-                pickle.dump(bayes_dict,file)
+            save_pickle(bayes_dict,f'{retrieval_output_dir}/evidence_dict.pickle') # save new results in separate dict
 
         output_file=pathlib.Path('retrieval.out')
         if output_file.exists():

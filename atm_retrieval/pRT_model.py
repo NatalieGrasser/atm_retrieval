@@ -8,12 +8,15 @@ from astropy import units as u
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter
-import pickle
 import pathlib
 from scipy.optimize import nnls
 from scipy.ndimage import gaussian_filter
 import gc
 from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
+from utils import *
+import warnings
+from scipy.linalg import LinAlgWarning
+warnings.filterwarnings(action='ignore', category=LinAlgWarning, module='sklearn') # occasional
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -30,14 +33,13 @@ class pRT_spectrum:
 
     def __init__(self,
                  retr_obj,
-                 spectral_resolution=100_000,  
                  contribution=False, # only for plotting atmosphere.contr_em
                  interpolate=True,
                  leave_out=None):
         
         inherit_attributes = ['primary_label','data_wave','target','species_pRT',
                               'chemistry','atmosphere_objects','lbl_opacity_sampling',
-                              'n_atm_layers','pressure','PT_type','cloud_mode']
+                              'n_atm_layers','pressure','PT_type','cloud_mode','spectral_resolution']
         for attr in inherit_attributes:  # list of attributes to pass down
             setattr(self, attr, getattr(retr_obj, attr))
 
@@ -48,7 +50,6 @@ class pRT_spectrum:
             self.data_err = retr_obj.data_err
 
         self.params=retr_obj.parameters.params
-        self.spectral_resolution= spectral_resolution
         self.interpolate=interpolate
         self.temperature = self.make_pt() #P-T profile
         self.vbary = retr_obj.target.vbary
@@ -115,34 +116,35 @@ class pRT_spectrum:
         mass_ratio_C18O_C16O = self.read_species_info('C18O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_C17O_C16O = self.read_species_info('C17O','mass')/self.read_species_info('12CO','mass')
         mass_ratio_H218O_H2O = self.read_species_info('H2(18)O','mass')/self.read_species_info('H2O','mass')
-        self.C13_12_ratio = 10**(-params.get('log_C12_13_ratio',-12))
-        self.O18_16_ratio = 10**(-params.get('log_O16_18_ratio',-12))
-        self.O17_16_ratio = 10**(-params.get('log_O16_17_ratio',-12))
+        self.C13_12_ratio = 10**(-params.get('log_C12_13_ratio',15))
+        self.O18_16_ratio = 10**(-params.get('log_O16_18_ratio',15))
+        self.O17_16_ratio = 10**(-params.get('log_O16_17_ratio',15))
 
         isotopes = ['13CO','C17O','C18O','H2(18)O']
         ratios = ['C13_12_ratio','O17_16_ratio','O18_16_ratio','O18_16_ratio']
-        for i,isotope in enumerate(isotopes):
+        for i,isotope in enumerate(isotopes): # for cross-correlation
             if isotope in [self.leave_out]:
                 setattr(self, ratios[i], 0)          
 
         for species_i in species:
-            if (species_i=='CO_main_iso'): # 12CO mass fraction
+            if (species_i in ['CO_main_iso','CO_high']): # 12CO mass fraction
+                CO_linelist = species_i
                 mass_fractions[species_i]=(1-self.C13_12_ratio*mass_ratio_13CO_12CO
                                             -self.O18_16_ratio*mass_ratio_C18O_C16O
-                                            -self.O17_16_ratio*mass_ratio_C17O_C16O)*mass_fractions['CO_main_iso']
+                                            -self.O17_16_ratio*mass_ratio_C17O_C16O)*mass_fractions[CO_linelist]
                 continue
-            if (species_i=='CO_36'): # 13CO mass fraction
-                mass_fractions[species_i]=self.C13_12_ratio*mass_ratio_13CO_12CO*mass_fractions['CO_main_iso']
+            if (species_i in ['CO_36','CO_36_high']): # 13CO mass fraction
+                mass_fractions[species_i]=self.C13_12_ratio*mass_ratio_13CO_12CO*mass_fractions[CO_linelist]
                 continue
-            if (species_i=='CO_28'): # C18O mass fraction
-                mass_fractions[species_i]=self.O18_16_ratio*mass_ratio_C18O_C16O*mass_fractions['CO_main_iso']
+            if (species_i in ['CO_28','CO_28_high_Sam']): # C18O mass fraction
+                mass_fractions[species_i]=self.O18_16_ratio*mass_ratio_C18O_C16O*mass_fractions[CO_linelist]
                 continue
-            if (species_i=='CO_27'): # C17O mass fraction
-                mass_fractions[species_i]=self.O17_16_ratio*mass_ratio_C17O_C16O*mass_fractions['CO_main_iso']
+            if (species_i in ['CO_27','CO_27_high_Sam']): # C17O mass fraction
+                mass_fractions[species_i]=self.O17_16_ratio*mass_ratio_C17O_C16O*mass_fractions[CO_linelist]
                 continue
             if (species_i in ['H2O_main_iso','H2O_pokazatel_main_iso']): # H2O mass fraction
                 H2O_linelist=species_i
-                mass_fractions[species_i]=(1-self.O18_16_ratio*mass_ratio_H218O_H2O)*mass_fractions[species_i]
+                mass_fractions[species_i]=(1-self.O18_16_ratio*mass_ratio_H218O_H2O)*mass_fractions[H2O_linelist]
                 continue
             if (species_i=='H2O_181_HotWat78'): # H2_18O mass fraction
                 mass_fractions[species_i]=self.O18_16_ratio*mass_ratio_H218O_H2O*mass_fractions[H2O_linelist]
@@ -306,7 +308,7 @@ class pRT_spectrum:
         mass_fractions['MMW'] = MMW # pRT requires MMW in mass fractions dictionary
         CO = C/O if np.sum(O)!=0 else np.inf
         log_CH_solar = 8.46 - 12 # Asplund et al. (2021)
-        FeH = np.log10(C/H)-log_CH_solar
+        FeH = np.log10(C/H)-log_CH_solar if (C/H).any()!=0.0 else -np.inf*np.ones((len(C)))
         CO = np.nanmean(CO)
         FeH = np.nanmean(FeH)
 
@@ -568,11 +570,10 @@ class pRT_spectrum:
 
         file=pathlib.Path(f'atmosphere_objects_continuous.pickle')
         if file.exists():
-            with open(file,'rb') as file:
-                atmosphere=pickle.load(file)
+            atmosphere = load_pickle(file)
 
         if self.cloud_mode == 'gray': # Gray cloud opacity
-            self.give_absorption_opacity=self.gray_cloud_opacity() # fsed_gray only needed here, not in calc_flux
+            self.give_absorption_opacity=self.gray_cloud_opacity # fsed_gray only needed here, not in calc_flux
 
         atmosphere.calc_flux(self.temperature,
                         self.mass_fractions,
@@ -595,11 +596,6 @@ class pRT_spectrum:
         spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
         spec = self.convolve_to_resolution(waves_even, spec, self.spectral_resolution)
         flux = np.interp(ref_wave, waves_even*1e3, flux) # pRT wavelengths from microns to nm
-        flux/=np.nanmedian(flux)
+        #flux/=np.nanmedian(flux)
 
         return flux
-
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx

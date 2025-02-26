@@ -1,6 +1,7 @@
 import os
 import cloud_cond as cloud_cond
 from pRT_model import pRT_spectrum
+from utils import *
 import numpy as np
 import corner
 import matplotlib.pyplot as plt
@@ -15,18 +16,9 @@ import pathlib
 import math
 import pandas as pd
 from petitRADTRANS import Radtrans
+from matplotlib.backends.backend_pdf import PdfPages
 warnings.filterwarnings("ignore", category=UserWarning) 
-
-def scale_between(ymin,ymax,arr):
-    scale=(ymax-ymin)/(np.nanmax(arr)-np.nanmin(arr))
-    scaled_arr=scale*(arr-np.nanmin(arr))+ymin
-    return scaled_arr
-
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
-
+            
 def plot_spectrum_inset(retr_obj,inset=True,fs=10,**kwargs):
 
     wave=retr_obj.data_wave
@@ -112,60 +104,34 @@ def plot_spectrum_inset(retr_obj,inset=True,fs=10,**kwargs):
 
 def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
 
-    if overplot_species!=None: # overplot species onto residuals
+    if overplot_species!=None: # overplot species to check features
         opacities={}
+        species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
 
-        for spec in overplot_species:
-            from retr import Retrieval
-            from parameters import Parameters
-            from pRT_model import pRT_spectrum
-
-            # create spectrum containing only selected species
-            parameters_species = {} #retr_obj.params_dict.copy()
-            for key in retr_obj.parameters.free_params.keys():
-                if key in retr_obj.species_names:
-                    parameters_species[f"log_{key}"]= -12
-                else:
-                    parameters_species[key]=retr_obj.params_dict[key]
-            if f'log_{spec}' in retr_obj.params_dict.keys():
-                parameters_species[f'log_{spec}']=retr_obj.params_dict[f'log_{spec}']
-            #else:
-                #parameters_species[f'log_{spec}']=-4 # check species that isn't in retr
-            parameters_species = Parameters({}, parameters_species)
-            parameters_species.param_priors['log_l']=[-3,0]
-            retr_species = Retrieval(target=retr_obj.target,parameters=parameters_species, 
-                                          species_names=retr_obj.species_names,
-                                        Nlive=retr_obj.Nlive,evtol=retr_obj.evtol,
-                                    chemistry='freechem',PT_type=retr_obj.PT_type)            
-            if f'log_{spec}' not in retr_obj.params_dict.keys():
-                retr_species.atmosphere_objects = retr_species.get_atmosphere_objects(for_species=spec)
-                parameters_species.params[f'log_{spec}']=-4 # check species that isn't in retr
-                retr_species.species = [spec]
-            retr_species.primary_label=True # to avoid problems
-            retr_species.model_object=pRT_spectrum(retr_species)
-            spec_flux=retr_species.model_object.make_spectrum()
+        for spec in overplot_species: 
+            opa_orders=[]
             for order in range(7):
-                for det in range(3):
-                    spec_flux[order,det]/=np.median(spec_flux[order,det])
-            
-            #for order in range(7):
-            if False:
-                    wl_pad=0#7 # wavelength padding because spectrum is not wavelength shifted yet
-                    wlmin=np.min(retr_obj.K2166[order])-wl_pad
-                    wlmax=np.max(retr_obj.K2166[order])+wl_pad
-                    wlen_range=np.array([wlmin,wlmax])*1e-3 # nm to microns
-                    atm = Radtrans(line_species=[spec],
-                                        rayleigh_species = [],
-                                        continuum_opacities = [],
-                                        wlen_bords_micron=wlen_range, 
-                                        mode='lbl',
-                                        lbl_opacity_sampling=3) # take every nth point (=3 in deRegt+2024)
-                    
-                    T = np.array([1400]).reshape(1)
-                    wave_cm, opas = atm.get_opa(T)
-                    wave_orders.append(wave_cm*1e7)
-                    opa_orders.append(opas[spec].flatten())
-            opacities[spec] = spec_flux
+                wlen_range=np.array([np.min(retr_obj.K2166[order]),np.max(retr_obj.K2166[order])])*1e-3 # nm to microns
+                atm = Radtrans(line_species=[species_info.loc[spec,'pRT_name']],
+                                    rayleigh_species = [],
+                                    continuum_opacities = [],
+                                    wlen_bords_micron=wlen_range, 
+                                    mode='lbl',
+                                    lbl_opacity_sampling=3) # take every nth point (=3 in deRegt+2024)
+                
+                wave_cm, opas = atm.get_opa(np.array([retr_obj.params_dict['T_maxcont']]).reshape(1))
+                opa = opas[species_info.loc[spec,'pRT_name']].flatten()
+
+                # RV+bary shifting and rotational broadening
+                from astropy import constants as const
+
+                wl_shifted= wave_cm*1e7*(1.0+(retr_obj.params_dict['rv']-retr_obj.target.vbary)/const.c.to('km/s').value)
+                waves_even = np.linspace(np.min( wave_cm*1e7), np.max( wave_cm*1e7), np.array(wave_cm).size) # wavelength array has to be regularly spaced
+                opa = np.interp(waves_even, wl_shifted, opa)
+
+                opa_interp = np.interp(retr_obj.data_wave[order].flatten(), waves_even, opa)
+                opa_orders.append(opa_interp)
+            opacities[spec] = np.array(opa_orders).reshape((7,3,2048))
         retr_obj.opacities=opacities
 
     retr=retr_obj
@@ -233,14 +199,19 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
             ax2.plot([np.min(retr.data_wave[order,det]),np.max(retr.data_wave[order,det])],[0,0],lw=0.8,c='k')
 
             if overplot_species!=None:
-                colors=['b','r','g','y']
+                overplot_species_colors=['c','m','r','y','b','g']
+                overplot_species_legend=[]
                 for i,species in enumerate(overplot_species):
                     opas=opacities[species]
-                    #ymax=np.nanmax(residuals[order])
-                    #ymin=np.nanmin(residuals[order])
-                    #opa=opas[order]
-                    #opa=scale_between(ymin,ymax,opa)
-                    ax1.plot(retr.data_wave[order,det],opas[order,det],lw=0.8,c=colors[i])
+                    ymax=np.nanmax([np.nanmax(retr.model_flux[order]),np.max(retr.data_flux[order])])#*0.9
+                    ymin=np.nanmin([np.nanmin(retr.model_flux[order]),np.min(retr.data_flux[order])])#*1.1
+                    opa=opas[order]
+                    opa=scale_between(ymax,ymin,opa)
+                    opa=opa[det]
+                    ax1.plot(retr.data_wave[order,det],opa,lw=0.8,c=overplot_species_colors[i])
+                    overplot_species_legend.append(Line2D([0],[0],color=overplot_species_colors[i],
+                                                   linewidth=2,linestyle='-',label=species))
+                ax1.legend(handles=overplot_species_legend,fontsize=10,ncol=len(overplot_species))
 
         #min1=np.nanmin(np.array([retr.data_flux[order]-retr.data_err[order],retr.model_flux[order]]))
         #max1=np.nanmax(np.array([retr.data_flux[order]+retr.data_err[order],retr.model_flux[order]]))
@@ -266,14 +237,16 @@ def plot_spectrum_split(retr_obj,overplot_species=None,plot_components=False):
     ax[19].set_xlabel('Wavelength [nm]')
     fig.tight_layout()
     plt.subplots_adjust(wspace=0,hspace=0)
-    if plot_components==False:
+    if overplot_species!=None:
+        name = 'bestfit_opacities'
+    elif plot_components==False:
         name = 'bestfit_split' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}bestfit_split'
     else:
         name = 'components' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}components'
     fig.savefig(f'{retr_obj.output_dir}/{name}.pdf')
     plt.close()
 
-def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
+def plot_pt(retr_obj,fs=12,figsize=5,sb=True,show_cond=True,show_contr=True,**kwargs):
 
     legend_labels=kwargs.get('legend_labels',None)
 
@@ -287,7 +260,7 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
     if 'ax' in kwargs:
         ax=kwargs.get('ax')
     else:
-        fig,ax=plt.subplots(1,1,figsize=(5,5),dpi=200)
+        fig,ax=plt.subplots(1,1,figsize=(figsize,figsize),dpi=200)
     #cloud_species = ['MgSiO3(c)', 'Fe(c)', 'KCl(c)', 'Na2S(c)']
     #cloud_labels=['MgSiO$_3$(c)', 'Fe(c)', 'KCl(c)', 'Na$_2$S(c)']
     #cs_colors=['gold','goldenrod','peru','sandybrown']
@@ -296,7 +269,7 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
     cs_colors=['goldenrod','sandybrown']
 
     # if pt profile and condensation curve don't intersect, clouds have no effect
-    if retr_obj.target.name in ['2M0355','2M1425','test','test_corr']:
+    if retr_obj.target.name in ['2M0355','2M1425','test','test_corr'] and show_cond:
         for i,cs in enumerate(cloud_species):
             cs_key = cs[:-3]
             if cs_key == 'KCl':
@@ -310,7 +283,7 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
     # compare with sonora bobcat T=1400K, logg=4.65 -> 10**(4.65)/100 =  446 m/s²
     #file=np.loadtxt('t1400g562nc_m0.0.dat')
     if retr_obj.target.name in ['test','test_corr']:
-        from retr import Retrieval
+        from retrieval import Retrieval
         from parameters import Parameters
         from testspec import test_parameters
         test_par = Parameters({}, test_parameters)
@@ -344,7 +317,7 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
 
     if 'retr_obj2' in kwargs: # if compare two retrs, specify object name in legend
         object_label=f'{retr_obj.target.name} $P$-$T$'
-        contr_label=f'{retr_obj.target.name} contribution'
+        contr_label=f'{retr_obj.target.name} contr.'
     else:
         object_label='$P$-$T$ profile'
         contr_label='Contribution'
@@ -402,16 +375,17 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
     
     if 'retr_obj2' in kwargs: # compare two retrs
         retr_obj2=kwargs.get('retr_obj2')
-        object_label2=f'{retr_obj2.target.name} retr'
+        object_label2=f'{retr_obj2.target.name} $P$-$T$'
         xmin2,xmax2=plot_temperature(retr_obj2,ax,object_label2)
         xmin=np.nanmin([xmin,xmin2])
         xmax=np.nanmax([xmax,xmax2])
-        summed_contr2=retr_obj2.summed_contr
-        contribution_plot2=summed_contr2/np.max(summed_contr2)*(xmax-xmin)+xmin
-        ax.plot(contribution_plot2,retr_obj2.model_object.pressure,linestyle='dashed',
-                lw=1.5,alpha=0.8,color=retr_obj2.color2)
-        lines.append(Line2D([0], [0], color=retr_obj2.color2, alpha=0.8,linewidth=1.5, 
-                            linestyle='--',label=f'{retr_obj2.target.name} contribution'))
+        if show_contr:
+            summed_contr2=retr_obj2.summed_contr
+            contribution_plot2=summed_contr2/np.max(summed_contr2)*(xmax-xmin)+xmin
+            ax.plot(contribution_plot2,retr_obj2.model_object.pressure,linestyle='dashed',
+                    lw=1.5,alpha=0.8,color=retr_obj2.color2)
+            lines.append(Line2D([0], [0], color=retr_obj2.color2, alpha=0.8,linewidth=1.5, 
+                                linestyle='--',label=f'{retr_obj2.target.name} contr.'))
     
     if 'retr_obj3' in kwargs:
         retr_obj3=kwargs.get('retr_obj3')
@@ -419,26 +393,28 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
         xmin3,xmax3=plot_temperature(retr_obj3,ax,object_label3)
         xmin=np.nanmin([xmin,xmin2,xmin3])
         xmax=np.nanmax([xmax,xmax2,xmax3])
-        summed_contr3=retr_obj3.summed_contr
-        contribution_plot3=summed_contr3/np.max(summed_contr3)*(xmax-xmin)+xmin
-        ax.plot(contribution_plot3,retr_obj3.model_object.pressure,linestyle='dashed',
-                lw=1.5,alpha=0.8,color=retr_obj3.color2)
-        lines.append(Line2D([0], [0], color=retr_obj3.color2, alpha=0.8,linewidth=1.5, 
-                            linestyle='--',label=f'{retr_obj3.target.name} contribution'))
+        if show_contr:
+            summed_contr3=retr_obj3.summed_contr
+            contribution_plot3=summed_contr3/np.max(summed_contr3)*(xmax-xmin)+xmin
+            ax.plot(contribution_plot3,retr_obj3.model_object.pressure,linestyle='dashed',
+                    lw=1.5,alpha=0.8,color=retr_obj3.color2)
+            lines.append(Line2D([0], [0], color=retr_obj3.color2, alpha=0.8,linewidth=1.5, 
+                                linestyle='--',label=f'{retr_obj3.target.name} contr.'))
 
-    summed_contr=retr_obj.summed_contr    
-    contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
-    ax.plot(contribution_plot,retr_obj.model_object.pressure,linestyle='dashed',
-            lw=1.5,alpha=0.8,color=retr_obj.color2)
-    lines.append(Line2D([0], [0], color=retr_obj.color2, alpha=0.8,
-                        linewidth=1.5, linestyle='--',label=contr_label))
-    lines = lines[:1]+[lines[-1]]+lines[1:-1] # move to second position in legend instead of last
+    if show_contr:
+        summed_contr=retr_obj.summed_contr    
+        contribution_plot=summed_contr/np.max(summed_contr)*(xmax-xmin)+xmin
+        ax.plot(contribution_plot,retr_obj.model_object.pressure,linestyle='dashed',
+                lw=1.5,alpha=0.8,color=retr_obj.color2)
+        lines.append(Line2D([0], [0], color=retr_obj.color2, alpha=0.8,
+                            linewidth=1.5, linestyle='--',label=contr_label))
+        lines = lines[:1]+[lines[-1]]+lines[1:-1] # move to second position in legend instead of last
     
     ax.set(xlabel='Temperature [K]', ylabel='Pressure [bar]',yscale='log',
         ylim=(np.nanmax(retr_obj.model_object.pressure),
         np.nanmin(retr_obj.model_object.pressure)),xlim=(xmin,xmax))
     
-    if sb==True:
+    if sb==True or 'test' in retr_obj.target.name:
         lines.append(comparison_pt)
 
     if legend_labels!=None:
@@ -459,6 +435,7 @@ def plot_pt(retr_obj,fs=12,sb=True,**kwargs):
         fig.tight_layout()
         name = 'PT_profile' if retr_obj.callback_label=='final_' else f'{retr_obj.callback_label}PT_profile'
         fig.savefig(f'{retr_obj.output_dir}/{name}.pdf')
+        fig.savefig(f'{retr_obj.output_dir}/{name}.png')
         plt.close()
 
 def get_plotposterior_labels(retr_obj,param_names,get_medians=False):
@@ -474,7 +451,7 @@ def get_plotposterior_labels(retr_obj,param_names,get_medians=False):
     else:
         return plot_posterior, param_labels
 
-def cornerplot(retr_obj,getfig=False,figsize=(20,20),fs=12,plot_label='',
+def cornerplot(retr_obj,getfig=False,figsize=20,fs=12,plot_label='',
             only_abundances=False,only_params=None,not_abundances=False,ratios=False):
     
     param_names = []
@@ -485,6 +462,7 @@ def cornerplot(retr_obj,getfig=False,figsize=(20,20),fs=12,plot_label='',
 
     elif only_params is not None: # keys of specified parameters to plot
         param_names = only_params
+        plot_label='_some'
 
     elif not_abundances==True: # plot all except abundances
         plot_label='_rest'
@@ -493,19 +471,16 @@ def cornerplot(retr_obj,getfig=False,figsize=(20,20),fs=12,plot_label='',
             param_names.append(key)
 
     elif ratios==True:
-        figsize=(9,9)
+        figsize=9
         plot_label='_ratios'
-        if retr_obj.chemistry in ['equchem','quequchem']:
-            param_names= ['C/O','Fe/H','log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
-        elif retr_obj.chemistry=='freechem':
-            param_names= ['C/O','C/H','log_12CO/13CO','log_12CO/C17O','log_12CO/C18O','log_H2O/H2(18)O']
+        param_names = get_ratios(retr_obj)
     
     else: # all params: avoid, could be too big
         plot_label='_all'
         param_names= list(retr_obj.parameters.free_params.keys())
 
     plot_posterior, param_labels, medians = get_plotposterior_labels(retr_obj,param_names,get_medians=True)
-    fig = plt.figure(figsize=figsize) # fix size to avoid memory issues
+    fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     fig = corner.corner(plot_posterior, 
                         labels=param_labels, 
                         title_kwargs={'fontsize':fs},
@@ -537,13 +512,12 @@ def cornerplot(retr_obj,getfig=False,figsize=(20,20),fs=12,plot_label='',
     # add true values of test spectrum, plotting didn't work bc x-axis range so small, some didn't show up
     if retr_obj.target.name in ['test','test_corr']:
         from testspec import test_parameters,test_mathtext
-        compare=np.full(len(param_labels),None) # =None for non-input values of test spectrum
+        compare=[] # =None for non-input values of test spectrum
         for key_i in test_parameters.keys():
             label_i=test_mathtext[key_i]
             value_i=test_parameters[key_i]
             if label_i in param_labels:
-                i=np.where(param_labels==label_i)[0][0]
-                compare[i]=value_i # add only those values that are used in cornerplot, in correct order
+                compare.append(value_i) # add only those values that are used in cornerplot
         x=0
         for i in range(len(compare)):
             titles[x] = titles[x]+'\n'+f'in: {compare[i]}'
@@ -593,7 +567,7 @@ def make_all_plots(retr_obj,only_abundances=False,only_params=None,split_corner=
             cornerplot(retr_obj,only_params=only_params2,plot_label='2')
         else: # avoid this though
             cornerplot(retr_obj,only_params=only_params)
-    VMR_plot(retr_obj,molecules='all',comp_equ=comp_equ) # show all (without errors)
+    VMR_plot(retr_obj,VMR_species='all',comp_equ=comp_equ) # show all (without errors)
     VMR_plot(retr_obj,comp_equ=comp_equ) # show most abundant (with errors)
     if retr_obj.primary_label==False:
         plot_spectrum_split(retr_obj,plot_components=True)
@@ -601,7 +575,7 @@ def make_all_plots(retr_obj,only_abundances=False,only_params=None,split_corner=
 def summary_plot(retr_obj,**kwargs):
 
     fs=13
-    figsize=(17,17)
+    figsize=17
     if retr_obj.chemistry in ['equchem','quequchem']:
         only_params=['rv','vsini','log_g','T0','C/O','Fe/H',
                  'log_C12_13_ratio','log_O16_18_ratio','log_O16_17_ratio']
@@ -617,7 +591,7 @@ def summary_plot(retr_obj,**kwargs):
         only_params.extend(param_names[-7:][::-1]) # get most abundant species
     if 'show_params' in kwargs:
         only_params=kwargs.get('show_params')
-        figsize=(15,15)
+        figsize=15
         fs=9
 
     fig, ax = cornerplot(retr_obj,getfig=True,only_params=only_params,figsize=figsize,fs=fs)
@@ -796,7 +770,7 @@ def compare_retrievals(retr_obj1,retr_obj2,fs=12,with_pt=True,ratios_logg=False,
             num=3
             retr_obj3=kwargs.get('retr_obj3')
             posterior3, labels = get_plotposterior_labels(retr_obj3,only_params)
-            legend_labels.append('quequ')
+            legend_labels.append('Quequ')
 
     fig = plt.figure(figsize=(figsize,figsize)) # fix size to avoid memory issues
     
@@ -913,7 +887,7 @@ def double_VMR_plot(name1,name2, **kwargs):
         free.evaluate(makefigs=False)
         equ=init_retrieval(target=obj_name,PT_type='PTgrad',chem='equchem',Nlive=400,evtol=0.5)
         equ.evaluate(makefigs=False)
-        legend_elements = VMR_plot(retr_obj=free,retr_obj2=equ,molecules=show_species,ax=ax,addname=True)
+        legend_elements = VMR_plot(retr_obj=free,retr_obj2=equ,VMR_species=show_species,ax=ax,addname=True)
         return legend_elements, free
 
     l1, retr_obj = VMRs_free_equ(name1,ax=axes[0])
@@ -946,7 +920,7 @@ def double_VMR_plot(name1,name2, **kwargs):
     fig.savefig(f'{retr_obj.output_dir}/comparison/VMRs_both.pdf',bbox_inches="tight",dpi=200)
     plt.close()
 
-def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kwargs):
+def VMR_plot(retr_obj,fs=10,n=8,VMR_species=None,comp_equ=False,addname=False,**kwargs):
 
     prefix = retr_obj.callback_label if retr_obj.callback_label=='live_' else ''
     suffix=''
@@ -960,12 +934,13 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kw
     species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
     alpha=0.6 if 'retr_obj2' in kwargs or comp_equ==True else 1
     legend_labels=0
-    xmin,xmax=1e-10,10**(-2.5)
+    #xmin,xmax=1e-10,10**(-2.5)
+    xmin,xmax=1e-10,1e0
     chemleg=[] # legend for chemistry
     pressure=retr_obj.model_object.pressure
 
     # plot n most abundant species
-    if molecules==None:
+    if VMR_species==None:
         suffix='_few'
         abunds=[]
         species=retr_obj.species_names
@@ -979,10 +954,12 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kw
                 abunds.append(np.median(retr_obj.VMR_dict[spec],axis=0)[find_nearest(retr_obj.pressure,10**retr_obj.params_dict['log_P_maxcont'])])
 
         abunds, species = zip(*sorted(zip(abunds, species)))
-        molecules=species[-n:][::-1] # get n largest
-    elif molecules=='all':
+        VMR_species=species[-n:][::-1] # get n largest
+    elif VMR_species=='all':
         suffix='_all'
-        molecules = retr_obj.species_names
+        VMR_species = retr_obj.species_names
+    else:
+        suffix = '_few'
 
     def log_spaced_values(center, num_values=4, log_range=1.0):
         log_center = np.log10(center)
@@ -1014,7 +991,7 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kw
         offset = log_spaced_values(contr_max) # slight vertical offset for overlapping species
         off_i=0
 
-        for species in molecules:
+        for species in VMR_species:
             color=species_info.loc[species,'color']
             label=species_info.loc[species,'mathtext_name']
             if retr_obj.chemistry=='freechem':
@@ -1054,19 +1031,18 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kw
         #suffix+='_compequ'
         from retrieval import Retrieval
         from parameters import Parameters
-
         parameters_equ = retr_obj.params_dict
         parameters_equ.update({'C/O': retr_obj.params_dict['C/O'],
-                        'Fe/H': retr_obj.params_dict['C/H'],
-                        'log_C12_13_ratio': retr_obj.params_dict['log_12CO/13CO'],
-                        'log_O16_18_ratio': retr_obj.params_dict['log_H2O/H2(18)O'],
-                        'log_O16_17_ratio': retr_obj.params_dict['log_12CO/C17O']})
+                        'Fe/H': retr_obj.params_dict['C/H']})
+        ratios_free,ratios_equ = get_ratios(retr_obj,equ_too=True)
+        for r,e in zip(ratios_free,ratios_equ):
+            parameters_equ.update({e: retr_obj.params_dict[r]})
         parameters_equ = Parameters({}, parameters_equ)
         parameters_equ.param_priors['log_l']=[-3,0]
         retr_equ = Retrieval(target=retr_obj.target,parameters=parameters_equ, 
-                                  species_names=retr_obj.species_names,
-                                  Nlive=retr_obj.Nlive,evtol=retr_obj.evtol,
-                                chemistry='equchem',PT_type=retr_obj.PT_type)
+                                  species_names=retr_obj.species_names,Nlive=retr_obj.Nlive,
+                                  evtol=retr_obj.evtol,chemistry='equchem',
+                                  PT_type=retr_obj.PT_type,cloud_mode=retr_obj.cloud_mode)
         retr_equ.model_object=pRT_spectrum(retr_equ,contribution=True)
         retr_equ.model_flux0=retr_equ.model_object.make_spectrum() # to get contr_em
         retr_equ.summed_contr=np.nanmean(retr_equ.model_object.contr_em_orders,axis=0) # average over all orders
@@ -1117,7 +1093,7 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kw
         return line_props
     else:
         leg_fs = fs*0.8 if '_all' not in suffix else fs*0.6
-        leg=ax.legend(fontsize=leg_fs,ncol=int(math.ceil(len(molecules)/2)),loc='lower left')
+        leg=ax.legend(fontsize=leg_fs,ncol=int(math.ceil(len(VMR_species)/2)),loc='lower left')
         for lh in leg.legend_handles:
             lh.set_alpha(1)
         for line in leg.get_lines():
@@ -1127,28 +1103,28 @@ def VMR_plot(retr_obj,fs=10,n=7,molecules=None,comp_equ=False,addname=False,**kw
         fig.savefig(f'{output_dir}/{prefix}VMRs{suffix}.pdf')
         plt.close()
 
-def CCF_plot_all(retr_obj,molecules,noiserange=100,**kwargs): # plot all CCFs
+def CCF_plot_all(retr_obj,ccf_species,noiserange=100,show_ACF=False,suffix='_all',**kwargs): # plot all CCFs
 
     species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
     RVs=np.arange(-500,500,1) # km/s
-    number=len(molecules)
+    number=len(ccf_species)
     nrows=number//2+number%2
-    ncols=2 if len(molecules) >1 else 1
+    ncols=2 if len(ccf_species) >1 else 1
     figsize = (5,nrows*1.3)
-    if len(molecules)==1:
-        figname = f'CCF_{molecules}' if isinstance(molecules, list)==False else f'CCF_{molecules[0]}'
+    if len(ccf_species)==1:
+        figname = f'CCF_{ccf_species}' if isinstance(ccf_species, list)==False else f'CCF_{ccf_species[0]}'
         figsize= (4,2.5)
     else:
-        figname='CCFs_all' if 'retr_obj2' not in kwargs else 'comparison/CCFs_both'
+        figname=f'CCFs{suffix}' if 'retr_obj2' not in kwargs else 'comparison/CCFs_both'
 
     fig,axes = plt.subplots(nrows,ncols,figsize=figsize,dpi=200,sharex=True)
-    for j,molecule in enumerate(molecules):
-        if len(molecules)==1:
+    for j,species_i in enumerate(ccf_species):
+        if len(ccf_species)==1:
             ax=axes
-            molecules=[molecules] if isinstance(molecules, list)==False else molecules
+            ccf_species=[ccf_species] if isinstance(ccf_species, list)==False else ccf_species
         else:
             ax=axes[j//2,j%2]
-        CCF_norm,_,SNR = retr_obj.ccf_acf_dict[molecule]
+        CCF_norm,ACF_norm,SNR = retr_obj.ccf_acf_dict[species_i]
         if j%2==1:
             ax.yaxis.set_label_position("right")
             ax.yaxis.tick_right()
@@ -1158,12 +1134,14 @@ def CCF_plot_all(retr_obj,molecules,noiserange=100,**kwargs): # plot all CCFs
         ax.axvline(x=0,color='k',lw=0.6,alpha=0.3)
         ax.axhline(y=0,color='k',lw=0.6,alpha=0.3)
         ax.plot(RVs,CCF_norm,color=retr_obj.color1,label='CCF')
-        mathtext_label = species_info.loc[molecule,'mathtext_name']
+        if show_ACF:
+            ax.plot(RVs,ACF_norm,color=retr_obj.color1,label='ACF',linestyle='dashed',alpha=0.5)
+        mathtext_label = species_info.loc[species_i,'mathtext_name']
         if 'retr_obj2' in kwargs: 
             retr_obj2=kwargs.get('retr_obj2')
-            CCF_norm2,_,SNR2 = retr_obj2.ccf_acf_dict[molecule]
+            CCF_norm2,_,SNR2 = retr_obj2.ccf_acf_dict[species_i]
             ax.plot(RVs,CCF_norm2,color=retr_obj2.color1,label='CCF')
-            molecule_label=f'{mathtext_label}'
+            species_label=f'{mathtext_label}'
             lines = [Line2D([0], [0], color=retr_obj.color1, linewidth=2,label=retr_obj.target.name),
             Line2D([0], [0], color=retr_obj2.color1, linewidth=2,label=retr_obj2.target.name)]
             leg=axes[0,0].legend(handles=lines,fontsize=11,ncol=2,bbox_to_anchor=(1,1.4),loc='upper center')
@@ -1172,15 +1150,85 @@ def CCF_plot_all(retr_obj,molecules,noiserange=100,**kwargs): # plot all CCFs
             leg.get_frame().set_facecolor((0, 0, 0, 0))
             leg.get_frame().set_edgecolor((0, 0, 0, 0))
         else:
-            molecule_label=f'{mathtext_label}\nS/N={np.round(SNR,decimals=1)}'
-        ax.text(0.05, 0.9, molecule_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
+            species_label=f'{mathtext_label}\nS/N={np.round(SNR,decimals=1)}'
+        ax.text(0.05, 0.9, species_label,transform=ax.transAxes,fontsize=10,verticalalignment='top')
 
     # in case of odd number, remove last plot
-    if len(molecules)%2==1 and len(molecules)!=1:
+    if len(ccf_species)%2==1 and len(ccf_species)!=1:
         axes[-1,-1].axis('off')
 
     plt.subplots_adjust(wspace=0, hspace=0)
     fig.supxlabel(r'$v_{\rm rad}$ [km/s]')
     fig.supylabel('S/N')
+    if len(ccf_species)==1:
+        fig.tight_layout() # to avoid ax suplabels to overap with ticklabels
     fig.savefig(f'{retr_obj.output_dir}/{figname}.pdf', bbox_inches='tight')
     plt.close()
+
+def residuals_species(retr_obj,check_species=None):
+
+    from retrieval import Retrieval
+    from parameters import Parameters
+    species_info = pd.read_csv(os.path.join('species_info.csv'),index_col=0)
+    if check_species==None:
+        check_species = list(species_info.index) # all species, first column
+        for s in ['H2','He','13CO','C18O','C17O','H2(18)O','H2(17)O',
+                    'HDO','13CH4','ScH','AlH','LiOH']:
+            check_species.remove(s) # remove isotopes or other species not in equchem tables
+        print('Checking ', check_species)
+    if isinstance(check_species, list)==False:
+        check_species=[check_species]
+
+    retr=retr_obj
+    residuals=(retr.data_flux-retr.model_flux)
+
+    for species_i in check_species:
+        
+        # create retrieval object containing only species at equibilrium abundance
+        parameters_spec = retr_obj.params_dict
+        parameters_spec.update({'C/O': retr_obj.params_dict['C/O'],
+                        'Fe/H': retr_obj.params_dict['C/H']})
+        ratios_free,ratios_equ = get_ratios(retr_obj,equ_too=True)
+        for r,e in zip(ratios_free,ratios_equ):
+            parameters_spec.update({e: retr_obj.params_dict[r]})
+        parameters_spec = Parameters({}, parameters_spec)
+        parameters_spec.param_priors['log_l']=[-3,0]
+        retr_spec = Retrieval(target=retr_obj.target,parameters=parameters_spec, 
+                                species_names=retr_obj.species_names,Nlive=retr_obj.Nlive,
+                                evtol=retr_obj.evtol,chemistry='equchem',
+                                PT_type=retr_obj.PT_type,cloud_mode=retr_obj.cloud_mode)
+        retr_spec.primary_label=True
+        retr_spec.species_names = [species_i]
+        retr_spec.species_pRT, retr_spec.species_hill =retr_spec.get_pRT_hill(retr_spec.species_names)
+        retr_spec.atmosphere_objects = retr_spec.get_atmosphere_objects(for_species=species_i)
+        species_flux=pRT_spectrum(retr_spec).make_spectrum()
+
+        figs=[]
+        for order in range(7):
+            for det in range(3):
+
+                if np.nansum(residuals[order,det])==0: # skip empty orders
+                    continue
+
+                fig,ax=plt.subplots(1,1,figsize=(6,2.5),dpi=200)
+                sp_flux = species_flux[order,det]-np.nanmedian(species_flux[order,det])
+
+                ax.plot(retr.data_wave[order,det],residuals[order,det],lw=0.8,alpha=1,c='k')
+                ax.set_xlim(np.nanmin(retr.data_wave[order,det]),np.nanmax(retr.data_wave[order,det]))
+                ax.set_ylim(np.nanmin([np.nanmin(residuals[order,det]),np.nanmin(sp_flux)]),
+                            np.nanmax([np.nanmax(residuals[order,det]),np.nanmax(sp_flux)]))
+                ax.plot(retr.data_wave[order,det],np.zeros_like(retr.data_wave[order,det]),lw=0.8,alpha=0.5,c='k')
+                ax.set_ylabel('Residuals')
+                ax.set_xlabel('Wavelength [nm]')
+                ax.plot(retr.data_wave[order,det],sp_flux,lw=0.8,c='orange',label=species_info.loc[species_i,'mathtext_name'])
+                ax.legend()
+                fig.tight_layout()
+                figs.append(fig)
+
+        res_dir = pathlib.Path(f'{retr_obj.output_dir}/residuals')
+        res_dir.mkdir(parents=True, exist_ok=True)
+        with PdfPages(f'{retr_obj.output_dir}/residuals/residuals_{species_i}.pdf') as pdf:
+            for fig in figs:
+                plt.figure(fig.number)
+                pdf.savefig()
+                plt.close()
