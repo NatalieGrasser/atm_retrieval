@@ -24,47 +24,63 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     from target import Target
 
     target = Target(target)
-    species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+    constant_params={} # add if needed
+    free_params = {}
+    T_upper = 4000
+    T_lower = 1000
+
+    if target.instrument=='CRIRES':
+        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
+        free_params.update({'rv': ([-20,20],r'$v_{\rm rad}$'),
+                            'vsini': ([0,40],r'$v$ sin$i$'),
+                            'log_g':([3,5],r'log $g$'),
+                            'epsilon_limb': ([0.2,1], r'$\epsilon_\mathrm{limb}$')})
+    elif target.instrument=='LIFE':
+        species_info = pd.read_csv(os.path.join('species_info_ck.csv'), index_col=0)
+        free_params.update({'log_g':([2.5,3.5],r'log $g$')})
 
     if target.name in ['2M0355','2M1425','test','test_corr','testsys']:
         species_names= ['H2O','12CO','13CO','C18O','C17O','CH4','NH3','HCN','HF','H2(18)O','H2S']
     elif target.name in ['ROXs12A']:
-        species_names= ['H2O','12CO','13CO','HF','H2(18)O','Na','Ti','OH','Fe','Sc','K','CN','Ca','Si']
+        species_names= ['H2O','12CO','13CO','HF','H2(18)O','Na','Ti','OH','Fe','Sc','K','CN','Ca','Si',
+                        'Ba','Mg','V']
         cloud_mode=None # no clouds at such high temperatures
+        T_upper = 6000
     elif target.name in ['ROXs12B']:
         species_names= ['H2O','12CO','13CO', 'HF','H2(18)O']
-        #species_names= ['H2O','12CO','13CO', 'HF','H2(18)O','SH','Ca','OH','Sc','Ti']      
+        #species_names= ['H2O','12CO','13CO', 'HF','H2(18)O','SH','Ca','OH','Sc','Ti']  
+    elif target.name in ['Sorg1X','Sorg20X']:
+        cloud_mode=None
+        PT_type='PTknot'
+        species_names=['H2O','CH4','C2H6','CO2','C2H2','C2H4','CO','SO2','NH3',
+                        'H2S','CS2','OCS','DMS','H2CO','SO','C2H6S2']
+        T_upper = 400
+        T_lower = 100
+        GP=False
 
-    constant_params={} # add if needed
-    free_params = {'rv': ([-20,20],r'$v_{\rm rad}$'),
-                'vsini': ([0,40],r'$v$ sin$i$'),
-                'log_g':([3,5],r'log $g$'),
-                'epsilon_limb': ([0.2,1], r'$\epsilon_\mathrm{limb}$')} # limb-darkening coefficient (0-1)
-
-    if PT_type=='PTknot':
-        pt_params={'T0' : ([1000,4000], r'$T_0$'), # bottom of the atmosphere (hotter)
-                'T1' : ([0,4000], r'$T_1$'),
-                'T2' : ([0,4000], r'$T_2$'),
-                'T3' : ([0,4000], r'$T_3$'),
-                'T4' : ([0,4000], r'$T_4$'),} # top of atmosphere (cooler)
+    if PT_type=='PTknot': 
+        n_knots = 7
+        pt_params = {}
+        for n in range(n_knots):
+            pt_params[f'T{n}']=([0,T_upper],rf'$T_{n}$') # T0 = bottom of atmosphere
         free_params.update(pt_params)
 
     if PT_type=='PTgrad':
-        pt_params={'dlnT_dlnP_0': ([0.,0.4], r'$\nabla T_0$'), # gradient at T0 
-                'dlnT_dlnP_1': ([0.,0.4], r'$\nabla T_1$'), 
-                'dlnT_dlnP_2': ([0.,0.4], r'$\nabla T_2$'), 
-                'dlnT_dlnP_3': ([0.,0.4], r'$\nabla T_3$'), 
-                'dlnT_dlnP_4': ([0.,0.4], r'$\nabla T_4$'), 
-                'T0': ([1000,6000], r'$T_0$')} # at bottom of atmosphere
+        n_grad = 5
+        pt_params={'T0': ([T_lower,T_upper], r'$T_0$')} # T0 = bottom of atmosphere
+        for n in range(n_grad):
+            pt_params[f'dlnT_dlnP_{n}']=([0.,0.4],rf'$\nabla T_{n}$')
         free_params.update(pt_params)
 
     # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
     if chem in ['equchem','quequchem']:
         chemistry={'C/O':([0,1], r'C/O'), 
-                'Fe/H': ([-1.5,1.5], r'[Fe/H]'), 
-                'log_C12_13_ratio': ([1,12], r'log $\mathrm{^{12}C/^{13}C}$'), 
-                'log_O16_18_ratio': ([1,12], r'log $\mathrm{^{16}O/^{18}O}$'), 
-                'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$')}
+                'Fe/H': ([-1.5,1.5], r'[Fe/H]')}
+
+        if target.instrument=='CRIRES': # only for high-res
+            chemistry.update({'log_C12_13_ratio': ([1,12], r'log $\mathrm{^{12}C/^{13}C}$'), 
+                            'log_O16_18_ratio': ([1,12], r'log $\mathrm{^{16}O/^{18}O}$'), 
+                            'log_O16_17_ratio': ([1,12], r'log $\mathrm{^{16}O/^{17}O}$')})
             
         if chem=='quequchem': # quenched equilibrium chemistry
             chemistry.update({'log_Pqu_CO_CH4': ([-6,2], r'log P$_{qu}$(CO,CH$_4$,H$_2$O)'),
@@ -100,7 +116,8 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
     parameters(cube)
 
     retrieval=Retrieval(target=target,parameters=parameters,species_names=species_names,
-                        Nlive=Nlive,evtol=evtol,chemistry=chem,PT_type=PT_type,cloud_mode=cloud_mode)
+                        Nlive=Nlive,evtol=evtol,chemistry=chem,PT_type=PT_type,
+                        cloud_mode=cloud_mode,GP=GP)
 
     return retrieval
 

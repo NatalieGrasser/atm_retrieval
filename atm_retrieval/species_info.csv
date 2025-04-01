@@ -19,7 +19,7 @@ FeH,FeH_main_iso_Sam,Fe1H1,56.85284,plum,FeH,0,0,1,0,0
 CrH,CrH_main_iso,Cr1H1,53.00394,khaki,CrH,0,0,1,0,0
 NaH,NaH_main_iso,H1Na1,23.997609,b,NaH,0,0,1,0,0
 TiH,TiH_main_iso,H1Ti1,48.87484,magenta,TiH,0,0,1,0,0
-ScH,ScH_main_iso,H1Sc1,45.963752,b,H1Sc1,0,0,1,0,0
+ScH,ScH_main_iso,H1Sc1,45.963752,b,ScH,0,0,1,0,0
 Sc,Sc_high,Sc,44.95591,green,Sc,0,0,1,0,0
 CaH,CaH_main_iso,Ca1H1,41.085840000000005,b,CaH,0,0,1,0,0
 TiO,TiO_48_Exomol_McKemmish,O1Ti1,63.946000000000005,cadetblue,TiO,0,1,0,0,0

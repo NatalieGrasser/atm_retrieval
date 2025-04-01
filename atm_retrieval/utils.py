@@ -1,12 +1,21 @@
 import numpy as np
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
 import pickle
 import pathlib
 import astropy.constants as const
+from astropy import units as u
 from scipy.interpolate import interp1d
+from scipy.ndimage import convolve1d
+import pathlib
 import warnings
 warnings.simplefilter("error", RuntimeWarning)  # Convert warnings to exceptions
+import getpass
+if getpass.getuser() == "grasser": # when runnig from LEM
+    path_tables = '/net/lem/data2/regt/fastchem_tables'
+elif getpass.getuser() == "natalie": # when testing from my laptop
+    path_tables = '/home/natalie/fastchem_tables'
 
 def scale_between(ymin,ymax,arr):
     try:
@@ -61,7 +70,7 @@ def get_ratios(retr_obj,equ_too=False): # in case not all ratios are in retrieva
         return ratios_default, ratios_default_equ
 
 # cross-correlate residuals with spectrum that contains selected species at equilibrium
-def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after evaluate()
+def CCF_residuals(retr_obj,ccf_species=[],noiserange=100): # can only be run after evaluate()
 
     from retrieval import Retrieval
     from parameters import Parameters
@@ -70,25 +79,46 @@ def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after 
 
     ccf_dict={}
     ccf_acf_dict={} # save cross-correlations and auto-correlations
+    # function only for CRIRES spectra anyway
+    crires_shape = (retr_obj.n_orders,retr_obj.n_dets,retr_obj.n_pixels)
+    to_reshape= [retr_obj.data_flux, retr_obj.data_err, retr_obj.data_wave, retr_obj.mask_isfinite, retr_obj.model_flux]
+    data_flux, data_err, data_wave, mask_isfinite, model_flux = [var.reshape(crires_shape) for var in to_reshape]
+    Cov = retr_obj.Cov.reshape(crires_shape[:-1])
+
+    if ccf_species==[]:
+        leave_out = ['13CH4','H2(17)O','H2(18)O','C17O','C18O','13CO','H2','He']
+        for species_i in list(retr_obj.species_info.index.values):
+            if species_i not in retr_obj.species_names + leave_out:
+                ccf_species.append(species_i) # all that aren't retrieved
 
     if isinstance(ccf_species, list)==False:
         ccf_species=[ccf_species] # if only one, make list so that it works in the for loop
-
+    
     RVs=np.arange(-500,500,1) # km/s
     for ccf_species_i in ccf_species:
 
-        # create template with only selected species at equibilrium abundance
+        # create template with only selected species at equilibrium abundance
+        hill_i = retr_obj.species_info.loc[ccf_species_i,'Hill_notation']
+        equ_table = pathlib.Path(f'{path_tables}/{hill_i}.hdf5')
         parameters_spec = retr_obj.params_dict
-        parameters_spec.update({'C/O': retr_obj.params_dict['C/O'],
-                        'Fe/H': retr_obj.params_dict['C/H']})
-        ratios_free,ratios_equ = get_ratios(retr_obj,equ_too=True)
-        for r,e in zip(ratios_free,ratios_equ):
-            parameters_spec.update({e: retr_obj.params_dict[r]})
+        if equ_table.exists():
+            usechem= 'equchem'
+            parameters_spec.update({'C/O': retr_obj.params_dict['C/O'],
+                            'Fe/H': retr_obj.params_dict['C/H']})
+            ratios_free,ratios_equ = get_ratios(retr_obj,equ_too=True)
+            for r,e in zip(ratios_free,ratios_equ):
+                parameters_spec.update({e: retr_obj.params_dict[r]})
+        else:
+            usechem= 'freechem'
+            for other_spec_i in retr_obj.species_names:
+                parameters_spec.pop(f'log_{other_spec_i}', None)
+            parameters_spec[f'log_{ccf_species_i}']=-4 # manually set abundance
+
         parameters_spec = Parameters({}, parameters_spec)
         parameters_spec.param_priors['log_l']=[-3,0]
         retr_spec = Retrieval(target=retr_obj.target,parameters=parameters_spec, 
                                 species_names=retr_obj.species_names,Nlive=retr_obj.Nlive,
-                                evtol=retr_obj.evtol,chemistry='equchem',
+                                evtol=retr_obj.evtol,chemistry=usechem,
                                 PT_type=retr_obj.PT_type,cloud_mode=retr_obj.cloud_mode)
         retr_spec.primary_label=True
         retr_spec.species_names = [ccf_species_i]
@@ -103,7 +133,7 @@ def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after 
         for order in range(retr_obj.n_orders):
             for det in range(retr_obj.n_dets):
 
-                if np.isnan(retr_obj.data_flux[order,det]).all():
+                if np.isnan(data_flux[order,det]).all():
                     pass # skip empty order/det, CCF and ACF remains 0 
 
                 else:
@@ -112,14 +142,14 @@ def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after 
                     template_wl = template_waves[order]
                     template_flux = rem_cont(template_wl,template_flux)
                     
-                    wl_data=retr_obj.data_wave[order,det,retr_obj.mask_isfinite[order,det]]
-                    fl_data = retr_obj.data_flux[order,det,retr_obj.mask_isfinite[order,det]]-retr_obj.model_flux[order,det,retr_obj.mask_isfinite[order,det]]
+                    wl_data= data_wave[order,det,mask_isfinite[order,det]]
+                    fl_data = data_flux[order,det,mask_isfinite[order,det]]-model_flux[order,det,mask_isfinite[order,det]]
                     #plt.plot(template_wl,template_flux,c='tab:blue')
                     #plt.plot(wl_data,fl_data,c='tab:orange')
                     fl_data-=np.nanmean(fl_data)
 
-                    retr_obj.Cov[order,det].get_cholesky() # in case it hasn't been called yet
-                    cov_0_data=retr_obj.Cov[order,det].solve(fl_data)                            
+                    Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                    cov_0_data=Cov[order,det].solve(fl_data)                            
                     wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
                     template_shift=interp1d(template_wl,template_flux)(wl_shift) # interpolate template onto shifted wl
                     #template_shift-= np.nanmedian(template_shift)  
@@ -129,7 +159,7 @@ def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after 
 
                     template_rebinned=interp1d(template_wl,template_flux)(wl_data)
                     template_rebinned-=np.nanmedian(template_rebinned)
-                    cov_0_temp=retr_obj.Cov[order,det].solve(template_rebinned)
+                    cov_0_temp=Cov[order,det].solve(template_rebinned)
 
                     CCF[order,det]=(template_shift.T).dot(cov_0_data)
                     ACF[order,det]=(template_shift.T).dot(cov_0_temp)
@@ -145,7 +175,6 @@ def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after 
             ACF_norm = ACF_sum/noise
 
         SNR=CCF_norm[np.where(RVs==0)[0][0]]
-
         ccf_dict[f'SNR_{ccf_species_i}']=SNR
         ccf_acf_dict[ccf_species_i]=(CCF_norm,ACF_norm,SNR)
         print(f'{ccf_species_i} S/N =',np.round(SNR,decimals=2))
@@ -153,4 +182,123 @@ def CCF_residuals(retr_obj,ccf_species,noiserange=100): # can only be run after 
     retr_obj.ccf_acf_dict = ccf_acf_dict
     figs.CCF_plot_all(retr_obj,ccf_species,noiserange=100,show_ACF=True,suffix='_res')
 
+    # folder created when initializing retrieval object, delete afterwards
+    if os.path.isdir(retr_spec.output_dir) and not os.listdir(retr_spec.output_dir):  # Check if folder exists and is empty
+        os.rmdir(retr_spec.output_dir)  # Remove empty folder
+
     return ccf_dict
+
+class PSG_input: # for LIFE retrievals
+
+    def __init__(self,name):
+        self.name = name
+        self.table = self.create_table()
+        self.pressure = self.table['Pressure'].to_numpy()
+        self.temperature = self.table['Temperature'].to_numpy()
+
+    def create_table(self): # convert PSG input file into useable table
+
+        with open(f'./LIFE/{self.name}/{self.name}_psg_input.txt', "r") as file:
+            lines = file.readlines()
+
+        rows = []
+        for line in lines:
+            if "<ATMOSPHERE-LAYER-" in line:
+                index = line.index(">")
+                rows.append(line[index+1:-1]) # remove \n from end of row
+
+        columns = [ "Pressure", "Temperature", "Altitude", "H2", "He", "H2O", "CH4", "C2H6", "CO2", "C2H2", "C2H4", "CO",
+                    "H2CO", "NH3", "SO2", "H2S", "SO", "CS2", "OCS", "DMS", "C2H6S2"]
+
+        df = pd.DataFrame([row.split(",") for row in rows])
+        df.columns = columns
+        df = df.astype(float) # Convert all columns to float
+        df = df.iloc[::-1] # reverse order, bc pRT reads temps from top to bottom of atmosphere
+
+        return df
+
+# from DGonzalezPicos/broadpy
+class InstrumentalBroadening:
+    
+    c = const.c.to(u.km/u.s).value
+    sqrt8ln2 = np.sqrt(8 * np.log(2))
+    
+    available_kernels = ['gaussian','gaussian_variable']
+    
+    def __init__(self, x, y):
+        
+        self.x = x # units of wavelength
+        self.y = y # units of flux (does not matter)
+        self.spacing = np.mean(2*np.diff(self.x) / (self.x[1:] + self.x[:-1]))
+    
+    def __call__(self, res=None, fwhm=None, gamma=None, truncate=4.0, kernel='auto'):
+        '''Instrumental broadening
+        provide either instrumental resolution lambda/delta_lambda or FWHM in km/s'''
+        kernel = self.__read_kernel(res=res, fwhm=fwhm, gamma=gamma) if kernel == 'auto' else kernel
+        
+        if kernel == 'gaussian':
+            fwhm = fwhm if fwhm is not None else (self.c / res)
+            _kernel = self.gaussian_kernel(fwhm, truncate)
+            
+        if kernel == 'gaussian_variable':
+            _kernels, lw = self.gaussian_variable_kernel(fwhm, truncate)
+            y_pad = np.pad(self.y, (lw, lw), mode='reflect')
+            y_matrix = np.lib.stride_tricks.sliding_window_view(y_pad, window_shape=(2 * lw + 1))
+            y_lsf = np.einsum('ij, ij->i', _kernels, y_matrix)
+            return y_lsf
+            
+        y_lsf = convolve1d(self.y, _kernel, mode='nearest')
+        return y_lsf
+    
+    @classmethod
+    def gaussian_profile(self, x, x0, sigma):
+        '''Gaussian function'''
+        return np.exp(-0.5 * ((x - x0) / sigma)**2)# / (sigma * np.sqrt(2*np.pi))
+    
+    def gaussian_kernel(self,fwhm,truncate=4.0,):
+        ''' Gaussian kernel
+        
+        Parameters
+        ----------
+        fwhm : float
+            Full width at half maximum of the Gaussian kernel in km/s
+        truncate : float
+            Truncate the kernel at this many standard deviations from the mean (default: 4.0)
+        
+        Returns
+        -------
+        kernel : array
+            Convolution kernel
+        '''
+        # Adapted from scipy.ndimage.gaussian_filter1d        
+        sd = (fwhm/self.c) / self.sqrt8ln2 / self.spacing
+        lw = int(truncate * sd + 0.5)
+    
+        kernel_x = np.arange(-lw, lw+1)
+        kernel = self.gaussian_profile(kernel_x, 0, sd)
+        kernel /= np.sum(kernel)  # normalize the kernel
+        return kernel
+    
+    def gaussian_variable_kernel(self, fwhm, truncate=4.0):
+        ''' Gaussian kernel with variable FWHM
+        
+        Parameters
+        ----------
+        fwhm : array
+            Full width at half maximum of the Gaussian kernel in km/s
+        truncate : float
+            Truncate the kernel at this many standard deviations from the mean (default: 4.0)
+        
+        Returns
+        -------
+        kernel : array
+            Convolution kernel
+        '''
+        sd = (fwhm/self.c) / self.sqrt8ln2 / self.spacing
+        lw = int(truncate * sd.max() + 0.5)
+        x = np.arange(-lw, lw + 1)
+        
+        # Use broadcasting to create a 2D array of Gaussian kernels
+        kernels = np.exp(-0.5 * (x[None, :] / sd[:, None]) ** 2)
+        kernels /= kernels.sum(axis=1)[:, None]
+        return kernels, lw

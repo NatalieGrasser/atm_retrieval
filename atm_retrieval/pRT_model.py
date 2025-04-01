@@ -10,13 +10,13 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter
 import pathlib
 from scipy.optimize import nnls
-from scipy.ndimage import gaussian_filter
 import gc
 from cloud_cond import simple_cdf_MgSiO3,return_XMgSiO3
 from utils import *
 import warnings
+import re
 from scipy.linalg import LinAlgWarning
-warnings.filterwarnings(action='ignore', category=LinAlgWarning, module='sklearn') # occasional
+warnings.filterwarnings(action='ignore', category=LinAlgWarning) # occasional
 
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -37,11 +37,18 @@ class pRT_spectrum:
                  interpolate=True,
                  leave_out=None):
         
-        inherit_attributes = ['primary_label','data_wave','target','species_pRT',
-                              'chemistry','atmosphere_objects','lbl_opacity_sampling',
-                              'n_atm_layers','pressure','PT_type','cloud_mode','spectral_resolution']
+        inherit_attributes = ['primary_label','data_wave','instrument','species_pRT','name',
+                              'chemistry','atmosphere_objects','n_atm_layers','species_info',
+                              'pressure','PT_type','cloud_mode','spectral_resolution']
+
         for attr in inherit_attributes:  # list of attributes to pass down
             setattr(self, attr, getattr(retr_obj, attr))
+
+        if self.instrument=='CRIRES':
+            self.lbl_opacity_sampling = retr_obj.lbl_opacity_sampling
+            self.n_orders=retr_obj.n_orders
+            self.n_dets=retr_obj.n_dets
+            self.n_pixels = retr_obj.n_pixels
 
         if self.primary_label==False:
             self.primary_wave=retr_obj.primary_wave
@@ -53,6 +60,9 @@ class pRT_spectrum:
         self.interpolate=interpolate
         self.temperature = self.make_pt() #P-T profile
         self.vbary = retr_obj.target.vbary
+
+        #if retr_obj.target.name in ['Sorg1X','Sorg20X']:
+            #self.temperature = PSG_input(retr_obj.target.name).temperature[::2]
 
         self.give_absorption_opacity=None
         self.int_opa_cloud = np.zeros_like(self.pressure)
@@ -79,9 +89,6 @@ class pRT_spectrum:
             # get new VMR dict, updated with isotopologs
             self.VMR_dict = self.get_VMR_dict(self.mass_fractions)
 
-        self.spectrum_orders=[]
-        self.n_orders=retr_obj.n_orders
-
     def get_VMR_dict(self,mass_fractions):
         species_info = pd.read_csv(os.path.join('species_info.csv'))
         VMR_dict={}
@@ -94,21 +101,20 @@ class pRT_spectrum:
         return VMR_dict
     
     def read_species_info(self,species,info_key):
-        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         if info_key == 'pRT_name':
-            return species_info.loc[species,info_key]
+            return self.species_info.loc[species,info_key]
         if info_key == 'pyfc_name':
-            return species_info.loc[species,'Hill_notation']
+            return self.species_info.loc[species,'Hill_notation']
         if info_key == 'mass':
-            return species_info.loc[species,info_key]
+            return self.species_info.loc[species,info_key]
         if info_key == 'COH':
-            return list(species_info.loc[species,['C','O','H']])
+            return list(self.species_info.loc[species,['C','O','H']])
         if info_key in ['C','O','H']:
-            return species_info.loc[species,info_key]
+            return self.species_info.loc[species,info_key]
         if info_key == 'c' or info_key == 'color':
-            return species_info.loc[species,'color']
+            return self.species_info.loc[species,'color']
         if info_key == 'label':
-            return species_info.loc[species,'mathtext_name']
+            return self.species_info.loc[species,'mathtext_name']
     
     def get_isotope_mass_fractions(self,species,mass_fractions,params):
         #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/chemistry.py
@@ -265,13 +271,12 @@ class pRT_spectrum:
         return self.mass_fractions
     
     def free_chemistry(self,species_pRT,params):
-        species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
         VMR_He = 0.15
         VMR_wo_H2 = 0 + VMR_He  # Total VMR without H2, starting with He
         mass_fractions = {} # Create a dictionary for all used species
         C, O, H = 0, 0, 0
 
-        for species_i in species_info.index:
+        for species_i in self.species_info.index:
             species_pRT_i = self.read_species_info(species_i,'pRT_name')
             mass_i = self.read_species_info(species_i, 'mass')
             COH_i  = self.read_species_info(species_i, 'COH')
@@ -295,8 +300,9 @@ class pRT_spectrum:
         mass_fractions['H2'] = self.read_species_info('H2', 'mass')*(1-VMR_wo_H2)
         H += self.read_species_info('H2','H')*(1-VMR_wo_H2) # Add to the H-bearing species
         
-        #if VMR_wo_H2.any() > 1:
-            #print('VMR_wo_H2 > 1. Other species are too abundant!')
+        if VMR_wo_H2.any() > 1:
+            print('VMR_wo_H2 > 1. Other species are too abundant!')
+            print('\n',VMR_wo_H2,"\n")
 
         MMW = 0 # Compute the mean molecular weight from all species
         for mass_i in mass_fractions.values():
@@ -333,15 +339,32 @@ class pRT_spectrum:
         return opa_gray_cloud
     
     def make_spectrum(self):
+        
+        summed_contr_em =[]
 
-        spectrum_orders=[]
-        waves_orders=[]
-        self.contr_em_orders=[]
-        self.phi_components=np.full(shape=(7,3,8),fill_value=np.nan)
-        self.secondary_flux=np.full(shape=(7,3,2048),fill_value=np.nan)
-        self.primary_broadened=np.full(shape=(7,3,2048),fill_value=np.nan)
-        for order in range(self.n_orders):
-            atmosphere=self.atmosphere_objects[order]
+        if self.instrument=='CRIRES':
+            data_shape = self.data_wave.shape
+            
+            orders_shape = (self.n_orders,self.n_dets*self.n_pixels)
+            data_wave_orders = self.data_wave.reshape(orders_shape)
+            
+            if self.primary_label==False:
+                orders_dets_shape = (self.n_orders,self.n_dets,self.n_pixels)
+                self.data_flux = self.data_flux.reshape(orders_dets_shape)
+                self.data_err = self.data_err.reshape(orders_dets_shape)
+                self.primary_wave=self.primary_wave.reshape(orders_dets_shape)
+                self.primary_flux=self.primary_flux.reshape(orders_dets_shape)
+                self.phi_components=np.full(shape=(self.n_orders,self.n_dets,8),fill_value=np.nan)
+                self.secondary_flux=np.full(shape=orders_dets_shape,fill_value=np.nan)
+                self.primary_broadened=np.full(shape=orders_dets_shape,fill_value=np.nan)
+
+            spectrum_parts=[]
+            waves_parts=[]
+
+        if isinstance(self.atmosphere_objects, list)==False:
+            self.atmosphere_objects = [self.atmosphere_objects]
+
+        for part, atmosphere in enumerate(self.atmosphere_objects):
 
             # MgSiO3 cloud model like in Sam's code
             if self.cloud_mode == 'MgSiO3':
@@ -377,30 +400,39 @@ class pRT_spectrum:
                             give_absorption_opacity=self.give_absorption_opacity)
 
             wl = const.c.to(u.km/u.s).value/atmosphere.freq/1e-9 # mircons
-            flux=atmosphere.flux
-            #flux = atmosphere.flux/np.nanmean(atmosphere.flux)
+            # [erg cm^{-2} s^{-1} Hz^{-1}] -> [erg cm^{-2} s^{-1} cm^{-1}]
+            flux = atmosphere.flux*const.c.to(u.km/u.s).value/(wl**2) # convert from flux density to flux
 
-            # RV+bary shifting and rotational broadening
-            wl_shifted= wl*(1.0+(self.params['rv']-self.vbary)/const.c.to('km/s').value)
-            waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
-            spec = np.interp(waves_even, wl_shifted, flux)
-            spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
-            spec = self.convolve_to_resolution(waves_even, spec, self.spectral_resolution)
+            if self.contribution==True: # emission contribution
+                self.summed_contr = np.nansum(atmosphere.contr_em,axis=1) # sum over all wavelengths
+                summed_contr_em.append(self.summed_contr)
 
-            #https://github.com/samderegt/retrieval_base/blob/main/retrieval_base/spectrum.py#L289
-            self.resolution = int(1e6/self.lbl_opacity_sampling)
-            flux=self.instr_broadening(waves_even*1e3,spec,out_res=self.resolution,in_res=500000)
+            if self.instrument=='CRIRES':
+                # RV+bary shifting and rotational broadening
+                waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
+                wl_shifted= wl*(1.0+(self.params['rv']-self.vbary)/const.c.to('km/s').value)
+                flux = np.interp(waves_even, wl_shifted, flux)
+                flux = fastRotBroad(waves_even, flux, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
+                flux = self.instrumental_broadening(waves_even, flux, self.spectral_resolution)
+
+            if self.instrument=='LIFE':
+                flux = np.interp(self.data_wave, wl, flux) # pRT & data wavelengths in microns
+                flux = self.instrumental_broadening(self.data_wave.flatten(), flux.flatten(), self.spectral_resolution).reshape(self.data_wave.shape)
+                if np.nanmax(flux) in [0, np.nan, np.inf] or len(flux)==0:
+                    raise ZeroDivisionError('Invalid flux',np.nanmax(flux))
+                    return np.ones_like(flux)
+                else:
+                    return flux/np.nanmax(flux)
 
             # Interpolate/rebin onto the data's wavelength grid
             # should not be done when making spectrum for cross-corr, or wl padding will be cut off
             if self.interpolate==True:
-                ref_wave = self.data_wave[order].flatten() # [nm]
+                ref_wave = data_wave_orders[part]# [nm]
                 flux = np.interp(ref_wave, waves_even*1e3, flux) # pRT wavelengths from microns to nm
 
-                # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
-                flux=flux.reshape(self.data_wave.shape[1],self.data_wave.shape[2])
-
             if self.primary_label==False and self.interpolate==True: # should have same wavelengths
+                order=part
+                flux = flux.reshape(self.n_dets,self.n_pixels)
                 for det in range(3):
                     nonans = np.isfinite(self.primary_flux[order][det]) & np.isfinite(self.data_flux[order][det]) & np.isfinite(self.data_err[order][det])
                     flux[det]/=np.nanmedian(flux[det])
@@ -424,77 +456,49 @@ class pRT_spectrum:
                     phi_comp, _ = nnls(lhs, rhs)
                     self.phi_components[order,det]=phi_comp
                     self.secondary_flux[order,det]=phi_comp[-1]*np.copy(flux[det])
-                    #total_flux = phi_comp[-1]*flux[det] #+ phi_comp[3]*self.primary_flux[order][det] # primary + secondary
-                    s = self.primary_flux[order][det]
+                    s = self.primary_flux[order,det]
                     self.primary_broadened[order,det] = phi_comp[3]*s
                     for px,n in enumerate([2,1,0]):
                         px+=1 # to start numbering at 1
-                        #print(phi_comp[:-1][n],phi_comp[:-1][-n])
-                        #print(phi_comp[:-1])
                         if n==0:
                             self.primary_broadened[order,det] += phi_comp[:-1][0]*np.roll(s,-px) + phi_comp[:-1][-1]*np.roll(s,px)
                         else:
                             self.primary_broadened[order,det] += phi_comp[:-1][n]*np.roll(s,-px) + phi_comp[:-1][-(n+1)]*np.roll(s,px)
-                        #total_flux += phi_comp[:-1][n]*np.roll(s,-px) + phi_comp[:-1][-n]*np.roll(s,px)
-                    total_flux = self.secondary_flux[order,det] + self.primary_broadened[order,det]
-
-                    #if getpass.getuser() == "natalie": # when testing from my laptop
-                    if False:
-                        print(f'Linear parameters: {phi_comp}')
-                        plt.plot(self.data_wave[order][det], self.data_flux[order][det],c='k', label='data')
-                        plt.plot(self.data_wave[order][det], phi_comp[3]*self.primary_flux[order][det], label='A',alpha=0.2,c='orange')
-                        plt.plot(self.data_wave[order][det], self.primary_broadened[order][det], label='A_broad',c='orange')
-                        plt.plot(self.data_wave[order][det], self.secondary_flux[order,det], label='B',c='tab:blue')
-                        plt.plot(self.data_wave[order][det], total_flux, label='A+B',linestyle='dotted',c='limegreen')
-                        plt.legend()
-                        plt.show()
-                    
-                    #flx/=np.median(flx)
-
-                    # because continuum has been removed for system, must be removed here as well
-                    #wl=self.data_wave[order][det]
-                    #continuum_model = np.poly1d(np.polyfit(wl,total_flux,deg=3))
-                    #continuum = continuum_model(wl)
-                    #flux_contrem = total_flux/continuum
-                    #flux[det]=flux_contrem #total_flux
+                    total_flux = self.secondary_flux[order,det] + self.primary_broadened[order,det]                
                     flux[det]=total_flux
 
-            spectrum_orders.append(flux)
-            waves_orders.append(waves_even*1e3) # from um to nm
-
+            spectrum_parts.append(flux)
+            waves_parts.append(waves_even*1e3) # from um to nm
             if self.contribution==True:
-                contr_em = atmosphere.contr_em # emission contribution
-                summed_contr = np.nansum(contr_em,axis=1) # sum over all wavelengths
-                self.contr_em_orders.append(summed_contr)
+                self.summed_contr = np.nanmean(summed_contr_em,axis=0)
 
-        if False:
-            for order in range(7):
-                for det in range(3):
-                    phi_comp=self.phi_components[order,det]
-                    print(f'Linear parameters: {phi_comp}')
-                    plt.plot(self.data_wave[order][det], self.data_flux[order][det],c='k', label='data')
-                    plt.plot(self.data_wave[order][det], phi_comp[0]*self.primary_flux[order][det], label='A')
-                    plt.plot(self.data_wave[order][det], phi_comp[1]*self.secondary_flux[order][det], label='B')
-                    plt.plot(self.data_wave[order][det], spectrum_orders[order][det], label='A+B',linestyle='dotted',c='limegreen')
-                    plt.legend()
-                    plt.show()
-            
         if self.interpolate==False:
             get_median=np.array([])
             for order in range(7): # append value by value because not all the same size
-                get_median=np.append(get_median,spectrum_orders[order]) 
-            spectrum_orders=np.array(spectrum_orders,dtype=object)
-            spectrum_orders/=np.nanmedian(get_median) # orders not same size, np.median didn't work otherwise
-            return spectrum_orders, waves_orders
+                get_median=np.append(get_median,spectrum_parts[order]) 
+            spectrum_parts=np.array(spectrum_parts,dtype=object)
+            spectrum_parts/=np.nanmedian(get_median) # orders not same size, np.median didn't work otherwise
+            return spectrum_parts, waves_parts
         else:
-            spectrum_orders=np.array(spectrum_orders)
-            spectrum_orders/=np.nanmedian(spectrum_orders) # normalize in same way as data spectrum
-            return spectrum_orders
+            spectrum_parts=np.array(spectrum_parts)
+            spectrum_parts = spectrum_parts.reshape(data_shape)
+            if self.name in ['ROXs12A','ROXs12B']: # were normalized differently
+                for i,part in enumerate(spectrum_parts):
+                    spectrum_parts[i] = spectrum_parts[i]/np.nanmedian(spectrum_parts[i])
+                return spectrum_parts
+            else:
+                spectrum_parts/=np.nanmedian(spectrum_parts) # normalize in same way as data spectrum
+                return spectrum_parts
             
     def make_pt(self,**kwargs): 
 
         if self.PT_type=='PTknot': # retrieve temperature knots
-            self.T_knots = np.array([self.params['T4'],self.params['T3'],self.params['T2'],self.params['T1'],self.params['T0']])
+            t_keys = [key for key in self.params.keys() if re.fullmatch(r"T\d+", key)] 
+            t_keys = sorted(t_keys, key=lambda x: int(x[1:]))[::-1] # start at top of atmosphere, T0 last
+            self.T_knots = []
+            for key in t_keys:
+                self.T_knots.append(self.params[key])
+            self.T_knots = np.array(self.T_knots)
             self.log_P_knots= np.linspace(np.log10(np.min(self.pressure)),np.log10(np.max(self.pressure)),num=len(self.T_knots))
             sort = np.argsort(self.log_P_knots)
             self.temperature = CubicSpline(self.log_P_knots[sort],self.T_knots[sort])(np.log10(self.pressure))
@@ -533,38 +537,17 @@ class pRT_spectrum:
         
         return self.temperature
 
-    def convolve_to_resolution(self, in_wlen, in_flux, out_res, in_res=None):
-        
-        if isinstance(in_wlen, u.Quantity):
-            in_wlen = in_wlen.to(u.nm).value
-        if in_res is None:
-            in_res = np.mean((in_wlen[:-1]/np.diff(in_wlen)))
-        # delta lambda of resolution element is FWHM of the LSF's standard deviation:
-        sigma_LSF = np.sqrt(1./out_res**2-1./in_res**2)/(2.*np.sqrt(2.*np.log(2.)))
-        spacing = np.mean(2.*np.diff(in_wlen)/(in_wlen[1:]+in_wlen[:-1]))
+    def instrumental_broadening(self, wave, flux, resolution):
 
-        # Calculate the sigma to be used in the gauss filter in pixels
-        sigma_LSF_gauss_filter = sigma_LSF/spacing
-        out_flux = np.tile(np.nan, in_flux.shape)
-        nans = np.isnan(in_flux)
-        out_flux[~nans] = gaussian_filter(in_flux[~nans], sigma = sigma_LSF_gauss_filter, mode = 'reflect')
- 
-        return out_flux
-
-    
-    def instr_broadening(self, wave, flux, out_res=1e6, in_res=1e6):
-
-        # Delta lambda of resolution element is FWHM of the LSF's standard deviation
-        sigma_LSF = np.sqrt(1/out_res**2-1/in_res**2)/(2*np.sqrt(2*np.log(2)))
-        spacing = np.mean(2*np.diff(wave) / (wave[1:] + wave[:-1]))
-
-        # Calculate the sigma to be used in the gauss filter in pixels
-        sigma_LSF_gauss_filter = sigma_LSF / spacing
-        
-        # Apply gaussian filter to broaden with the spectral resolution
-        flux_LSF = gaussian_filter(flux, sigma=sigma_LSF_gauss_filter,mode='nearest')
-
-        return flux_LSF
+        IB = InstrumentalBroadening(wave, flux)
+        if isinstance(resolution, np.ndarray):
+            # Variable resolution profile
+            flux_LSF = IB(fwhm=const.c.to(u.km/u.s).value/resolution, kernel='gaussian_variable')
+            return flux_LSF
+        else:
+            # Constant resolution
+            flux_LSF = IB(res=resolution, kernel='gaussian')
+            return flux_LSF
     
     def make_spectrum_continuous(self,ref_wave): # just for plotting, not needed for retrieval
 
@@ -594,7 +577,7 @@ class pRT_spectrum:
         waves_even = np.linspace(np.min(wl), np.max(wl), wl.size) # wavelength array has to be regularly spaced
         spec = np.interp(waves_even, wl_shifted, flux)
         spec = fastRotBroad(waves_even, spec, self.params['epsilon_limb'], self.params['vsini']) # limb-darkening coefficient (0-1)
-        spec = self.convolve_to_resolution(waves_even, spec, self.spectral_resolution)
+        spec = self.instrumental_broadening(waves_even, spec, self.spectral_resolution)
         flux = np.interp(ref_wave, waves_even*1e3, flux) # pRT wavelengths from microns to nm
         #flux/=np.nanmedian(flux)
 

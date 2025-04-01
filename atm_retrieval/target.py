@@ -15,30 +15,19 @@ class Target:
 
     def __init__(self,name):
         self.name=name
-        self.n_orders=7
-        self.n_dets=3
-        self.n_pixels=2048
         self.primary_label=True
-        self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
-                            [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
-                            [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
-                            [[2143.087,2157.855], [2158.914,2173.020], [2173.983,2187.386]],
-                            [[2228.786,2244.133], [2245.229,2259.888], [2260.904,2274.835]],
-                            [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
-                            [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
         
         if self.name in ['2M0355','test','test_corr','testsys']: # test spectrum based on 2M0355
             self.ra ="03h55m23.3735910810s"
             self.dec = "+11d33m43.797034332s"
             self.JD=2459885.5   # get JD with https://ssd.jpl.nasa.gov/tools/jdc/#/cd  
-            self.fullname='2MASSJ03552337+1133437'    
+            self.fullname='2MASSJ03552337+1133437'  
+            self.instrument = 'CRIRES'  
             self.standard_star_temp=15536 # lam Tau
             if self.name in ['test','test_corr','testsys']:
-                self.color1='mediumseagreen' # color of retrieval output
-                self.color2='seagreen' 
+                self.color='mediumseagreen' # color of retrieval output
             else:
-                self.color1='deepskyblue' # color of retrieval output
-                self.color2='lightskyblue' 
+                self.color='deepskyblue' # color of retrieval output
             self.fwhm = 3.4720016645787855 # Gaussian FWHM in pixels
             if self.name=='testsys':
                 self.primary_label=False
@@ -49,9 +38,9 @@ class Target:
             self.dec="-36d50m23.248617541s"
             self.JD=2459976.5        
             self.fullname='2MASSJ14252798-3650229'
+            self.instrument = 'CRIRES' 
             self.standard_star_temp=10980 # bet Hya
-            self.color1='lightcoral' # color of retrieval output
-            self.color2='lightpink'
+            self.color='lightcoral' # color of retrieval output
             self.fwhm = 5.397255188786233 # Gaussian FWHM in pixels
             self.airmass_obs = 1.13
             self.airmass_std = 1.03
@@ -62,8 +51,8 @@ class Target:
             self.JD=2460007.5
             self.standard_star_temp=15142 # iSco
             self.fullname='ROXs12B'  
-            self.color1='mediumturquoise'
-            self.color2='lightseagreen'
+            self.instrument = 'CRIRES' 
+            self.color='mediumturquoise'
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
         elif self.name=='ROXs12A':
             self.ra="16h26m28.0396675056s"
@@ -71,39 +60,73 @@ class Target:
             self.JD=2460007.5
             self.standard_star_temp=15142 # iSco
             self.fullname='ROXs12A'  
-            self.color1='orange'
-            self.color2='darkorange'
+            self.instrument = 'CRIRES' 
+            self.color='orange'
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
+        elif self.name=='Sorg1X':
+            self.color='darkturquoise'
+            self.instrument = 'LIFE'
+        elif self.name=='Sorg20X':
+            self.color='mediumseagreen' 
+            self.instrument = 'LIFE'
 
-        coords = SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
-        self.vbary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
-                            ra2000=coords.ra.value,dec2000=coords.dec.value,jd=self.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
+        if self.instrument == 'CRIRES':
+            self.n_orders=7
+            self.n_dets=3
+            self.n_parts=self.n_orders*self.n_dets
+            self.n_pixels=2048
+            self.K2166=np.array([[[1921.318,1934.583], [1935.543,1948.213], [1949.097,1961.128]],
+                            [[1989.978,2003.709], [2004.701,2017.816], [2018.708,2031.165]],
+                            [[2063.711,2077.942], [2078.967,2092.559], [2093.479,2106.392]],
+                            [[2143.087,2157.855], [2158.914,2173.020], [2173.983,2187.386]],
+                            [[2228.786,2244.133], [2245.229,2259.888], [2260.904,2274.835]],
+                            [[2321.596,2337.568], [2338.704,2353.961], [2355.035,2369.534]],
+                            [[2422.415,2439.061], [2440.243,2456.145], [2457.275,2472.388]]])
+            coords = SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
+            self.vbary, _ = helcorr(obs_long=-70.40, obs_lat=-24.62, obs_alt=2635, # of Cerro Paranal
+                                    ra2000=coords.ra.value,dec2000=coords.dec.value,jd=self.JD) # https://ssd.jpl.nasa.gov/tools/jdc/#/cd
+
+        elif self.instrument == 'LIFE':
+            self.n_parts=1
+            self.n_pixels=77
+            self.vbary = 0 # just simulation
+            
+        self.abs_path = f'{os.getcwd()}/{self.instrument}/{self.name}'
+        self.wl,self.fl,self.err = self.load_spectrum()
+
+        if self.instrument == 'CRIRES':
+            self.spectral_resolution = self.calc_resolution()
+        elif self.instrument == 'LIFE':
+            self.spectral_resolution = self.calc_resolution() # around 50
+            self.wlens_um = np.array([np.min(self.wl),np.max(self.wl)]).reshape(2,1)
+            self.err = self.fl/self.err # 'err' in file is SNR, convert to noise
+            self.fl, self.err= [var/np.nanmax(self.fl) for var in [self.fl, self.err]]
 
     def load_spectrum(self):
-        self.cwd = os.getcwd()
-        file=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}_spectrum.txt')
+        
+        file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum.txt')
         if file.exists():
             file=np.genfromtxt(file,skip_header=1,delimiter=' ')
-            self.wl=np.reshape(file[:,0],(self.n_orders,self.n_dets,self.n_pixels))
-            self.fl=np.reshape(file[:,1],(self.n_orders,self.n_dets,self.n_pixels))
-            self.err=np.reshape(file[:,2],(self.n_orders,self.n_dets,self.n_pixels))
+            self.wl=np.reshape(file[:,0],(self.n_parts,self.n_pixels))
+            self.fl=np.reshape(file[:,1],(self.n_parts,self.n_pixels))
+            self.err=np.reshape(file[:,2],(self.n_parts,self.n_pixels))
         else:
             # generate useable spectrum from molecfit/output folder
-            obj=f'{self.name}/SCIENCE_{self.fullname}_PRIMARY.dat' # target object
-            molecfit=f'{self.name}/SCIENCE_{self.fullname}_PRIMARY_molecfit_transm.dat' # molecfit for telluric correction
+            obj=f'{self.abs_path}/SCIENCE_{self.fullname}_PRIMARY.dat' # target object
+            molecfit=f'{self.abs_path}/SCIENCE_{self.fullname}_PRIMARY_molecfit_transm.dat' # molecfit for telluric correction
             self.wl,self.fl,self.err=self.prepare_spectrum(obj,molecfit,temp=self.standard_star_temp,outfile=file)
-            self.wl=np.reshape(self.wl,(self.n_orders,self.n_dets,self.n_pixels))
-            self.fl=np.reshape(self.fl,(self.n_orders,self.n_dets,self.n_pixels))
-            self.err=np.reshape(self.err,(self.n_orders,self.n_dets,self.n_pixels))
+            self.wl=np.reshape(self.wl,(self.n_parts,self.n_pixels))
+            self.fl=np.reshape(self.fl,(self.n_parts,self.n_pixels))
+            self.err=np.reshape(self.err,(self.n_parts,self.n_pixels))
 
         if self.name in ['2M0355']:#,'ROXs12A']:
             # use corrected wavelength solution, wasn't good for last order-detector
-            wlcorr=pathlib.Path(f'{self.cwd}/{self.name}/{self.name}_corr_wl.txt')
+            wlcorr=pathlib.Path(f'{self.abs_path}/{self.name}_corr_wl.txt')
             if wlcorr.exists():
                 wl=np.genfromtxt(wlcorr,skip_header=1,delimiter=' ')
-                self.wl=np.reshape(wl,(self.n_orders,self.n_dets,self.n_pixels))
+                self.wl=np.reshape(wl,(self.n_parts,self.n_pixels))
             else:
-                model=np.genfromtxt(f'{self.cwd}/{self.name}/model_spectrum.txt',skip_header=1,delimiter=' ')
+                model=np.genfromtxt(f'{self.abs_path}/model_spectrum.txt',skip_header=1,delimiter=' ')
                 wlm=np.reshape(model[:,0],(self.n_orders,self.n_dets,self.n_pixels))
                 flm=np.reshape(model[:,1],(self.n_orders,self.n_dets,self.n_pixels))
                 wl_new=self.wlen_solution(self.fl,self.err,self.wl,flm)
@@ -118,7 +141,7 @@ class Target:
                 plt.ylabel('Flux')
                 plt.legend()
                 fig.tight_layout()
-                fig.savefig(f'{self.cwd}/{self.name}/wave_corr_part.pdf')
+                fig.savefig(f'{self.abs_path}/wave_corr_part.pdf')
                 plt.close()
 
                 fig = plt.figure(figsize=(9,3),dpi=200)
@@ -129,55 +152,57 @@ class Target:
                 plt.xlabel('Original wavelength [nm]')
                 plt.ylabel('Original - corrected wavelength [nm]')
                 fig.tight_layout()
-                fig.savefig(f'{self.cwd}/{self.name}/wavelength_correction.pdf')
+                fig.savefig(f'{self.abs_path}/wavelength_correction.pdf')
                 plt.close()
-
-                self.wl=np.reshape(wl_new,(self.n_orders,self.n_dets,self.n_pixels))
+                self.wl=np.reshape(wl_new,(self.n_parts,self.n_pixels))
 
         return self.wl,self.fl,self.err
     
     def calc_resolution(self):
         # FWHM as determined in molecfit/model/BEST_FIT_PARAMETERS.fits
-        self.spectral_resolutions=np.zeros((7,3))
-        for order in range(7):
-            for det in range(3):
-                wave = self.wl[order,det]
+        self.spectral_resolutions=np.zeros((self.n_parts))
+        if self.instrument=='CRIRES': # small wl-range, one resolution
+            for i in range(self.n_parts):
+                wave = self.wl[i]
                 pix_size = np.median(np.diff(wave))
                 fwhm = pix_size*self.fwhm
-                self.spectral_resolutions[order,det] = np.median(wave)/fwhm
-        return np.nanmedian(self.spectral_resolutions)
-        
-        
+                self.spectral_resolutions[i] = np.median(wave)/fwhm
+            return np.nanmedian(self.spectral_resolutions)
+        elif self.instrument=='LIFE': # large wl-range, varying resolution
+        # interpolate the midpoint differences back onto the original grid
+            midpoints = (self.wl.flatten()[:-1] + self.wl.flatten()[1:]) / 2
+            delta_mid = np.diff(self.wl.flatten())
+            delta_wl = np.interp(self.wl.flatten(), midpoints, delta_mid, left=delta_mid[0], right=delta_mid[-1])
+            R = self.wl.flatten()/delta_wl
+            return R
+
     def get_mask_isfinite(self):
-        self.n_orders,self.n_dets,self.n_pixels = self.fl.shape # shape (orders,detectors,pixels)
-        self.mask_isfinite=np.empty((self.n_orders,self.n_dets,self.n_pixels),dtype=bool)
-        for i in range(self.n_orders):
-            for j in range(self.n_dets):
-                if self.primary_label==True:
-                    mask_ij = np.isfinite(self.fl[i,j]) # only finite pixels
-                else:
-                    primary_name=f'{self.name[:-1]}A'
-                    #primary_name='ROXs12A'
-                    primary_file=pathlib.Path(f'{self.cwd}/{primary_name}/{primary_name}_spectrum.txt')
-                    primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
-                    primary_flux = np.reshape(primary_flux,(self.n_orders,self.n_dets,self.n_pixels))
-                    mask_ij = np.isfinite(self.fl[i,j]) & np.isfinite(primary_flux[i,j]) & np.isfinite(self.err[i,j]) # include nans of primary
-                    mask_ij2 = np.convolve(~np.array(mask_ij), np.ones(7), mode='same') > 0 # grow mask by 7 pixels bc later we shift +-3 pixels
-                    mask_ij= ~mask_ij2
-                self.mask_isfinite[i,j]=mask_ij
+        self.n_parts, self.n_pixels = self.fl.shape
+        self.mask_isfinite=np.empty((self.n_parts, self.n_pixels), dtype=bool)
+        for i in range(self.n_parts):
+            if self.primary_label==True:
+                mask_i = np.isfinite(self.fl[i]) # only finite pixels
+            else:
+                primary_name=f'{self.name[:-1]}A'
+                primary_file=pathlib.Path(f'{os.getcwd()}/{self.instrument}/{primary_name}/{primary_name}_spectrum.txt')
+                primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
+                primary_flux = np.reshape(primary_flux,(self.n_parts,self.n_pixels))
+                mask_i = np.isfinite(self.fl[i]) & np.isfinite(primary_flux[i]) & np.isfinite(self.err[i]) # include nans of primary
+                mask_i2 = np.convolve(~np.array(mask_i), np.ones(7), mode='same') > 0 # grow mask by 7 pixels bc later we shift +-3 pixels
+                mask_i= ~mask_i2
+            self.mask_isfinite[i]=mask_i
         return self.mask_isfinite
     
     def prepare_for_covariance(self):
-        self.separation = np.empty((self.n_orders,self.n_dets), dtype=object)
-        self.err_eff = np.empty((self.n_orders,self.n_dets), dtype=object)
-        for i in range(self.n_orders):
-            for j in range(self.n_dets):
-                mask_ij = self.mask_isfinite[i,j] # Mask the arrays, on-the-spot is slower
-                wave_ij = self.wl[i,j,mask_ij]
-                separation_ij = np.abs(wave_ij[None,:]-wave_ij[:,None]) # wavelength separation
-                self.separation[i,j] = separation_ij  
-                err_ij = self.err[i,j,mask_ij]  
-                self.err_eff[i,j] = np.nanmedian(err_ij) if err_ij.size != 0 else np.nan
+        self.separation = np.empty((self.n_parts), dtype=object)
+        self.err_eff = np.empty((self.n_parts), dtype=object)
+        for i in range(self.n_parts):
+            mask_i = self.mask_isfinite[i] # Mask the arrays, on-the-spot is slower
+            wave_i = self.wl[i,mask_i]
+            separation_i = np.abs(wave_i[None,:]-wave_i[:,None]) # wavelength separation
+            self.separation[i] = separation_i
+            err_i = self.err[i,mask_i]  
+            self.err_eff[i] = np.nanmedian(err_i) if err_i.size != 0 else np.nan
         return self.separation,self.err_eff
     
     def load_spec_file(self,file):
@@ -199,7 +224,7 @@ class Target:
         alph=0.7
         for order in range(self.n_orders):
             for det in range(self.n_dets):
-                ax[order].plot(wl[order,det],fl[order,det],lw=0.8,alpha=1,label=label1,c=self.color1)
+                ax[order].plot(wl[order,det],fl[order,det],lw=0.8,alpha=1,label=label1,c=self.color)
                 ax[order].plot(wl2[order,det],fl2[order,det],lw=0.8,alpha=alph,label=label2,c='yellowgreen')
                 ax[order].plot(wl3[order,det],fl3[order,det],lw=0.8,alpha=alph,label=label3,c='k')
                 if order==0 and det==0:
@@ -397,10 +422,10 @@ class Target:
     def plot_tellurics(self,wl,fl,fl0):
         fig,ax=plt.subplots(1,1,figsize=(7,2),dpi=200)
         alph=0.3
-        ax.plot(wl.flatten(),fl.flatten(),lw=0.5,alpha=1,c=self.color1)
-        ax.plot(wl.flatten(),fl0.flatten(),lw=0.5,alpha=alph,c=self.color1)
-        lines = [Line2D([0], [0], color=self.color1,linewidth=2,label='Data (corrected)'),
-                Line2D([0], [0], color=self.color1,linewidth=2,alpha=alph,label='Data (uncorrected)')]
+        ax.plot(wl.flatten(),fl.flatten(),lw=0.5,alpha=1,c=self.color)
+        ax.plot(wl.flatten(),fl0.flatten(),lw=0.5,alpha=alph,c=self.color)
+        lines = [Line2D([0], [0], color=self.color,linewidth=2,label='Data (corrected)'),
+                Line2D([0], [0], color=self.color,linewidth=2,alpha=alph,label='Data (uncorrected)')]
         ax.legend(handles=lines,fontsize=10)
         ax.set_ylabel('Flux')
         ax.set_xlim(np.min(wl)-10,np.max(wl)+10)
@@ -408,8 +433,8 @@ class Target:
         order=5 
         axins = ax.inset_axes([0,-1,1,0.8]) # left, bottom, width, height
         for det in range(self.n_dets):
-            axins.plot(wl[order,det],fl[order,det],lw=0.5,alpha=1,c=self.color1)
-            axins.plot(wl[order,det],fl0[order,det],lw=0.5,alpha=alph,c=self.color1)
+            axins.plot(wl[order,det],fl[order,det],lw=0.5,alpha=1,c=self.color)
+            axins.plot(wl[order,det],fl0[order,det],lw=0.5,alpha=alph,c=self.color)
         axins.set_xlim(np.min(wl[order]),np.max(wl[order]))
         box,lines=ax.indicate_inset_zoom(axins,edgecolor="black",alpha=0.2,lw=0.8,zorder=1e3)
         axins.set_ylabel('Flux')
@@ -417,6 +442,3 @@ class Target:
         plt.subplots_adjust(wspace=0, hspace=0)
         fig.savefig(f'{self.name}/observations_{self.name}.jpg',bbox_inches='tight')
         plt.close()
-            
-    
-

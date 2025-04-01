@@ -1,28 +1,35 @@
-*/2M0355/*
+*/CRIRES/2M0355/*
 !model_spectrum.txt
 !2M0355_corr_wl.txt
 !2M0355_spectrum.txt
 
-*/2M1425/*
+*/CRIRES/2M1425/*
 !2M1425_spectrum.txt
 
-*/test/*
+*/CRIRES/test/*
 !test_spectrum.txt
 
-*/test_corr/*
+*/CRIRES/test_corr/*
 
-*/testsys/*
+*/CRIRES/testsys/*
 !testsys_spectrum.txt
 
-*/SP0829/*
+*/CRIRES/SP0829/*
 
-*/ROXs12A/*
+*/CRIRES/ROXs12A/*
 !model_spectrum.txt
 !ROXs12A_spectrum.txt
 !ROXs12A_corr_wl.txt
 
-*/ROXs12B/*
+*/CRIRES/ROXs12B/*
 !ROXs12B_spectrum.txt
+
+*/LIFE/Sorg1X/*
+!Sorg1X_spectrum.txt
+!Sorg1X_psg_input.txt
+
+*/LIFE/Sorg20X/*
+!Sorg20X_spectrum.txt
 
 !test_corr_spectrum.txt
 prepare_spectrum*
