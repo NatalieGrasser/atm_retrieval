@@ -67,9 +67,10 @@ def init_retrieval(target,PT_type,chem,Nlive,evtol,cloud_mode='gray',GP=True):
 
     if PT_type=='PTgrad':
         n_grad = 5
-        pt_params={'T0': ([T_lower,T_upper], r'$T_0$')} # T0 = bottom of atmosphere
+        pt_params={} 
         for n in range(n_grad):
             pt_params[f'dlnT_dlnP_{n}']=([0.,0.4],rf'$\nabla T_{n}$')
+        pt_params['T0']= ([T_lower,T_upper], r'$T_0$') # T0 = bottom of atmosphere
         free_params.update(pt_params)
 
     # if equilibrium chemistry, define [Fe/H], C/O, and isotopologue ratios
