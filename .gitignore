@@ -14,16 +14,21 @@
 
 */CRIRES/testsys/*
 !testsys_spectrum.txt
+!testsys_spectrum_noisy.txt
+!testsys_spectrum_veiling.txt
 
 */CRIRES/SP0829/*
 
 */CRIRES/ROXs12A/*
-!model_spectrum.txt
 !ROXs12A_spectrum.txt
-!ROXs12A_corr_wl.txt
+!ROXs12A_pRTflux_wslope.txt
+!ROXs12A_dataflux_wslope.txt
 
 */CRIRES/ROXs12B/*
 !ROXs12B_spectrum.txt
+
+*/CRIRES/ROXs12_onlyB/*
+!ROXs12_onlyB_spectrum.txt
 
 */LIFE/Sorg1X/*
 !Sorg1X_spectrum.txt
@@ -41,3 +46,6 @@ UltracoolSheet*
 animation/*
 */animation
 */figures/*
+
+*.out
+run.py

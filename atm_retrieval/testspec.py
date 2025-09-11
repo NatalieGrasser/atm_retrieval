@@ -20,7 +20,9 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'dlnT_dlnP_2': (0.05, r'$\nabla T_2$'), 
             'dlnT_dlnP_3': (0.07, r'$\nabla T_3$'), 
             'dlnT_dlnP_4': (0.15, r'$\nabla T_4$'), 
-            'T0': (2500, r'$T_0$')} # at bottom of atmosphere
+            'T0': (2500, r'$T_0$'),
+            'log_P_upper': (2, r'log $P_{up}$'), # top of atm
+            'log_P_lower': (-6, r'log $P_{up}$')} # bottom of atm
 
 test_parameters={}
 test_mathtext={}

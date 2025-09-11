@@ -5,7 +5,10 @@ import figures as figs
 from covariance import *
 from log_likelihood import *
 from target import Target
+from parameters import Parameters
 from utils import *
+import re
+import gc
 
 import numpy as np
 import pymultinest
@@ -25,42 +28,59 @@ warnings.simplefilter("error", RuntimeWarning)  # Convert warnings to exceptions
 
 class Retrieval:
 
+    gc_n=0
+
     def __init__(self,target,parameters,species_names,Nlive,evtol,chemistry='freechem',
-                 GP=True,cloud_mode='gray',PT_type='PTgrad',redo=False):
+                 GP=True,cloud_mode='gray',PT_type='PTgrad',partialP=False,redo=False,
+                 folder_suffix=''):
         
-        self.Nlive=Nlive
-        self.evtol=evtol
+        self.Nlive = Nlive
+        self.evtol = evtol
+        self.folder_suffix = folder_suffix
         for attr in ['primary_label','color','instrument','spectral_resolution','name']:
             setattr(self, attr, getattr(target, attr))
             
         self.target = target
         self.data_wave,self.data_flux,self.data_err= target.wl,target.fl,target.err
-        self.mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)    
+        self.mask_isfinite=target.mask_isfinite #get_mask_isfinite() # mask nans, shape (orders,detectors)    
         self.separation,self.err_eff=target.prepare_for_covariance()
         self.PT_type=PT_type
         self.n_atm_layers=50 
+        self.parameters=parameters
+        log_p_upper = self.parameters.params['log_P_upper']
+        log_p_lower = self.parameters.params['log_P_lower']
+        self.pressure = np.logspace(log_p_lower,log_p_upper,self.n_atm_layers)
+        self.partialP = partialP # retrieve partial pressure OR VMRs
 
         if self.instrument=='CRIRES': # lbl opacities
             self.species_info = pd.read_csv(os.path.join('species_info.csv'), index_col=0)
             self.lbl_opacity_sampling=3
-            self.pressure = np.logspace(-6,2,self.n_atm_layers)  # like in deRegt+2024
             self.n_orders, self.n_dets = self.target.n_orders, self.target.n_dets
         elif self.instrument=='LIFE': # corr-k opacities
             self.species_info = pd.read_csv(os.path.join('species_info_ck.csv'), index_col=0)
-            self.pressure = np.logspace(-6,0,self.n_atm_layers)
-        self.parameters=parameters
-        self.chemistry=chemistry # freechem/equchem/quequchem
+        self.chemistry=chemistry # freechem/equchem/quequchem/flexequ
         self.species_names=species_names
         self.species_pRT, self.species_hill =self.get_pRT_hill(species_names)
 
+        self.vary_species = []
+        if self.chemistry=='varchem':
+            self.n_knots = sum(1 for key in self.parameters.params if re.fullmatch(r'log_H2O_\d+', key))
+            self.fixed_species = []
+            for species_i in self.species_names:
+                if f'log_{species_i}_0' in self.parameters.params:
+                    self.vary_species.append(species_i)
+                else:
+                    self.fixed_species.append(species_i)
+
         # if companion, load in primary spectrum as well 
         if self.target.primary_label==False:
-            self.target_primary=Target(f'{self.target.name[:-1]}A')
-            self.primary_wave,self.primary_flux,self.primary_err=self.target_primary.load_spectrum()
+            #self.target_primary=Target(f'{self.target.name[:-1]}A')
+            self.target_primary=Target('ROXs12A')
+            self.primary_wave,self.primary_flux,self.primary_err=self.target_primary.load_spectrum(remove_continuum=False)
 
         self.n_parts, self.n_pixels = self.data_flux.shape
         self.n_params = len(parameters.free_params)
-        self.output_name=f'{chemistry}_{PT_type}_N{Nlive}_ev{evtol}' # output folder name
+        self.output_name=f'{chemistry}_{PT_type}_N{Nlive}_ev{evtol}{folder_suffix}' # output folder name
         self.cwd = os.getcwd()
         self.output_dir = pathlib.Path(f'{self.cwd}/{self.instrument}/{self.target.name}/{self.output_name}')
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -72,6 +92,10 @@ class Retrieval:
         if cloud_mode=='MgSiO3':
             self.cloud_species=['MgSiO3(c)_cd']
             self.do_scat_emis = True # enable scattering on cloud particles
+
+        if 'Teff_ref' in self.parameters.params:
+            self.Teff_ref = self.parameters.params['Teff_ref']
+            self.Teff_ref_err = self.parameters.params['Teff_ref_err']
                 
         self.Cov = np.empty((self.n_parts), dtype=object) # covariance matrix
         for i in range(self.n_parts):
@@ -84,8 +108,8 @@ class Retrieval:
                                         err_eff=self.err_eff[i],max_separation=maxval)
             if GP==False: # use simple diagonal covariance matrix
                 self.Cov[i] = Covariance(err=self.data_err[i,mask_i])
-    
-        self.LogLike = LogLikelihood(retr_obj=self,scale_flux=True,scale_err=True)
+        scaleflux = True if self.instrument!='LIFE' else False
+        self.LogLike = LogLikelihood(retr_obj=self,scale_flux=scaleflux,scale_err=True)
 
         # redo atmosphere objects when introdocuing new species or MgSiO3 clouds
         self.atmosphere_objects=self.get_atmosphere_objects(redo=redo)
@@ -146,9 +170,10 @@ class Retrieval:
                 wl_pad=1e-2 # wavelength padding because spectrum is not wavelength shifted yet
                 wlmin=np.min(self.target.wlens_um[0])-wl_pad
                 wlmax=np.max(self.target.wlens_um[1])+wl_pad
+                CIA =  ['H2-H2','H2-He','CH4-CH4','CH4-He','CO2-CH4','CO2-CO2','CO2-H2','CO2-He','H2-CH4','H2O-H2O']
                 atmosphere = Radtrans(line_species=species,
                                     rayleigh_species = ['H2', 'He'],
-                                    continuum_opacities = ['H2-H2', 'H2-He'],
+                                    continuum_opacities = CIA,
                                     wlen_bords_micron=np.array([wlmin,wlmax]), 
                                     mode='c-k')
                 atmosphere.setup_opa_structure(self.pressure)
@@ -159,19 +184,31 @@ class Retrieval:
 
     def PMN_lnL(self,cube=None,ndim=None,nparams=None):
         self.model_object=pRT_spectrum(self)      
+        P_tot = self.model_object.P_tot
+        P_surf = self.model_object.P_surf
+
+        if self.partialP and P_tot>P_surf:
+            #print('\nP_tot > P_surf!', np.round(P_tot,decimals=2), ">", max(self.pressure))
+            return -np.inf
+
         self.model_flux=self.model_object.make_spectrum()
+        summed_emcont = getattr(self.model_object, "summed_emcont", [])
+        self.Teff_model = self.model_object.Teff_model
+
         for i in range(self.n_parts): # update covariance matrix
             if not self.mask_isfinite[i].any(): # skip empty
                 continue
             self.Cov[i](self.parameters.params)
-        ln_L = self.LogLike(self.model_flux, self.Cov, params=self.parameters.params) # retrieve log-likelihood
-        #plt.plot(self.data_wave.flatten(),self.data_flux.flatten())
-        #plt.plot(self.data_wave.flatten(),self.model_flux.flatten())
-        #plt.savefig('model.png')
-        #plt.close()
-        #plt.plot(self.model_object.temperature,self.pressure)
-        #plt.yscale('log')
-        #plt.savefig('pt.png')
+
+        ln_L = self.LogLike(self.model_flux, self.Cov, params=self.parameters.params,
+                                Teff_model=self.model_object.Teff_model,P_tot_surf=(P_tot,P_surf),
+                                summed_emcont=summed_emcont,metall=self.model_object.FeH)
+
+        #Retrieval.gc_n+=1
+        if Retrieval.gc_n>5 and 'equ' in self.chemistry: # for some reason only dies in equchem??
+            gc.collect()
+            Retrieval.gc_n=0
+        
         return ln_L
 
     def PMN_run(self,N_live_points=400,evidence_tolerance=0.5,resume=True):
@@ -188,18 +225,41 @@ class Retrieval:
         posterior = posterior[:,:-2] # remove last 2 columns
         posterior_dict={}
         for key in self.parameters.free_params.keys():
-            idx=list(self.parameters.params).index(key)
+            idx=list(self.parameters.free_params).index(key)
             posterior_dict[key]=(posterior[:,idx],self.parameters.free_params[key][1])
         self.posterior=posterior_dict
         self.params_dict,self.model_flux=self.get_params_and_spectrum()
+        self.model_flux[~self.mask_isfinite] = np.nan
+        #plt.plot(self.data_flux.flatten())
+        #plt.plot(self.model_flux.flatten())
+        #plt.savefig('model.png')
         figs.summary_plot(self)
-        if self.chemistry in ['equchem','quequchem'] or self.instrument=='LIFE':
+        if self.chemistry in ['freechem','varchem'] and self.partialP:
+            plot_species = self.species_names.copy()
+            plot_species.append('H2')
+            plot_species.append('He')
+            figs.VMR_plot(self,VMR_species=plot_species,
+                          xmin=1e-8,xmax=1e-0,plotlegend=True)
+        elif self.chemistry in ['equchem','quequchem','flexequ','varchem']:
             figs.VMR_plot(self,VMR_species='all')
+        if self.chemistry=='flexequ':
+            figs.plot_scaled_abunds(self)
+        if 'log_k_rk' in self.params_dict:
+            figs.plot_rk(self)
+            figs.plot_spectrum_split(self,plot_veiling=True)
+        if 'cloud_slope' in self.params_dict:
+            figs.cornerplot(self,cloud_params=True)
+            figs.plot_spectrum_split(self,plot_cloud=True)
         if self.instrument=='CRIRES':
             if self.primary_label==False: 
                 figs.plot_spectrum_split(self,plot_components=True)
+                if 'log_phi_k' in self.parameters.params.keys(): # if linear func
+                    figs.plot_phi_components(self)
             else:
                 figs.plot_spectrum_split(self)
+        print('Finished callback')
+        plt.close('all')
+        gc.collect()
      
     def PMN_analyse(self):
 
@@ -209,15 +269,44 @@ class Retrieval:
         if post.exists():
             self.posterior=load_pickle(post)
         else:
-            analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
+            def run_analyzer():
+                analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
                                             outputfiles_basename=f'{self.output_dir}/{self.prefix}')  # set up analyzer object
-            stats = analyzer.get_stats()
-            posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
-            posterior = posterior[:,:-1] # shape 
+                stats = analyzer.get_stats()
+                posterior = analyzer.get_equal_weighted_posterior() # equally-weighted posterior distribution
+                posterior = posterior[:,:-1] # shape 
+                return posterior, stats
+            try:
+                posterior, stats = run_analyzer()
+            except:
+                
+                def fix_file(input_file):
+                    with open(input_file, 'r') as f:
+                        lines = f.readlines()
+                    fixed_lines = []
+                    #sci_fix = re.compile(r'([0-9\-\.]+)([\+\-][0-9]{3})')  # Match numbers missing 'E'
+                    sci_fix = re.compile(r'(?<![eE])(-?\d+\.\d+)([\+\-]\d{3})')
+                    for line in lines:
+                        fixed_line = sci_fix.sub(r'\1E\2', line)
+                        fixed_lines.append(fixed_line)
+                    with open(input_file, 'w') as f:
+                        f.writelines(fixed_lines)
+
+                # go through all fix files with corrupted formatting
+                #pmn_files = [f for f in os.listdir(self.output_dir) if f.startswith('pmn_') and os.path.isfile(os.path.join(self.output_dir, f))]
+                pmn_files = ['pmn_.txt']
+                for file in pmn_files:
+                    print('\nfixing',file)
+                    fix_file(f'{self.output_dir}/{file}')
+                print('Fixed corrupt pmn files')
+                analyzer = pymultinest.Analyzer(n_params=self.parameters.n_params, 
+                                            outputfiles_basename=f'{self.output_dir}/{self.prefix}')  # set up analyzer object
+                stats = analyzer.get_stats()
+                posterior, stats = run_analyzer()
 
             posterior_dict={}
             for key in self.parameters.free_params.keys():
-                idx=list(self.parameters.params).index(key)
+                idx=list(self.parameters.free_params).index(key)
                 posterior_dict[key]=(posterior[:,idx],self.parameters.free_params[key][1])
             self.posterior=posterior_dict
             save_pickle(self.posterior,post)
@@ -241,17 +330,23 @@ class Retrieval:
         if final_dict.exists():
             self.params_dict=load_pickle(final_dict)
 
-            for key in self.parameters.param_keys:
+            #for key in self.parameters.param_keys:
+            for key in self.params_dict.keys():
                 self.parameters.params[key]=self.params_dict[key] # set parameters to retrieved values
 
             # create final spectrum
             self.model_object=pRT_spectrum(self,contribution=True)
             self.model_flux0=self.model_object.make_spectrum()
+            #plt.plot(self.data_flux.flatten())
+            #plt.plot(self.model_flux.flatten())
             self.model_flux=np.zeros_like(self.model_flux0)
-            self.summed_contr= self.model_object.summed_contr # average over all orders
+            self.summed_emcont= self.model_object.summed_emcont # average over all orders
             phi=self.params_dict['phi']
+            #if self.instrument!='LIFE':
             for part in range(self.n_parts):
                 self.model_flux[part]=phi[part]*self.model_flux0[part] # scale model accordingly
+            #else: # why did I do this??
+                #self.model_flux=self.model_flux0
             self.get_ratios() 
 
         else:
@@ -266,15 +361,19 @@ class Retrieval:
             # create final spectrum
             self.model_object=pRT_spectrum(self,contribution=True)
             self.model_flux0=self.model_object.make_spectrum()
-            self.summed_contr= self.model_object.summed_contr # average over all orders
-            self.idx_maxcont=np.where(self.summed_contr == np.max(self.summed_contr))[0][0]
+            self.summed_emcont= self.model_object.summed_emcont # average over all orders
+            self.idx_maxcont=np.where(self.summed_emcont == np.max(self.summed_emcont))[0][0]
+            self.params_dict['idx_maxcont'] = self.idx_maxcont
             self.params_dict['T_maxcont'] = self.model_object.temperature[self.idx_maxcont] # temperature at max emission contribution
             self.params_dict['log_P_maxcont'] = np.log10(self.pressure[self.idx_maxcont]) # pressure at max emission contribution
             self.get_ratios() # save isotope & element ratios in final params dict
 
             # save abundances of species at maximum emission contribution
-            if self.chemistry in ['equchem','quequchem']:
-                for species_i in self.species_names:
+            if (self.chemistry in ['equchem','quequchem','flexequ']) or (self.chemistry in ['freechem','varchem'] and self.partialP==True):
+                all_species = self.species_names.copy()
+                all_species.append('H2')
+                all_species.append('He')
+                for species_i in all_species:
                     minus,median,plus=np.percentile(np.log10(np.array(self.VMR_dict[species_i])[:,self.idx_maxcont]), [15.9,50.0,84.1], axis=0)
                     self.params_dict[f'log_{species_i}'] = median
                     self.params_dict[f'log_{species_i}_err'] = (minus-median,plus-median)
@@ -288,9 +387,6 @@ class Retrieval:
                 self.params_dict['chi2']=self.LogLike.chi2_red # save reduced chi^2 of fiducial model
                 self.params_dict['lnZ']=self.lnZ # save lnZ of fiducial model
                 self.params_dict['lnL']=lnL
-                
-            if self.primary_label==False:
-                self.params_dict['phi_comp']=self.model_object.phi_components
 
             self.model_flux=np.zeros_like(self.model_flux0)
             phi=self.params_dict['phi']
@@ -324,18 +420,24 @@ class Retrieval:
         VMR_dict=pathlib.Path(f'{self.output_dir}/VMR_dict.pickle')
 
         # add all ratio posteriors to posterior dict, check C/O if it has been done already
-        if ('C/O' in self.posterior.keys()) and temp_dist.exists() and self.chemistry=='freechem':
+        if ('C/O' in self.posterior.keys()) and temp_dist.exists() and self.chemistry=='freechem' and self.partialP==False:
             self.temp_dist=np.load(temp_dist)
 
-        elif temp_dist.exists() and VMR_dict.exists() and self.chemistry in ['equchem','quequchem']:
+        elif temp_dist.exists() and VMR_dict.exists() and (self.chemistry in ['equchem','quequchem','flexequ','varchem'] or (self.chemistry=='freechem' and self.partialP==True)):
             self.temp_dist=np.load(temp_dist)
             self.VMR_dict= load_pickle(VMR_dict)
             
-        elif self.chemistry in ['equchem','quequchem']:
+        elif (self.chemistry in ['equchem','quequchem','flexequ','varchem']) or (self.chemistry=='freechem' and self.partialP==True):
 
-            stop=10
             temperature_distribution=[] # for each of the n_atm_layers
             VMRs=[]
+
+            if self.callback_label=='live_': # sparser sampling just for plotting
+                max_len = 10
+                if len(all_samples) > max_len:
+                    step = int(np.ceil(len(all_samples) / max_len))
+                    all_samples = all_samples[::step]
+
             for j,sample in enumerate(all_samples):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
@@ -343,17 +445,13 @@ class Retrieval:
                 model_object=pRT_spectrum(self)
                 temperature_distribution.append(np.array(model_object.temperature))
                 VMRs.append(model_object.VMR_dict)
-                # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
-                if getpass.getuser()=="natalie" and j>stop: 
-                    remaining=len(all_samples)-(j+1)
-                    temperature_distribution+=[self.model_object.temperature]*remaining
-                    break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
 
             self.VMR_dict={}
             for molec in VMRs[0].keys():
                 vmr_list=[]
-                for i in range(len(self.posterior)):
+                for i in range(len(all_samples)):
+                #for i in range(len(self.posterior)):
                     vmr_list.append(VMRs[i][molec])
                 self.VMR_dict[molec]=vmr_list # reformat to make it easier to work with
 
@@ -361,7 +459,11 @@ class Retrieval:
                 np.save(f'{self.output_dir}/temperature_dist.npy',self.temp_dist)
                 save_pickle(self.VMR_dict,f'{self.output_dir}/VMR_dict.pickle')
 
-        elif self.chemistry=='freechem':
+            if self.chemistry in ['flexequ','varchem'] or (self.chemistry=='freechem' and self.partialP==True):
+                if 'C/H' not in self.params_dict and self.callback_label=='final_':
+                    self.get_FeH_CO_from_maxcont()
+
+        elif self.chemistry in ['freechem']:
 
             mathtext = []
             get_ratios = []
@@ -390,8 +492,7 @@ class Retrieval:
             CO_distribution=[]
             CH_distribution=[]
             temperature_distribution=[] # for each of the n_atm_layers
-            stop=10
-
+            
             for j,sample in enumerate(all_samples):
                 # sample value is final/real value, need it to be between 0 and 1 depending on prior, same as cube
                 cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
@@ -400,15 +501,6 @@ class Retrieval:
                 CO_distribution.append(model_object.CO)
                 CH_distribution.append(model_object.FeH)
                 temperature_distribution.append(np.array(model_object.temperature))
-                # when testing from my laptop, or it takes too long to evaluate C/O, C/H, temps for all samples (22min)
-                if getpass.getuser()=="natalie" and j>stop: 
-                    remaining=len(all_samples)-(j+1)
-                    temperature_distribution+=[self.model_object.temperature]*remaining
-                    CO_distribution+=[self.model_object.CO]*remaining
-                    CH_distribution+=[self.model_object.FeH]*remaining
-                    CO_distribution=np.array(CO_distribution)
-                    CH_distribution=np.array(CH_distribution)
-                    break
             self.temp_dist=np.array(temperature_distribution) # shape (n_samples, n_atm_layers)
 
             median,minus_err,plus_err=self.get_quantiles(CO_distribution)
@@ -426,11 +518,75 @@ class Retrieval:
                 post=pathlib.Path(f'{self.output_dir}/posterior_dict.pickle') 
                 save_pickle(self.posterior,post) # overwrite with ratio posteriors
 
+    def get_FeH_CO_from_maxcont(self):
+        
+        # calc [Fe/H] & C/O from maximum emission contribution for flexequ
+        idx = find_nearest(self.pressure,10**self.params_dict['log_P_maxcont'])
+        free_params_orig = self.parameters.free_params.copy()
+        params_orig= self.parameters.params.copy()
+        #const_params_orig = self.parameters.constant_params.copy()
+        
+        for species_i in self.species_names:
+            # add posterior of each species at max
+            self.posterior[f'log_{species_i}'] = (np.log10(np.array(self.VMR_dict[species_i]).T[idx]),species_i)
+            self.parameters.free_params[f'log_{species_i}'] = ([-14,-1],rf"log {self.species_info.loc[species_i,'mathtext_name']}")
+
+        self.parameters = Parameters(self.parameters.free_params,self.parameters.constant_params)
+        bounds_array=[]
+        for key in self.parameters.param_keys:
+            bounds=self.parameters.param_priors[key]
+            bounds_array.append(bounds)
+        bounds_array=np.array(bounds_array)
+
+        CO_distribution=[]
+        CH_distribution=[]
+        all_samples = np.empty((len(self.posterior[list(self.posterior.keys())[0]][0]),len(list(self.parameters.free_params.keys()))))
+        for k,key in enumerate(list(self.parameters.free_params.keys())):
+            all_samples[:,k] = self.posterior[key][0]
+
+        if self.callback_label=='live_': # sparser sampling just for plotting
+            max_len = 10
+            if len(all_samples) > max_len:
+                step = int(np.ceil(len(all_samples) / max_len))
+                all_samples = all_samples[::step]
+
+        orig_chem = str(self.chemistry)
+        orig_P = self.partialP
+
+        self.chemistry='freechem' # to get Fe/H & C/O
+        self.partialP = False
+        for j,sample in enumerate(all_samples):
+            cube=(sample-bounds_array[:,0])/(bounds_array[:,1]-bounds_array[:,0])
+            self.parameters(cube)
+            model_object=pRT_spectrum(self)
+            CO_distribution.append(model_object.CO)
+            CH_distribution.append(model_object.FeH)
+
+        self.chemistry=orig_chem
+        self.partialP = orig_P
+        self.parameters = Parameters(free_params_orig,self.parameters.constant_params)
+        self.parameters.params =params_orig
+
+        median,minus_err,plus_err=self.get_quantiles(CO_distribution)
+        self.params_dict['C/O']=median
+        self.params_dict['C/O_err']=(minus_err,plus_err)
+        self.posterior['C/O'] = (np.array(CO_distribution),'C/O')
+
+        median,minus_err,plus_err=self.get_quantiles(CH_distribution)
+        self.params_dict['C/H']=median
+        self.params_dict['C/H_err']=(minus_err,plus_err)
+        self.posterior['C/H'] = (np.array(CH_distribution),'[C/H]')
+
+        if self.callback_label=='final_' and getpass.getuser() == "grasser": # when running from LEM
+            post=pathlib.Path(f'{self.output_dir}/posterior_dict.pickle') 
+            save_pickle(self.posterior,post) # overwrite with ratio posteriors
+
     def evaluate(self,only_abundances=False,only_params=None,split_corner=True,
                  callback_label='final_',makefigs=True):
         self.callback_label=callback_label
         self.PMN_analyse() # get/save bestfit params and final posterior
         self.params_dict,self.model_flux=self.get_params_and_spectrum() # all params + scaling phi + s^2
+        self.model_flux[~self.mask_isfinite] = np.nan
         if makefigs:
             if callback_label=='final_':
                 figs.make_all_plots(self,only_abundances=only_abundances,only_params=only_params,split_corner=split_corner)
@@ -454,6 +610,13 @@ class Retrieval:
         for j,species_i in enumerate(ccf_species):
 
             if CCF_results.exists()==False:
+                # function only for CRIRES spectra anyway
+                crires_shape = (self.n_orders,self.n_dets,self.n_pixels)
+                to_reshape= [self.data_flux, self.data_err, self.data_wave, self.mask_isfinite]
+                data_flux, data_err, data_wave, mask_isfinite = [var.reshape(crires_shape) for var in to_reshape]
+                Cov = self.Cov.reshape(7,3)
+                phi = self.params_dict['phi'].reshape(7,3)
+
                 # create final model without opacity from a certain specie
                 exclusion_dict=self.params_dict.copy()
                 if self.chemistry=='freechem':
@@ -461,13 +624,15 @@ class Retrieval:
                    
                 # interpolate=False for CCF: not interpolated onto data_wave so that wl padding not cut off
                 self.parameters.params=exclusion_dict
-                if self.chemistry in ['equchem','quequchem']:
+                if self.chemistry in ['equchem','quequchem','flexequ']:
                     exclusion_model_object=pRT_spectrum(self,interpolate=False,leave_out=species_i)
                 else:
                     exclusion_model_object=pRT_spectrum(self,interpolate=False)
                 
                 # shape (n_orders,length of uninterpolated wavelengths), must still be interpolated 
                 exclusion_model,exclusion_model_wl=exclusion_model_object.make_spectrum()
+                #if self.primary_label==False: # if secondary, CC only with secondary flux
+                    #exclusion_model = exclusion_model_object.secondary_flux.reshape(exclusion_model_wl.shape)
 
                 self.parameters.params=orig_params_dict        
                 model_flux_broad,_=pRT_spectrum(self,interpolate=False).make_spectrum()
@@ -479,44 +644,157 @@ class Retrieval:
                 for order in range(self.n_orders):
                     for det in range(self.n_dets):
 
-                        if np.isnan(self.data_flux[order,det]).all():
-                            pass # skip empty order/det, CCF and ACF remains 0 
+                        if np.isnan(data_flux[order,det]).all():
+                            continue # skip empty order/det, CCF and ACF remains 0 
 
-                        else:
-                            wl_data=self.data_wave[order,det,self.mask_isfinite[order,det]] 
-                            fl_data=self.data_flux[order,det,self.mask_isfinite[order,det]] 
+                        wl_data=data_wave[order,det,mask_isfinite[order,det]] 
+                        fl_data=data_flux[order,det,mask_isfinite[order,det]] 
 
-                            if self.primary_label==False: # remove primary to cc only w secondary
-                                fl_data-= self.model_object.primary_broadened[order,det,self.mask_isfinite[order,det]]
-                            
-                            wl_excl=exclusion_model_wl[order]
-                            fl_excl=exclusion_model[order]*self.params_dict['phi'][order,det]
-                            fl_final=model_flux_broad[order]*self.params_dict['phi'][order,det]
+                        if self.primary_label==False: # remove primary to cc only w secondary
+                            fl_data-= self.model_object.primary_broadened[order,det,mask_isfinite[order,det]]
+                        
+                        wl_excl=exclusion_model_wl[order]
+                        fl_excl=exclusion_model[order]*phi[order,det]
+                        fl_final=model_flux_broad[order]*phi[order,det]
 
-                            # data minus model without certain species
-                            fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
-                            residuals=fl_data-fl_excl_rebinned
-                            residuals-=np.nanmean(residuals) # mean should be at zero
-                            self.Cov[order,det].get_cholesky() # in case it hasn't been called yet
-                            cov_0_res=self.Cov[order,det].solve(residuals)
-                            
-                            # excluded species template: complete final model minus final model w/o species
-                            species_template=fl_final-fl_excl
-                            species_template_rebinned=interp1d(wl_excl,species_template)(wl_data) # rebin for Cov
-                            species_template_rebinned-=np.nanmean(species_template_rebinned) # mean should be at zero
-                            cov_0_temp=self.Cov[order,det].solve(species_template_rebinned)
-                            wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
-                            template_shift=interp1d(wl_excl,species_template)(wl_shift) # interpolate template onto shifted wl
-                            template_shift-=np.nanmean(template_shift) # mean should be at zero
+                        # data minus model without certain species
+                        fl_excl_rebinned=interp1d(wl_excl,fl_excl)(wl_data) # rebin to allow subtraction
+                        residuals=fl_data-fl_excl_rebinned
+                        residuals-=np.nanmean(residuals) # mean should be at zero
+                        Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                        cov_0_res=Cov[order,det].solve(residuals)
+                        
+                        # excluded species template: complete final model minus final model w/o species
+                        species_template=fl_final-fl_excl
+                        species_template_rebinned=interp1d(wl_excl,species_template)(wl_data) # rebin for Cov
+                        species_template_rebinned-=np.nanmean(species_template_rebinned) # mean should be at zero
+                        cov_0_temp=Cov[order,det].solve(species_template_rebinned)
+                        wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
+                        template_shift=interp1d(wl_excl,species_template)(wl_shift) # interpolate template onto shifted wl
+                        template_shift-=np.nanmean(template_shift) # mean should be at zero
 
-                            CCF[order,det]=(template_shift.T).dot(cov_0_res)
-                            ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+                        CCF[order,det]=(template_shift.T).dot(cov_0_res)
+                        ACF[order,det]=(template_shift.T).dot(cov_0_temp)
 
                 CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
                 ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
                 noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
-                CCF_norm = CCF_sum/noise # get ccf map in S/N units
-                ACF_norm = ACF_sum/noise
+                try:
+                    CCF_norm = CCF_sum/noise # get ccf map in S/N units
+                    ACF_norm = ACF_sum/noise
+                except:
+                    print('Invalid nosie = ',noise)
+                    print('CCF_sum =',CCF_sum)
+                    CCF_norm = CCF_sum
+                    ACF_norm = ACF_sum
+
+
+                SNR=CCF_norm[np.where(RVs==0)[0][0]]
+                self.parameters.params=orig_params_dict
+
+            else:
+                CCF_norm,ACF_norm,SNR = ccf_acf_dict[species_i]
+
+            ccf_dict[f'SNR_{species_i}']=SNR
+            ccf_acf_dict[species_i]=(CCF_norm,ACF_norm,SNR)
+            print(f'{species_i} S/N =',np.round(SNR,decimals=2))
+
+        self.ccf_acf_dict = ccf_acf_dict
+        figs.CCF_plot_all(self,ccf_species,noiserange=100)
+
+        if CCF_results.exists()==False and ccf_species==self.species_names:
+            save_pickle(ccf_acf_dict,CCF_results)
+
+        self.params_dict.update(ccf_dict)
+        save_pickle(self.params_dict,f'{self.output_dir}/params_dict.pickle') # overwrite with CCF SNR
+
+        return ccf_dict
+
+    def cross_correlation_simple(self,ccf_species,noiserange=100): # can only be run after evaluate()
+
+        ccf_dict={}
+        ccf_acf_dict={} # save cross-correlations and auto-correlations
+        orig_params_dict=self.params_dict
+        CCF_results=pathlib.Path(f'{self.output_dir}/CCF_ACF_dict_simple.pickle')
+        if CCF_results.exists():
+            ccf_acf_dict=load_pickle(CCF_results)
+
+        if isinstance(ccf_species, list)==False:
+            ccf_species=[ccf_species] # if only one, make list so that it works in the for loop
+
+        RVs=np.arange(-500,500,1) # km/s
+
+        for j,species_i in enumerate(ccf_species):
+
+            if CCF_results.exists()==False:
+                # function only for CRIRES spectra anyway
+                crires_shape = (self.n_orders,self.n_dets,self.n_pixels)
+                to_reshape= [self.data_flux, self.data_err, self.data_wave, self.mask_isfinite]
+                data_flux, data_err, data_wave, mask_isfinite = [var.reshape(crires_shape) for var in to_reshape]
+                Cov = self.Cov.reshape(7,3)
+                phi = self.params_dict['phi'].reshape(7,3)
+
+                # create model with only opacity from a certain species
+                template_dict=self.params_dict.copy()
+                leave_out=[]
+                if self.chemistry =='freechem':
+                    for sp in self.species_names:
+                        if sp!=species_i:
+                            template_dict[f'log_{sp}']=-14 # exclude from model
+
+                # interpolate=False for CCF: not interpolated onto data_wave so that wl padding not cut off
+                self.parameters.params=template_dict
+                # shape (n_orders,length of uninterpolated wavelengths), must still be interpolated 
+                if self.chemistry in ['equchem','quequchem','flexequ']:
+                    leave_out = list(np.copy(self.species_names))
+                    leave_out.remove(species_i)
+
+                template_flux,template_wl=pRT_spectrum(self,interpolate=False,leave_out=leave_out).make_spectrum()
+                self.parameters.params=orig_params_dict   
+
+                beta=1.0-RVs/const.c.to('km/s').value
+                CCF = np.zeros((self.n_orders,self.n_dets,len(RVs)))
+                ACF = np.zeros((self.n_orders,self.n_dets,len(RVs))) # auto-correlation
+
+                for order in range(self.n_orders):
+                    for det in range(self.n_dets):
+
+                        if np.isnan(data_flux[order,det]).all():
+                            continue # skip empty order/det, CCF and ACF remains 0 
+
+                        wl_data=data_wave[order,det,mask_isfinite[order,det]] 
+                        fl_data=data_flux[order,det,mask_isfinite[order,det]] 
+                        fl_data-=np.nanmean(fl_data)
+
+                        #if self.primary_label==False: # remove primary to cc only w secondary
+                            #fl_data-= self.model_object.primary_broadened[order,det,mask_isfinite[order,det]]
+                        
+                        wl_model=template_wl[order]
+                        fl_model=template_flux[order]*phi[order,det]
+                        fl_model-=np.nanmean(fl_model)
+
+                        Cov[order,det].get_cholesky() # in case it hasn't been called yet
+                        cov_0_data=Cov[order,det].solve(fl_data)
+                        fl_model_rebinned = interp1d(wl_model,fl_model)(wl_data) # rebin for Cov
+                        cov_0_temp=Cov[order,det].solve(fl_model_rebinned)
+                        wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
+                        template_shift=interp1d(wl_model,fl_model)(wl_shift) # interpolate template onto shifted wl
+                        template_shift-=np.nanmean(template_shift) # mean should be at zero
+
+                        CCF[order,det]=(template_shift.T).dot(cov_0_data)
+                        ACF[order,det]=(template_shift.T).dot(cov_0_temp)
+
+                CCF_sum=np.sum(np.sum(CCF,axis=0),axis=0) # sum CCF over all orders detectors
+                ACF_sum=np.sum(np.sum(ACF,axis=0),axis=0)
+                noise=np.std(CCF_sum[np.abs(RVs)>noiserange]) # mask out regions close to expected RV
+                try:
+                    CCF_norm = CCF_sum/noise # get ccf map in S/N units
+                    ACF_norm = ACF_sum/noise
+                except:
+                    print('Invalid nosie = ',noise)
+                    print('CCF_sum =',CCF_sum)
+                    CCF_norm = CCF_sum
+                    ACF_norm = ACF_sum
 
                 SNR=CCF_norm[np.where(RVs==0)[0][0]]
                 self.parameters.params=orig_params_dict
@@ -562,11 +840,11 @@ class Retrieval:
                 if self.chemistry=='freechem':
                     original_prior=self.parameters.param_priors[f'log_{species_i}']
                     self.parameters.param_priors[f'log_{species_i}']=[-15,-14] # exclude from retrieval
-                elif self.chemistry in ['equchem','quequchem']:
+                elif self.chemistry in ['equchem','quequchem','flexequ']:
                     if species_i=='13CO':
                         key='log_C12_1S3_ratio'
                     elif species_i=='H2(18)O':
-                        key='log_O16_18_ratio'
+                        key='log_H2O16_18_ratio'
                     original_prior=self.parameters.param_priors[key]
                     self.parameters.param_priors[key]=[14,15] # exclude from retrieval
 
@@ -589,11 +867,11 @@ class Retrieval:
             if setback_prior==True:
                 if self.chemistry=='freechem':
                     self.parameters.param_priors[f'log_{species_i}']=original_prior 
-                elif self.chemistry in ['equchem','quequchem']:
+                elif self.chemistry in ['equchem','quequchem','flexequ']:
                     if species_i=='13CO':
                         key='log_C12_13_ratio'
                     elif species_i=='H2(18)O':
-                        key='log_O16_18_ratio'
+                        key='log_H2O16_18_ratio'
                     self.parameters.param_priors[key]=original_prior
             
         return bayes_dict
@@ -623,7 +901,7 @@ class Retrieval:
 
         retrieval_output_dir=self.output_dir # save end results here
 
-        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.Nlive} - ev: {self.evtol} ------ \n')
+        print(f'\n ------ {self.target.name} - {self.chemistry} - {self.PT_type} - Nlive: {self.Nlive} - ev: {self.evtol} - {self.folder_suffix} ------ \n')
 
         # run main retrieval if hasn't been run yet, else skip to cross-corr and bayes
         final_dict=pathlib.Path(f'{self.output_dir}/params_dict.pickle')

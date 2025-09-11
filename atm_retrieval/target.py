@@ -1,5 +1,4 @@
 import numpy as np
-from petitRADTRANS import nat_cst as nc
 import matplotlib.pyplot as plt
 import pathlib
 import os
@@ -9,6 +8,7 @@ from scipy.interpolate import interp1d
 from matplotlib.lines import Line2D
 from astropy.coordinates import SkyCoord
 from PyAstronomy.pyasl import helcorr
+from utils import *
 import warnings
 
 class Target:
@@ -44,15 +44,18 @@ class Target:
             self.fwhm = 5.397255188786233 # Gaussian FWHM in pixels
             self.airmass_obs = 1.13
             self.airmass_std = 1.03
-        elif self.name=='ROXs12B':
+        elif self.name in ['ROXs12B','ROXs12_onlyB']:
             self.primary_label=False
             self.ra="16h26m28.0396675056s"
             self.dec="-25d26m47.717480112s"
             self.JD=2460007.5
             self.standard_star_temp=15142 # iSco
-            self.fullname='ROXs12B'  
+            self.fullname=self.name
             self.instrument = 'CRIRES' 
             self.color='mediumturquoise'
+            if self.name=='ROXs12_onlyB':
+                self.color='dodgerblue'
+                self.primary_label=True
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
         elif self.name=='ROXs12A':
             self.ra="16h26m28.0396675056s"
@@ -63,6 +66,15 @@ class Target:
             self.instrument = 'CRIRES' 
             self.color='orange'
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
+        elif self.name=='SP0829':
+            self.ra="08h28m34.1716399433s"
+            self.dec="-13d09m19.841445886s"
+            self.JD=2459947.840822
+            self.standard_star_temp=15142 # iSco
+            self.fullname='SSSPMJ0829-1309'  
+            self.instrument = 'CRIRES' 
+            self.color='limegreen'
+            self.fwhm = 5.44325193385436 # Gaussian FWHM in pixels
         elif self.name=='Sorg1X':
             self.color='darkturquoise'
             self.instrument = 'LIFE'
@@ -88,7 +100,9 @@ class Target:
 
         elif self.instrument == 'LIFE':
             self.n_parts=1
-            self.n_pixels=77
+            #self.n_pixels=1899
+            #self.n_pixels=1519#77
+            self.n_pixels=None
             self.vbary = 0 # just simulation
             
         self.abs_path = f'{os.getcwd()}/{self.instrument}/{self.name}'
@@ -97,19 +111,98 @@ class Target:
         if self.instrument == 'CRIRES':
             self.spectral_resolution = self.calc_resolution()
         elif self.instrument == 'LIFE':
+            if True:
+                mask = (self.wl>4) & (self.wl<18.4) #same size as LIFESim spectrum
+                self.n_pixels = len(self.fl[mask])
+                self.fl= self.fl[mask].reshape((1,self.n_pixels))
+                self.wl = self.wl[mask].reshape((1,self.n_pixels))
+                self.err = self.err[mask].reshape((1,self.n_pixels))
+                self.mask_isfinite = self.get_mask_isfinite()
             self.spectral_resolution = self.calc_resolution() # around 50
             self.wlens_um = np.array([np.min(self.wl),np.max(self.wl)]).reshape(2,1)
-            self.err = self.fl/self.err # 'err' in file is SNR, convert to noise
-            self.fl, self.err= [var/np.nanmax(self.fl) for var in [self.fl, self.err]]
+            #self.fl/=np.max(self.fl) # TRY WITHOUT NORMALIZING
+                
+            #self.err = self.fl/self.err # 'err' in file is SNR, convert to noise
+            #self.fl, self.err= [var/np.nanmax(self.fl) for var in [self.fl, self.err]]
 
-    def load_spectrum(self):
+    def load_spectrum(self,remove_continuum=True):
+        # shape 1519
+        #file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum_pRT1000.txt')
+        #file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum_original.txt')
         
         file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum.txt')
         if file.exists():
             file=np.genfromtxt(file,skip_header=1,delimiter=' ')
+            if self.n_pixels==None:
+                self.n_pixels = len(file[:,0])
             self.wl=np.reshape(file[:,0],(self.n_parts,self.n_pixels))
             self.fl=np.reshape(file[:,1],(self.n_parts,self.n_pixels))
             self.err=np.reshape(file[:,2],(self.n_parts,self.n_pixels))
+            #self.err=np.reshape(np.full(self.fl.shape,fill_value=np.nanmedian(file[:,2])),(self.n_parts,self.n_pixels))
+            self.mask_isfinite = self.get_mask_isfinite()
+
+            if self.name =='ROXs12A': # normalized differently
+                if remove_continuum:
+                    for i in range(self.fl.shape[0]):
+                        #self.fl[i] = upper_envelope_remove_continuum(self.wl[i],self.fl[i])
+                        self.fl[i] = fft_remove_continuum(self.fl[i])
+                        self.fl[i][~self.mask_isfinite[i]] = np.nan
+                else:
+                    # introduce correct slope inferred from physical spectrum (preliminary fit without removed continuum)
+                    model_A = f'{self.abs_path}/ROXs12A_pRTflux_wslope.txt'
+                    model_A = np.reshape(np.genfromtxt(model_A),(self.n_parts,self.n_pixels))
+                    norm_factor = np.nanpercentile(model_A,50) # use same for all ord/det to keep slope!!
+
+                    for i in range(self.fl.shape[0]):
+                        w = self.wl[i]
+                        f = np.copy(self.fl[i])
+                        fm  = np.copy(model_A[i])
+                        nans = ~np.isfinite(f)
+                        if np.isnan(f).all():
+                            i +=1
+                            continue
+                        f[nans]=np.nan
+                        fm[nans]=np.nan
+                        # divide data of A through model of A
+                        f_div = f/fm 
+                        # fit second order polynomnial to result
+                        coeffs = np.polyfit(w[~nans], f_div[~nans], deg=2)
+                        res_fit = np.poly1d(coeffs)(w)
+                        # get blaze-corrected spectrum of star with correct physical slope
+                        self.fl[i] = f/res_fit/norm_factor
+                    self.fl/= np.nanmedian(self.fl)
+                    #print(np.nanmin(self.fl),np.nanmean(self.fl),np.nanmax(self.fl))
+
+            elif self.name in ['ROXs12B','ROXs12_onlyB','testsys'] and remove_continuum==True: # normalized differently
+                # mask Ca lines in order 1, det 0 (3rd part)
+                if False:
+                    n_Ca = 3
+                    #Ca_idx1 = np.where((self.wl[n_Ca] >= 1991.5) & (self.wl[n_Ca] <= 1992.5))[0]
+                    #Ca_idx2 = np.where((self.wl[n_Ca] >= 1993.3) & (self.wl[n_Ca] <= 1994))[0]
+                    Ca_idx1 = np.where((self.wl[n_Ca] >= 1990.5) & (self.wl[n_Ca] <= 1994.5))[0]
+                    self.fl[n_Ca][Ca_idx1] = np.nan
+                    #self.fl[n_Ca][Ca_idx2] = np.nan
+
+                    n_Ca2 = 14
+                    Ca_idx1 = np.where((self.wl[n_Ca2] >= 2260) & (self.wl[n_Ca2] <= 2263.5))[0]
+                    Ca_idx2 = np.where((self.wl[n_Ca2] >= 2264.5) & (self.wl[n_Ca2] <= 2266.5))[0]
+                    self.fl[n_Ca2][Ca_idx1] = np.nan
+                    self.fl[n_Ca2][Ca_idx2] = np.nan
+
+                    n_Ti = 11
+                    Ti_idx1 = np.where((self.wl[n_Ti] >= 2177.5) & (self.wl[n_Ti] <= 2179.5))[0]
+                    self.fl[n_Ti][Ti_idx1] = np.nan
+                    self.mask_isfinite = self.get_mask_isfinite() # re-run with new nans
+                #plt.plot(self.wl[14],self.fl[14])
+                #plt.savefig('masked.jpg')
+
+                for i in range(self.fl.shape[0]):
+                    if np.isnan(self.fl[i]).all()==False:
+                        mask = self.mask_isfinite[i]
+                        #self.fl[i] = upper_envelope_remove_continuum(self.wl[i],self.fl[i],oneD=True,percentile=85)
+                        self.fl[i] = fft_remove_continuum(self.fl[i])
+                        self.fl[i][~mask] =np.nan
+
         else:
             # generate useable spectrum from molecfit/output folder
             obj=f'{self.abs_path}/SCIENCE_{self.fullname}_PRIMARY.dat' # target object
@@ -183,7 +276,8 @@ class Target:
             if self.primary_label==True:
                 mask_i = np.isfinite(self.fl[i]) # only finite pixels
             else:
-                primary_name=f'{self.name[:-1]}A'
+                #primary_name=f'{self.name[:-1]}A'
+                primary_name='ROXs12A'
                 primary_file=pathlib.Path(f'{os.getcwd()}/{self.instrument}/{primary_name}/{primary_name}_spectrum.txt')
                 primary_flux =np.genfromtxt(primary_file,skip_header=1,delimiter=' ')[:,1]
                 primary_flux = np.reshape(primary_flux,(self.n_parts,self.n_pixels))
@@ -211,13 +305,6 @@ class Target:
         fl=file[:,1]
         flerr=file[:,2]
         return wl,fl,flerr
-    
-    def blackbody(self,wl,temp):
-        lamb = wl*1e-7 # wavelength array in cm
-        freq = nc.c / lamb # Convert to frequencies
-        planck = nc.b(temp, freq) # Calculate Planck function at given temperature (K)
-        planck=planck/np.mean(planck)
-        return planck
     
     def plot_orders3(self,wl,fl,wl2,fl2,wl3,fl3,label1,label2,label3):
         fig,ax=plt.subplots(self.n_orders,1,figsize=(9,9),dpi=200)
@@ -262,7 +349,7 @@ class Target:
         fl0_masked[tel_mask]=np.nan
 
         # blackbody of standard star is in continuum, multiply to bring it back
-        bb=self.blackbody(wl,temp) 
+        bb=blackbody(wl,temp) 
         fl=fl/(flt*continuum/bb)
         err=err/(flt*continuum/bb)
 

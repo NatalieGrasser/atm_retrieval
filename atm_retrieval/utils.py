@@ -7,9 +7,15 @@ import pathlib
 import astropy.constants as const
 from astropy import units as u
 from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline
+import numpy.ma as ma
 from scipy.ndimage import convolve1d
+from petitRADTRANS import nat_cst as nc
+from scipy import constants as sc
 import pathlib
+from scipy import spatial
 import warnings
+
 warnings.simplefilter("error", RuntimeWarning)  # Convert warnings to exceptions
 import getpass
 if getpass.getuser() == "grasser": # when runnig from LEM
@@ -38,6 +44,14 @@ def load_pickle(filename):
     with open(filename, 'rb') as f:
         return pickle.load(f)
 
+def blackbody(wl_nm,temp,norm=True):
+    lamb = wl_nm*1e-7 # wavelength array in cm
+    freq = nc.c / lamb # Convert to frequencies
+    planck = nc.b(temp, freq) # Calculate Planck function at given temperature (K)
+    if norm:
+        planck=planck/np.mean(planck)
+    return planck
+
 def rem_cont(wave,spec,poly_order=3):
     spec=spec.flatten()
     wave=wave.flatten()
@@ -48,18 +62,22 @@ def rem_cont(wave,spec,poly_order=3):
     return flux_contrem
 
 def get_ratios(retr_obj,equ_too=False): # in case not all ratios are in retrieval
-    if retr_obj.chemistry in ['equchem','quequchem']:
-        ratios_default = ['C/O','Fe/H']
-        check_ratios =  ['log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
+    if retr_obj.chemistry in ['equchem','quequchem','flexequ']:
+        if retr_obj.chemistry in ['equchem','quequchem']:
+            ratios_default = ['C/O','Fe/H']
+        elif retr_obj.chemistry=='flexequ':
+            ratios_default = ['C/O','C/H']
+        check_ratios = ['log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_H2O16_18_ratio']
         for r in check_ratios:
             if r in retr_obj.parameters.param_keys:
                 ratios_default.append(r)
-    elif retr_obj.chemistry=='freechem':
+    elif retr_obj.chemistry in ['freechem','varchem']:
+        suffix='_0' if retr_obj.chemistry=='varchem' else ''
         ratios_default = ['C/O','C/H']
         ratios_default_equ = ['C/O','Fe/H']
         check_ratios = ['log_12CO/13CO','log_12CO/C17O','log_12CO/C18O','log_H2O/H2(18)O']
-        ratios_equ = ['log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_O16_18_ratio']
-        check_molec = ['13CO','C17O','C18O','H2(18)O']
+        ratios_equ = ['log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio','log_H2O16_18_ratio']
+        check_molec = [f'13CO{suffix}',f'C17O{suffix}',f'C18O{suffix}',f'H2(18)O{suffix}']
         for m,r,e in zip(check_molec,check_ratios,ratios_equ):
             if f'log_{m}' in retr_obj.parameters.param_keys:
                 ratios_default.append(r)
@@ -70,7 +88,7 @@ def get_ratios(retr_obj,equ_too=False): # in case not all ratios are in retrieva
         return ratios_default, ratios_default_equ
 
 # cross-correlate residuals with spectrum that contains selected species at equilibrium
-def CCF_residuals(retr_obj,ccf_species=[],noiserange=100): # can only be run after evaluate()
+def CCF_residuals(retr_obj,ccf_species=[],use_equ=True,noiserange=100): # can only be run after evaluate()
 
     from retrieval import Retrieval
     from parameters import Parameters
@@ -101,7 +119,7 @@ def CCF_residuals(retr_obj,ccf_species=[],noiserange=100): # can only be run aft
         hill_i = retr_obj.species_info.loc[ccf_species_i,'Hill_notation']
         equ_table = pathlib.Path(f'{path_tables}/{hill_i}.hdf5')
         parameters_spec = retr_obj.params_dict
-        if equ_table.exists():
+        if equ_table.exists() and use_equ==True:
             usechem= 'equchem'
             parameters_spec.update({'C/O': retr_obj.params_dict['C/O'],
                             'Fe/H': retr_obj.params_dict['C/H']})
@@ -112,7 +130,7 @@ def CCF_residuals(retr_obj,ccf_species=[],noiserange=100): # can only be run aft
             usechem= 'freechem'
             for other_spec_i in retr_obj.species_names:
                 parameters_spec.pop(f'log_{other_spec_i}', None)
-            parameters_spec[f'log_{ccf_species_i}']=-4 # manually set abundance
+            parameters_spec[f'log_{ccf_species_i}']=-5 # manually set abundance
 
         parameters_spec = Parameters({}, parameters_spec)
         parameters_spec.param_priors['log_l']=[-3,0]
@@ -180,7 +198,8 @@ def CCF_residuals(retr_obj,ccf_species=[],noiserange=100): # can only be run aft
         print(f'{ccf_species_i} S/N =',np.round(SNR,decimals=2))
 
     retr_obj.ccf_acf_dict = ccf_acf_dict
-    figs.CCF_plot_all(retr_obj,ccf_species,noiserange=100,show_ACF=True,suffix='_res')
+    suf='_res_equ' if use_equ else '_res'
+    figs.CCF_plot_all(retr_obj,ccf_species,noiserange=100,show_ACF=True,suffix=suf)
 
     # folder created when initializing retrieval object, delete afterwards
     if os.path.isdir(retr_spec.output_dir) and not os.listdir(retr_spec.output_dir):  # Check if folder exists and is empty
@@ -302,3 +321,158 @@ class InstrumentalBroadening:
         kernels = np.exp(-0.5 * (x[None, :] / sd[:, None]) ** 2)
         kernels /= kernels.sum(axis=1)[:, None]
         return kernels, lw
+
+def fill_nan_nearest(arr): # fill nans with the nearest non-nan
+    orig_shape = arr.shape
+    arr = arr.flatten()
+    nans = np.isnan(arr)
+    not_nans = np.where(~nans)[0]
+    if not len(not_nans):
+        raise ValueError("Array is all NaNs.")
+    nearest_index = np.abs(np.subtract.outer(np.arange(len(arr)), not_nans)).argmin(1)
+    arr = arr[not_nans[nearest_index]]
+    arr = arr.reshape(orig_shape)
+    return arr
+
+# get continuum through polynomial fit
+def fit_continuum_1D(wl,fl,poly_order=3):
+    nans = np.isnan(fl)
+    if np.sum(nans)>(len(fl)-10):
+        return np.ones_like(fl)
+    continuum = np.poly1d(np.polyfit(wl[~nans],fl[~nans],poly_order))(wl)
+    return continuum
+
+# fit continuum through upper envelope and remove it
+def upper_envelope_remove_continuum(wavelength, flux, min_valid_per_bin=250,
+                        percentile=97, spline_smoothing=0.001, oneD=False):
+    """
+    Estimate continuum using adaptive binning based on non-NaN values.
+
+    Parameters:
+    - wavelength: 1D array of wavelengths
+    - flux: 1D array of fluxes (can include NaNs)
+    - min_valid_per_bin: minimum number of non-NaN points per bin
+    - percentile: upper percentile to use for continuum points
+    - spline_smoothing: smoothing parameter for the spline
+
+    Returns:
+    - continuum: estimated continuum over the full wavelength range
+    """
+
+    wavelength = np.asarray(wavelength)
+    flux = np.asarray(flux)
+    if np.isnan(flux).all():
+        return flux
+    if np.sum(np.isnan(flux))>1450 or oneD==True:
+        cont = fit_continuum_1D(wavelength,flux,poly_order=1)
+        flux/=cont
+        flux/=np.nanpercentile(flux,percentile)
+        return flux
+    elif np.sum(np.isnan(flux))>1000:
+        min_valid_per_bin = 50 #use smaller bins
+
+    n = len(wavelength)
+    i = 0
+
+    max_waves, max_fluxes = [], []
+
+    while i < n:
+        j = i
+        count = 0
+
+        # Grow the bin until it has enough non-NaN values
+        while j < n and count < min_valid_per_bin:
+            if not (np.isnan(flux[j]) or np.isnan(wavelength[j])):
+                count += 1
+            j += 1
+
+        if count == 0:
+            i = j
+            continue
+
+        # Work with the valid bin
+        w_bin = wavelength[i:j]
+        f_bin = flux[i:j]
+        mask = ~np.isnan(w_bin) & ~np.isnan(f_bin)
+        w_clean = w_bin[mask]
+        f_clean = f_bin[mask]
+
+        if len(f_clean) == 0:
+            i = j
+            continue
+
+        threshold = np.percentile(f_clean, percentile)
+        idx = np.where(f_clean >= threshold)[0][0]
+
+        max_waves.append(w_clean[idx])
+        max_fluxes.append(f_clean[idx])
+
+        # Move to next bin (non-overlapping)
+        i = j
+
+    if len(max_waves) < 4:
+        return flux
+        #raise ValueError("Too few continuum points extracted. Try lowering min_valid_per_bin or checking your data.")
+    else:
+        # Fit spline to the upper envelope
+        spline = UnivariateSpline(max_waves, max_fluxes, s=spline_smoothing)
+        continuum = spline(wavelength)
+
+    flux/=continuum
+    #flux/=np.nanmax(flux)
+
+    return flux
+
+def fft_remove_continuum(flux, lower_cutoff=None):
+
+    if np.isnan(flux).all():
+        return flux
+        
+    if lower_cutoff==None:
+        # Start by removing frequencies below ~1/100 to 1/200 of array length
+        lower_cutoff = len(flux) // 150  # ≈ 13
+
+    flux = np.asarray(flux)
+    n = len(flux)
+    
+    # can't handle NaNs
+    isnan = np.isnan(flux)
+    if np.any(isnan):
+        flux = np.interp(np.arange(n), np.arange(n)[~isnan], flux[~isnan])
+
+    # FFT and filtering
+    fft_flux = np.fft.rfft(flux)
+    fft_flux[:lower_cutoff] = 0  # remove low-frequency continuum
+    filtered = np.fft.irfft(fft_flux, n=n) + np.ones(n)
+    
+    return filtered
+
+def generate_skewed_p_nodes(p_min=1e-6, p_max=1e0, n_nodes=7, skew=2.0):
+    """
+    Generate pressure nodes in log space, skewed toward the bottom (high pressure).
+    
+    Parameters:
+        p_min: float, minimum pressure (top of atmosphere)
+        p_max: float, maximum pressure (bottom)
+        n_nodes: int, total number of pressure nodes
+        skew: float > 0, higher means more concentrated at top (skew > 1),
+                        skew < 1 concentrates at bottom.
+    
+    Returns:
+        Array of pressures in bars.
+    """
+    x = np.linspace(0, 1, n_nodes)
+    x_skewed = x**skew  # Skewed toward 1 (bottom) for skew > 1
+    log_p = np.log10(p_min) + x_skewed * (np.log10(p_max) - np.log10(p_min))
+    return log_p
+
+def planck_lambda_um(T, lam_um):
+    """
+    Planck function B_lambda in units of W / m² / μm / sr.
+    """
+    lam_m = lam_um * 1e-6  # μm → m
+    c1 = 2 * sc.h * sc.c**2  # first radiation constant
+    c2 = sc.h * sc.c / sc.k  # second radiation constant
+    exponent = c2 / (lam_m * T)
+    B_lambda = (c1 / (lam_m**5)) / (np.exp(exponent) - 1)  # W / m² / m / sr
+    return B_lambda * 1e-6  # → W / m² / μm / sr
