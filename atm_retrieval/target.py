@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pathlib
 import os
+import re
 from numpy.polynomial import polynomial as Poly
 from scipy import signal, optimize
 from scipy.interpolate import interp1d
@@ -44,7 +45,7 @@ class Target:
             self.fwhm = 5.397255188786233 # Gaussian FWHM in pixels
             self.airmass_obs = 1.13
             self.airmass_std = 1.03
-        elif self.name in ['ROXs12B','ROXs12_onlyB']:
+        elif self.name in ['ROXs12B','ROXs12_onlyB','test_ROXs12B']:
             self.primary_label=False
             self.ra="16h26m28.0396675056s"
             self.dec="-25d26m47.717480112s"
@@ -53,9 +54,11 @@ class Target:
             self.fullname=self.name
             self.instrument = 'CRIRES' 
             self.color='mediumturquoise'
-            if self.name=='ROXs12_onlyB':
+            if self.name in ['ROXs12_onlyB','test_ROXs12B']:
                 self.color='dodgerblue'
                 self.primary_label=True
+            if self.name =='test_ROXs12B':
+                self.color='mediumturquoise'
             self.fwhm = 4.9810776558378 # Gaussian FWHM in pixels
         elif self.name=='ROXs12A':
             self.ra="16h26m28.0396675056s"
@@ -75,13 +78,22 @@ class Target:
             self.instrument = 'CRIRES' 
             self.color='limegreen'
             self.fwhm = 5.44325193385436 # Gaussian FWHM in pixels
-        elif self.name=='Sorg1X':
-            self.color='darkturquoise'
+        if 'Sorg' in self.name:
             self.instrument = 'LIFE'
-        elif self.name=='Sorg20X':
-            self.color='mediumseagreen' 
-            self.instrument = 'LIFE'
-
+            pattern = r"^Sorg(\d+)X_R(\d+)(?:_(\w+))?$"
+            match = re.match(pattern, self.name)
+            self.in_col = 'indigo'
+            if match:
+                self.Sorg_factor = int(match.group(1))# 1 or 20
+                self.input_resolution = int(match.group(2)) # resolution: 50 or 100
+                self.spectral_resolution = self.input_resolution
+                self.const_H2O = f'_{match.group(3)}' if match.group(3)!=None else '' # optional: constH2O
+            self.name = f'Sorg{self.Sorg_factor}X'
+            if self.name=='Sorg1X':
+                self.color='darkturquoise'
+            elif self.name=='Sorg20X':
+                self.color='mediumseagreen' 
+            self.sorg_mathtext = rf'{self.Sorg_factor}$\times\,\,$S$_{{\mathrm{{org}}}}$'
         if self.instrument == 'CRIRES':
             self.n_orders=7
             self.n_dets=3
@@ -100,8 +112,6 @@ class Target:
 
         elif self.instrument == 'LIFE':
             self.n_parts=1
-            #self.n_pixels=1899
-            #self.n_pixels=1519#77
             self.n_pixels=None
             self.vbary = 0 # just simulation
             
@@ -111,25 +121,24 @@ class Target:
         if self.instrument == 'CRIRES':
             self.spectral_resolution = self.calc_resolution()
         elif self.instrument == 'LIFE':
-            if True:
-                mask = (self.wl>4) & (self.wl<18.4) #same size as LIFESim spectrum
-                self.n_pixels = len(self.fl[mask])
-                self.fl= self.fl[mask].reshape((1,self.n_pixels))
-                self.wl = self.wl[mask].reshape((1,self.n_pixels))
-                self.err = self.err[mask].reshape((1,self.n_pixels))
-                self.mask_isfinite = self.get_mask_isfinite()
-            self.spectral_resolution = self.calc_resolution() # around 50
+            #self.spectral_resolution = self.calc_resolution() # around 50
             self.wlens_um = np.array([np.min(self.wl),np.max(self.wl)]).reshape(2,1)
-            #self.fl/=np.max(self.fl) # TRY WITHOUT NORMALIZING
-                
-            #self.err = self.fl/self.err # 'err' in file is SNR, convert to noise
-            #self.fl, self.err= [var/np.nanmax(self.fl) for var in [self.fl, self.err]]
 
     def load_spectrum(self,remove_continuum=True):
-        # shape 1519
-        #file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum_pRT1000.txt')
-        #file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum_original.txt')
-        
+        if self.instrument =='LIFE':
+            filename = f'LIFEsim_R{self.input_resolution}_{self.Sorg_factor}x{self.const_H2O}.txt'
+            print('Using',filename)
+            wl, fl, snr = np.loadtxt(f'{self.abs_path}/{filename}', unpack=True, skiprows=1)
+            err = np.full_like(fl, np.nan)
+            np.divide(fl, snr,out=err,where=~np.isnan(snr) & (snr != 0))
+            if self.n_pixels==None:
+                self.n_pixels = len(wl)
+            self.wl = np.reshape(wl,(self.n_parts,self.n_pixels))
+            self.fl = np.reshape(fl,(self.n_parts,self.n_pixels))
+            self.err = np.reshape(err,(self.n_parts,self.n_pixels))
+            self.mask_isfinite = self.get_mask_isfinite()
+            return self.wl, self.fl, self.err
+
         file=pathlib.Path(f'{self.abs_path}/{self.name}_spectrum.txt')
         if file.exists():
             file=np.genfromtxt(file,skip_header=1,delimiter=' ')
@@ -137,15 +146,19 @@ class Target:
                 self.n_pixels = len(file[:,0])
             self.wl=np.reshape(file[:,0],(self.n_parts,self.n_pixels))
             self.fl=np.reshape(file[:,1],(self.n_parts,self.n_pixels))
-            self.err=np.reshape(file[:,2],(self.n_parts,self.n_pixels))
-            #self.err=np.reshape(np.full(self.fl.shape,fill_value=np.nanmedian(file[:,2])),(self.n_parts,self.n_pixels))
+            self.err=np.reshape(file[:,2],(self.n_parts,self.n_pixels))     
+
+            if self.name=='test_ROXs12B':
+                    self.fl[(self.wl<2150.8)&(self.wl>2150.6)] = np.nan
+                    self.fl[(self.wl<2460.8)&(self.wl>2460.7)] = np.nan      
             self.mask_isfinite = self.get_mask_isfinite()
 
             if self.name =='ROXs12A': # normalized differently
                 if remove_continuum:
+                    #pass
                     for i in range(self.fl.shape[0]):
                         #self.fl[i] = upper_envelope_remove_continuum(self.wl[i],self.fl[i])
-                        self.fl[i] = fft_remove_continuum(self.fl[i])
+                        self.fl[i] = fft_remove_continuum(self.fl[i],orig_method=True)
                         self.fl[i][~self.mask_isfinite[i]] = np.nan
                 else:
                     # introduce correct slope inferred from physical spectrum (preliminary fit without removed continuum)
@@ -171,36 +184,15 @@ class Target:
                         # get blaze-corrected spectrum of star with correct physical slope
                         self.fl[i] = f/res_fit/norm_factor
                     self.fl/= np.nanmedian(self.fl)
-                    #print(np.nanmin(self.fl),np.nanmean(self.fl),np.nanmax(self.fl))
 
-            elif self.name in ['ROXs12B','ROXs12_onlyB','testsys'] and remove_continuum==True: # normalized differently
-                # mask Ca lines in order 1, det 0 (3rd part)
-                if False:
-                    n_Ca = 3
-                    #Ca_idx1 = np.where((self.wl[n_Ca] >= 1991.5) & (self.wl[n_Ca] <= 1992.5))[0]
-                    #Ca_idx2 = np.where((self.wl[n_Ca] >= 1993.3) & (self.wl[n_Ca] <= 1994))[0]
-                    Ca_idx1 = np.where((self.wl[n_Ca] >= 1990.5) & (self.wl[n_Ca] <= 1994.5))[0]
-                    self.fl[n_Ca][Ca_idx1] = np.nan
-                    #self.fl[n_Ca][Ca_idx2] = np.nan
-
-                    n_Ca2 = 14
-                    Ca_idx1 = np.where((self.wl[n_Ca2] >= 2260) & (self.wl[n_Ca2] <= 2263.5))[0]
-                    Ca_idx2 = np.where((self.wl[n_Ca2] >= 2264.5) & (self.wl[n_Ca2] <= 2266.5))[0]
-                    self.fl[n_Ca2][Ca_idx1] = np.nan
-                    self.fl[n_Ca2][Ca_idx2] = np.nan
-
-                    n_Ti = 11
-                    Ti_idx1 = np.where((self.wl[n_Ti] >= 2177.5) & (self.wl[n_Ti] <= 2179.5))[0]
-                    self.fl[n_Ti][Ti_idx1] = np.nan
-                    self.mask_isfinite = self.get_mask_isfinite() # re-run with new nans
-                #plt.plot(self.wl[14],self.fl[14])
-                #plt.savefig('masked.jpg')
+            # dont remove continuum for onlyB
+            elif self.name in ['ROXs12B','ROXs12_onlyB','testsys','test_ROXs12B'] and remove_continuum==True: # normalized differently
 
                 for i in range(self.fl.shape[0]):
                     if np.isnan(self.fl[i]).all()==False:
                         mask = self.mask_isfinite[i]
                         #self.fl[i] = upper_envelope_remove_continuum(self.wl[i],self.fl[i],oneD=True,percentile=85)
-                        self.fl[i] = fft_remove_continuum(self.fl[i])
+                        self.fl[i] = fft_remove_continuum(self.fl[i],orig_method=True)
                         self.fl[i][~mask] =np.nan
 
         else:
@@ -212,7 +204,7 @@ class Target:
             self.fl=np.reshape(self.fl,(self.n_parts,self.n_pixels))
             self.err=np.reshape(self.err,(self.n_parts,self.n_pixels))
 
-        if self.name in ['2M0355']:#,'ROXs12A']:
+        if self.name in ['2M0355']:
             # use corrected wavelength solution, wasn't good for last order-detector
             wlcorr=pathlib.Path(f'{self.abs_path}/{self.name}_corr_wl.txt')
             if wlcorr.exists():
@@ -274,7 +266,8 @@ class Target:
         self.mask_isfinite=np.empty((self.n_parts, self.n_pixels), dtype=bool)
         for i in range(self.n_parts):
             if self.primary_label==True:
-                mask_i = np.isfinite(self.fl[i]) # only finite pixels
+                #mask_i = np.isfinite(self.fl[i]) # only finite pixels
+                mask_i = np.isfinite(self.fl[i]) & np.isfinite(self.err[i])
             else:
                 #primary_name=f'{self.name[:-1]}A'
                 primary_name='ROXs12A'
@@ -427,8 +420,7 @@ class Target:
         Method for refining wavelength solution using a quadratic 
         polynomial correction Poly(p0, p1, p2). The optimization 
         is achieved by maximizing cross-correlation functions 
-        between the spectrum and a telluric transmission model
-        NATALIE UPDATE: DOING IT PER ORDER/DET PAIR
+        between the spectrum and a telluric transmission model.
 
         fluxes: array
             flux of observed spectrum in each spectral order
@@ -448,7 +440,6 @@ class Target:
         """
 
         # function to interpolate transmission spectrum
-        #template_interp_func = interp1d(w_init,transm_spec,kind='linear')
         wlens = []
         Ncut = 10 # ignore detector-edges 
         minimum_strength=0.0005

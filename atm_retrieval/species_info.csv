@@ -32,6 +32,8 @@ CO2,CO2_main_iso,C1O2,44.009,cornflowerblue,CO$_2$,1,2,0,0,0
 HF,HF_high,F1H1,20.006243,limegreen,HF,0,0,1,0,0
 HCl,HCl_main_iso,Cl1H1,36.460840000000005,cadetblue,HCl,0,0,1,0,0
 H2,H2,H2,2.01568,skyblue,H$_2$,0,0,2,0,0
+H-,H-,H1-,1.009,lightblue,H$^{-}$,0,0,1,0,0
+e-,e-,e-,0.00055,black,e$^{-}$,0,0,0,0,0
 K,K,K,39.0983,olive,K,0,0,0,0,0
 K_high,K_high,K_high,39.0983,olive,K_high,0,0,0,0,0
 Na,Na_allard_high,Na,22.989769,mediumorchid,Na,0,0,0,0,0
@@ -69,3 +71,4 @@ H,H,H,1.008,tab:blue,H,0,0,1,0,0
 Cu,Cu,Cu,63.546,grey,Cu,0,0,0,0,0
 P,P,P,30.97376,r,P,0,0,0,0,0
 Zr,Zr,Zr,91.224,b,Zr,0,0,0,0,0
+O,O,O,15.999,m,O,0,1,0,0,0

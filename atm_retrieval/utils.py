@@ -1,19 +1,16 @@
 import numpy as np
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 import pickle
 import pathlib
 import astropy.constants as const
 from astropy import units as u
 from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
-import numpy.ma as ma
 from scipy.ndimage import convolve1d
 from petitRADTRANS import nat_cst as nc
 from scipy import constants as sc
 import pathlib
-from scipy import spatial
 import warnings
 
 warnings.simplefilter("error", RuntimeWarning)  # Convert warnings to exceptions
@@ -43,6 +40,9 @@ def save_pickle(obj, filename):
 def load_pickle(filename):
     with open(filename, 'rb') as f:
         return pickle.load(f)
+    
+def flatten_list(xss):
+    return [x for xs in xss for x in xs]
 
 def blackbody(wl_nm,temp,norm=True):
     lamb = wl_nm*1e-7 # wavelength array in cm
@@ -88,7 +88,8 @@ def get_ratios(retr_obj,equ_too=False): # in case not all ratios are in retrieva
         return ratios_default, ratios_default_equ
 
 # cross-correlate residuals with spectrum that contains selected species at equilibrium
-def CCF_residuals(retr_obj,ccf_species=[],use_equ=True,noiserange=100): # can only be run after evaluate()
+# can only be run after evaluate() in retrieval class
+def CCF_residuals(retr_obj,ccf_species=[],use_equ=True,noiserange=100): 
 
     from retrieval import Retrieval
     from parameters import Parameters
@@ -162,18 +163,13 @@ def CCF_residuals(retr_obj,ccf_species=[],use_equ=True,noiserange=100): # can on
                     
                     wl_data= data_wave[order,det,mask_isfinite[order,det]]
                     fl_data = data_flux[order,det,mask_isfinite[order,det]]-model_flux[order,det,mask_isfinite[order,det]]
-                    #plt.plot(template_wl,template_flux,c='tab:blue')
-                    #plt.plot(wl_data,fl_data,c='tab:orange')
                     fl_data-=np.nanmean(fl_data)
 
                     Cov[order,det].get_cholesky() # in case it hasn't been called yet
                     cov_0_data=Cov[order,det].solve(fl_data)                            
                     wl_shift=wl_data[:, np.newaxis]*beta[np.newaxis, :]
                     template_shift=interp1d(template_wl,template_flux)(wl_shift) # interpolate template onto shifted wl
-                    #template_shift-= np.nanmedian(template_shift)  
                     template_shift = np.array([template_shift[:,i] - np.nanmedian(template_shift[:,i]) for i in range(template_shift.shape[1])]).T
-                    #print(order,det, np.nanmedian(template_shift),np.nanmedian(fl_data))
-                    #temptemplate_shift[:,len(RVs)//2]
 
                     template_rebinned=interp1d(template_wl,template_flux)(wl_data)
                     template_rebinned-=np.nanmedian(template_rebinned)
@@ -412,25 +408,28 @@ def upper_envelope_remove_continuum(wavelength, flux, min_valid_per_bin=250,
 
     if len(max_waves) < 4:
         return flux
-        #raise ValueError("Too few continuum points extracted. Try lowering min_valid_per_bin or checking your data.")
     else:
         # Fit spline to the upper envelope
         spline = UnivariateSpline(max_waves, max_fluxes, s=spline_smoothing)
         continuum = spline(wavelength)
 
     flux/=continuum
-    #flux/=np.nanmax(flux)
 
     return flux
 
-def fft_remove_continuum(flux, lower_cutoff=None):
+def fft_remove_continuum(flux, orig_method=False, lower_cutoff=13, divide=True, return_continuum=False):
 
     if np.isnan(flux).all():
-        return flux
+        if return_continuum:
+            return flux, np.ones(flux.shape)
+        else:
+            return flux
         
-    if lower_cutoff==None:
+    if orig_method:
         # Start by removing frequencies below ~1/100 to 1/200 of array length
         lower_cutoff = len(flux) // 150  # ≈ 13
+    else:
+        lower_cutoff = int(lower_cutoff)
 
     flux = np.asarray(flux)
     n = len(flux)
@@ -439,15 +438,31 @@ def fft_remove_continuum(flux, lower_cutoff=None):
     isnan = np.isnan(flux)
     if np.any(isnan):
         flux = np.interp(np.arange(n), np.arange(n)[~isnan], flux[~isnan])
-
+        
     # FFT and filtering
     fft_flux = np.fft.rfft(flux)
-    fft_flux[:lower_cutoff] = 0  # remove low-frequency continuum
-    filtered = np.fft.irfft(fft_flux, n=n) + np.ones(n)
-    
-    return filtered
+    fft_continuum = fft_flux.copy()
+    fft_highfreq = fft_flux.copy()
+    fft_continuum[lower_cutoff:] = 0 # Zero out high frequencies = continuum
+    fft_highfreq[:lower_cutoff] = 0 # Zero out low frequencies = continuum-removed signal
 
-def generate_skewed_p_nodes(p_min=1e-6, p_max=1e0, n_nodes=7, skew=2.0):
+    # Inverse FFT to get time-domain signals
+    continuum = np.fft.irfft(fft_continuum, n=n)
+
+    # divide by extracted continuum
+    if divide:
+        filtered = flux/continuum
+    # use only high-frequencies as continuum-removed flux
+    else:
+        filtered = np.fft.irfft(fft_highfreq, n=n) + np.ones(n)
+
+    filtered[isnan] = np.nan
+    if return_continuum:
+        return filtered, continuum
+    else:
+        return filtered
+
+def generate_skewed_p_nodes(p_min=1e-6, p_max=1e0, n_nodes=7, skew=0.8):
     """
     Generate pressure nodes in log space, skewed toward the bottom (high pressure).
     
@@ -469,10 +484,48 @@ def generate_skewed_p_nodes(p_min=1e-6, p_max=1e0, n_nodes=7, skew=2.0):
 def planck_lambda_um(T, lam_um):
     """
     Planck function B_lambda in units of W / m² / μm / sr.
+
+    Handles scalar or array T and scalar or array lam_um.
+    Returns:
+      T scalar, λ scalar → scalar
+      T scalar, λ array  → (Nwave,)
+      T array,  λ scalar → (Nsamples,)
+      T array,  λ array  → (Nsamples, Nwave)
     """
-    lam_m = lam_um * 1e-6  # μm → m
-    c1 = 2 * sc.h * sc.c**2  # first radiation constant
-    c2 = sc.h * sc.c / sc.k  # second radiation constant
-    exponent = c2 / (lam_m * T)
-    B_lambda = (c1 / (lam_m**5)) / (np.exp(exponent) - 1)  # W / m² / m / sr
-    return B_lambda * 1e-6  # → W / m² / μm / sr
+    T = np.asarray(T)
+    lam_um = np.asarray(lam_um)
+
+    # Convert λ to meters
+    lam_m = lam_um * 1e-6
+
+    c1 = 2 * sc.h * sc.c**2
+    c2 = sc.h * sc.c / sc.k
+
+    # Prepare shapes with broadcasting:
+    # If λ is scalar → lam_m_b is shape (1,)
+    # If T is scalar → T_b is shape (1,)
+    if lam_m.ndim == 0:
+        lam_m_b = lam_m  # scalar
+    else:
+        lam_m_b = lam_m[None, :]  # (1, Nwave)
+
+    if T.ndim == 0:
+        T_b = T  # scalar
+    else:
+        T_b = T[:, None]  # (Nsamples, 1)
+
+    exponent = c2 / (lam_m_b * T_b)
+    B_lambda = (c1 / lam_m_b**5) / (np.exp(exponent) - 1)
+
+    # Convert per meter → per micron
+    B_lambda = B_lambda * 1e-6
+
+    # Return shapes matching user input
+    if T.ndim == 0 and lam_m.ndim == 0:
+        return B_lambda  # scalar
+    if T.ndim == 0:
+        return B_lambda[0]  # (Nwave,)
+    if lam_m.ndim == 0:
+        return B_lambda[:, 0]  # (Nsamples,)
+
+    return B_lambda  # (Nsamples, Nwave)

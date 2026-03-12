@@ -36,6 +36,11 @@
 
 */LIFE/Sorg20X/*
 !Sorg20X_spectrum.txt
+!Sorg20X_psg_input.txt
+*LIFE_results.py
+
+*/CRIRES/test_ROXs12B/*
+testspec_ROXs12B.py
 
 !test_corr_spectrum.txt
 prepare_spectrum*
@@ -49,3 +54,8 @@ animation/*
 
 *.out
 run.py
+rox_results.py
+supjup_results.py
+*/figures/*
+
+*/models/*

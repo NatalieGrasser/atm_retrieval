@@ -3,10 +3,26 @@ from scipy.special import loggamma # gamma function
 
 class LogLikelihood:
 
-    def __init__(self,retr_obj,scale_flux=True,scale_err=True,alpha=2,N_phi=1):
+    def __init__(self,retr_obj,scale_flux=True,scale_err=True):
+        """
+        Log-likelihood evaluation based on Appendix D in Ruffio et al. (2019).
+        DOI: https://doi.org/10.3847/1538-3881/ab4594
+
+        Parameters
+        ----------
+        retr_obj : Retrieval class object with required attributes
+
+        scale_flux : bool
+            If True, compute the optimal linear scaling factor(s) between model
+            and observed spectra.
+
+        scale_err : bool
+            If True, allow a scaling of the data uncertainties that maximizes
+            to account for potential under/over-estimated.
+        """
 
         inherit_attributes = ['n_parts','n_pixels','primary_label','data_flux',
-                                'mask_isfinite','data_wave','partialP','pressure']
+                                'mask_isfinite','data_wave','use_partial_pressure','pressure']
         for attr in inherit_attributes:  # list of attributes to pass down
             setattr(self, attr, getattr(retr_obj, attr))
 
@@ -14,9 +30,10 @@ class LogLikelihood:
             self.Teff_ref = retr_obj.Teff_ref
             self.Teff_ref_err = retr_obj.Teff_ref_err
 
-        if 'emcont_fraction' in retr_obj.parameters.params:
-            contr_attr = ['log_emcont_upper','log_emcont_lower',
-                            'emcont_fraction','emcont_alpha']
+        # if force photosphere to be in a certain pressure range
+        if 'phot_fraction' in retr_obj.parameters.params:
+            contr_attr = ['log_phot_upper','log_phot_lower',
+                            'phot_fraction','phot_alpha']
             for attr in contr_attr:
                 setattr(self, attr, retr_obj.parameters.params[attr])
 
@@ -25,10 +42,13 @@ class LogLikelihood:
             self.target_solar_metall = True
 
         self.scale_flux   = scale_flux
+        if retr_obj.instrument=='LIFE':
+            self.scale_flux = False
+
         self.scale_err    = scale_err
         self.N_d_total    = self.mask_isfinite.sum() # number of degrees of freedom / valid datapoints
-        self.alpha = alpha # from Ruffio+2019
-        self.N_phi = N_phi # number of linear scaling parameters
+        self.alpha = 2 # from Ruffio+2019
+        self.N_phi = 1 # number of linear scaling parameters
         self.sigma_p = 0.05 #bar
 
         if self.primary_label==False:
@@ -38,17 +58,50 @@ class LogLikelihood:
                 self.mask_primary[i]=mask_i
         
     def __call__(self, m_flux, Cov, **kwargs):
+        """
+        Calculate the total log-likelihood for a model spectrum.
+
+        Parameters
+        ----------
+        m_flux : ndarray
+            Model flux array with shape (n_parts, n_pixels).
+
+        Cov : list
+            List of covariance objects for each spectral segment,
+            with required methods defined in covariance.py.
+
+        **kwargs : dict
+            Additional model quantities required for likelihood penalties:
+
+            Teff_model : float
+                Effective temperature of the model atmosphere.
+
+            P_tot_surf : tuple
+                Total and surface pressures for partial pressure mode.
+
+            summed_emcont : ndarray
+                Contribution function integrated over wavelength, used
+                to enforce constraints on the photospheric pressure range.
+
+            metall : float
+                Atmospheric metallicity ([Fe/H]) of the model.
+
+        Returns
+        -------
+        float
+            Total log-likelihood value. Returns ``-np.inf`` for invalid models.
+        """
 
         self.ln_L   = 0.0
         self.chi2_0 = 0.0
         self.phi = np.ones((self.n_parts, self.N_phi)) # store linear flux-scaling terms
         self.s2  = np.ones((self.n_parts)) # uncertainty-scaling
         self.m_flux_phi = m_flux # scaled model flux
-        self.Teff_model = kwargs['Teff_model']
-        self.P_tot = kwargs['P_tot_surf'][0]
-        self.P_surf = kwargs['P_tot_surf'][1]
-        self.summed_emcont = kwargs['summed_emcont']
-        self.FeH = kwargs['metall']
+        self.Teff_model = kwargs['Teff_model'] # estimated eff Temp of the model
+        self.P_tot = kwargs['P_tot_surf'][0] # total pressure (for partial pressure retrievals)
+        self.P_surf = kwargs['P_tot_surf'][1] # surface pressure (for partial pressure retrievals)
+        self.summed_emcont = kwargs['summed_emcont'] # emission contribution
+        self.FeH = kwargs['metall'] # metallicity
 
         for i in range(self.n_parts): # Loop over all segments
 
@@ -65,9 +118,6 @@ class LogLikelihood:
             if not np.all(np.isfinite(m_flux_i)): # unresolved issue, quick fix for now
                 model_mask_i = np.isfinite(m_flux_i)
                 m_flux_i[~model_mask_i] = 2.0 # to distinguish from normalized values
-                #import matplotlib.pyplot as plt
-                #plt.plot(m_flux_i)
-                #plt.savefig('model.png')
             
             if Cov[i].is_matrix:
                 Cov[i].get_cholesky() # Retrieve a Cholesky decomposition
@@ -80,7 +130,6 @@ class LogLikelihood:
             logdet_MT_inv_cov_0_M = 0
 
             inv_cov_0_M    = Cov[i].solve(m_flux_i) # Covariance matrix of phi
-            #print('inv_cov_0_M',inv_cov_0_M) # not nan
             MT_inv_cov_0_M = np.dot(m_flux_i.T, inv_cov_0_M)
             logdet_MT_inv_cov_0_M = np.log(MT_inv_cov_0_M) # (log)-determinant of the phi-covariance matrix
 
@@ -95,33 +144,22 @@ class LogLikelihood:
             self.ln_L += -1/2*(logdet_cov_0+logdet_MT_inv_cov_0_M+(N_d-self.N_phi+self.alpha-1)*np.log(chi2_0))
             self.chi2_0 += chi2_0/self.s2[i]
         
-        self.chi2_red = self.chi2_0/self.N_d_total
+        self.chi2_red = self.chi2_0/self.N_d_total # reduced chi^2
 
         if hasattr(self, 'Teff_ref'):
-            #print(self.ln_L,self.Teff_model)
-            #self.ln_L += self.penalty_Teff(self.Teff_model, self.Teff_ref, self.Teff_ref_err)
-            self.ln_L += self.penalty_Teff_exp(self.Teff_model, self.Teff_ref, self.Teff_ref_err)
-            #print(self.ln_L)
+            self.ln_L += self.penalty_Teff(self.Teff_model, self.Teff_ref, self.Teff_ref_err)
 
-        if hasattr(self, 'emcont_fraction'):
-            #print(self.ln_L)
+        if hasattr(self, 'phot_fraction'):
             self.ln_L += self.penalty_contribution(self.summed_emcont)
-            #print(self.ln_L)
 
         if self.target_solar_metall:
-            #print(self.ln_L)
             self.ln_L += self.penalty_metallicity(self.FeH)
-            #print(self.ln_L)
 
-        if self.partialP:
+        if self.use_partial_pressure:
             if self.P_tot > self.P_surf:
-                self.ln_L -= np.inf
-            #else:
-                #self.ln_L *= np.exp(-((self.P_tot - self.P_surf)**2) / (2 * self.sigma_p**2))
+                self.ln_L -= np.inf # penalize unphysical solution
 
         if np.isfinite(self.ln_L)==False:
-            #raise ValueError('Not finite lnL',self.ln_L,kwargs.get('params',None))
-            #print('\nNot finite lnL',self.ln_L,kwargs.get('params',None),"\n")
             return -np.inf
         else:
             return self.ln_L
@@ -137,28 +175,53 @@ class LogLikelihood:
         s2_i = np.sqrt(1/N_i * chi_squared_i_scaled)
         return s2_i # uncertainty scaling that maximizes log-likelihood
 
-    def penalty_Teff(self,Teff_retrieved, Teff_expected, Teff_sigma):
-        return -0.5 * ((Teff_retrieved - Teff_expected) / Teff_sigma) ** 2
-
-    def penalty_Teff_sigmoid(self, Teff_retrieved, Teff_expected, sharpness=0.2, width=15):
+    def penalty_Teff(self, Teff_retrieved, Teff_expected, Teff_sigma):
         """
-        Penalty drops sigmoidally from 0 to -1 as deviation grows.
-        width: how fast the drop-off is (half-max at ±width)
-        sharpness: how steep the penalty wall is
-        """
-        deviation = np.abs(Teff_retrieved - Teff_expected)
-        penalty = -1 / (1 + np.exp(-sharpness * (deviation - width)))
-        return penalty * 30  # scales to ~-30 at far from expected
+        Exponential penalty on effective temperature deviations.
+        The penalty increases exponentially as the retrieved temperature
+        deviates from the expected value.
 
-    def penalty_Teff_exp(self, Teff_retrieved, Teff_expected, Teff_sigma):
+        Parameters
+        ----------
+        Teff_retrieved : float
+            Effective temperature predicted by the model.
+
+        Teff_expected : float
+            Reference effective temperature.
+
+        Teff_sigma : float
+            Scale controlling the strength of the penalty.
+
+        Returns
+        -------
+        float
+            Log-likelihood penalty contribution.
+        """
         deviation = np.abs(Teff_retrieved - Teff_expected)
         return - np.exp(deviation / Teff_sigma - 1)
 
     def penalty_contribution(self, summed_emcont):
-        p_min = 10**self.log_emcont_lower
-        p_max = 10**self.log_emcont_upper
-        f_target = self.emcont_fraction
-        alpha = self.emcont_alpha
+        """
+        Penalize models whose photosphere lies outside a target pressure range.
+        The penalty increases quadratically if the fraction of the contribution
+        function within the allowed range falls below the target value.
+
+        Parameters
+        ----------
+        summed_emcont : ndarray
+            Contribution function summed over wavelength as a function
+            of atmospheric pressure.
+
+        Returns
+        -------
+        float
+            Log-likelihood penalty contribution.
+        """
+
+        p_min = 10**self.log_phot_lower
+        p_max = 10**self.log_phot_upper
+        f_target = self.phot_fraction
+        alpha = self.phot_alpha
         # alpha = 10 means that being 1 dex outside the allowed range reduces the log-likelihood by 10.
         # Normalize contribution
         w = summed_emcont / np.sum(summed_emcont)
@@ -171,7 +234,27 @@ class LogLikelihood:
         else:
             return 0.0
 
-    def penalty_metallicity(self, metall_model, metall_target=0.0, metall_sigma=0.2):
+    def penalty_metallicity(self, metall_model, metall_target=0.0, metall_sigma= 0.1):
+        """
+        Gaussian prior penalizing deviations from target (solar) metallicity.
+
+        Parameters
+        ----------
+        metall_model : float
+            Metallicity ([Fe/H]) predicted by the model.
+
+        metall_target : float, optional
+            Target metallicity value. Default is solar (0.0).
+
+        metall_sigma : float, optional
+            Standard deviation of the Gaussian prior.
+
+        Returns
+        -------
+        float
+            Log-likelihood penalty contribution.
+        """
+        
         deviation = metall_model - metall_target
         return -0.5 * (deviation / metall_sigma)**2
 

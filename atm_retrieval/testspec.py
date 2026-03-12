@@ -1,5 +1,7 @@
 # generate synthetic spectrum based on 2M0355 to test retrieval
 
+simple_composition = True
+
 test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'vsini': (4.0,r'$v$ sin$i$'),
             'log_g':(4.75,r'log $g$'),
@@ -7,14 +9,8 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'log_H2O':(-3.0,r'log H$_2$O'),
             'log_12CO':(-3.0,r'log $^{12}$CO'),
             'log_13CO':(-5.0,r'log $^{13}$CO'),
-            'log_C17O':(-10.0,r'log C$^{17}$O'),
-            'log_C18O':(-8.0,r'log C$^{18}$O'),
-            'log_CH4':(-6.0,r'log CH$_4$'),
             'log_HF':(-6.0,r'log HF'),
             'log_H2(18)O':(-6.0,r'log H$_2^{18}$O'),
-            'log_H2S':(-5.0,r'log H$_2$S'),
-            'log_NH3':(-12,r'log NH$_3$'),
-            'log_HCN':(-11,r'log HCN'),
             'dlnT_dlnP_0': (0.18, r'$\nabla T_0$'), # gradient at T0 
             'dlnT_dlnP_1': (0.23, r'$\nabla T_1$'), 
             'dlnT_dlnP_2': (0.05, r'$\nabla T_2$'), 
@@ -23,6 +19,20 @@ test_dict={'rv': (12.0,r'$v_{\rm rad}$'),
             'T0': (2500, r'$T_0$'),
             'log_P_upper': (2, r'log $P_{up}$'), # top of atm
             'log_P_lower': (-6, r'log $P_{up}$')} # bottom of atm
+
+suffix2= ''
+if simple_composition==False:
+   add_params = {'log_C17O':(-10.0,r'log C$^{17}$O'),
+            'log_C18O':(-8.0,r'log C$^{18}$O'),
+            'log_CH4':(-6.0,r'log CH$_4$'),
+            'log_H2S':(-5.0,r'log H$_2$S'),
+            'log_NH3':(-12,r'log NH$_3$'),
+            'log_HCN':(-11,r'log HCN')}
+   test_dict.update(add_params)
+else:
+   print('Simple composition')
+   print(test_dict)
+   suffix2='_simplecomp'
 
 test_parameters={}
 test_mathtext={}
@@ -68,7 +78,7 @@ if __name__ == "__main__":
             if 'log_' in par: # get all species in params dict, they are in log, ignore other log values
                if par in ['log_g','log_Kzz','log_P_base_gray','log_opa_base_gray','log_a','log_l',
                             'log_C12_13_ratio','log_O16_17_ratio','log_O16_18_ratio',
-                            'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN']: # skip
+                            'log_Pqu_CO_CH4','log_Pqu_NH3','log_Pqu_HCN','log_P_upper','log_P_lower']: # skip
                   pass
                else:
                   chem_species.append(par)
@@ -211,6 +221,8 @@ if __name__ == "__main__":
       
    target=Target('2M0355') # test spectrum based on 2M0355
    data_wave,data_flux,data_err=target.load_spectrum()
+   data_wave,data_flux,data_err = [var.reshape((7,3,2048)) for var in [data_wave,data_flux,data_err]]
+
    mask_isfinite=target.get_mask_isfinite() # mask nans, shape (orders,detectors)
    separation,err_eff=target.prepare_for_covariance()
    K2166=target.K2166
@@ -229,7 +241,7 @@ if __name__ == "__main__":
    plt.plot(temp,pres)
    plt.yscale('log')
    plt.gca().invert_yaxis()
-   plt.show()
+   plt.close()
 
    species=get_species(param_dict=test_parameters,chemistry='freechem')
    mass_fractions, CO, FeH=free_chemistry(species,test_parameters,n_atm_layers)
@@ -280,11 +292,12 @@ if __name__ == "__main__":
 
       # reshape to (detectors,pixels) so that we can store as shape (orders,detectors,pixels)
       flux=flux.reshape(data_wave.shape[1],data_wave.shape[2])
+
       spectrum_orders.append(flux)
 
    test_spectrum=np.array(spectrum_orders)
    test_spectrum/=np.nanmedian(test_spectrum) # normalize in same way as data spectrum
-   test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
+   #test_spectrum[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
 
    # random noise depending on data points
    random_noise=np.random.normal(0,np.nanmean(data_err),size=test_spectrum.shape)
@@ -324,6 +337,9 @@ if __name__ == "__main__":
             err_new_array[i,j]=err_new
             test_spectrum_noisy[i,j]+=err_new
 
+   test_spectrum_nonmasked_nonoise = np.copy(test_spectrum)
+   test_spectrum_noisy[np.isnan(data_flux)]=np.nan # mask same regions as in observed data
+
    spectrum=np.full(shape=(2048*7*3,3),fill_value=np.nan)
    spectrum[:,0]=data_wave.flatten()
    spectrum[:,1]=test_spectrum_noisy.flatten()
@@ -332,16 +348,20 @@ if __name__ == "__main__":
 
    output_dir = pathlib.Path(f'{os.getcwd()}/test{suffix}')
    output_dir.mkdir(parents=True, exist_ok=True)
-   np.savetxt(f'test{suffix}/test{suffix}_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
+   np.savetxt(f'CRIRES/test{suffix}/test{suffix}{suffix2}_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
+
+   spectrum[:,1]=test_spectrum_nonmasked_nonoise.flatten()
+   np.savetxt(f'CRIRES/test{suffix}/test{suffix}{suffix2}_nonmasked_nonoise_spectrum.txt',spectrum,delimiter=' ',header='wavelength (nm) flux flux_error')
 
    if 0:
       wl,fl,err=Target('2M0355').load_spectrum()
       wlm,flm,errm=Target(f'test{suffix}').load_spectrum()
       fig,ax=plt.subplots(1,1,figsize=(9,2),dpi=200)
       ax.plot(wl.flatten(),fl.flatten(),label='2M0355',lw=0.8)
+      ax.plot(wlm.flatten(),test_spectrum_nonmasked_nonoise.flatten(),label='nonmasked',alpha=0.5,lw=0.8,c='k')
       ax.plot(wlm.flatten(),flm.flatten(),label='testspec',alpha=0.5,lw=0.8)
       ax.legend()
       ax.set_xlabel('Wavelength [nm]')
       fig.tight_layout(h_pad=0)
       fig.savefig(f'test{suffix}/test{suffix}_spectrum.pdf')
-      plt.close()
+      plt.show()
